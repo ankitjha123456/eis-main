@@ -1,6 +1,10 @@
 import React, { useState, useMemo, useEffect } from "react";
 import "./ApiSearch.css";
 
+// ─── Default credentials (change these to your actual credentials) ────────────
+const DEFAULT_USERNAME = "admin";
+const DEFAULT_PASSWORD = "admin123";
+
 function ApiSearch() {
   const [activeEnv, setActiveEnv] = useState("UAT");
   const [data, setData] = useState([]);
@@ -14,14 +18,21 @@ function ApiSearch() {
   const [loading, setLoading] = useState(true);
   const [downloadingApis, setDownloadingApis] = useState(new Set());
   const [expandedServers, setExpandedServers] = useState(new Set());
-
-  // Track per-API action state: { "apiName-server": "starting" | "stopping" | null }
   const [serviceActionMap, setServiceActionMap] = useState({});
-
-  // Toast notifications
   const [toasts, setToasts] = useState([]);
 
-  // API endpoints for different environments
+  // ─── Credential Modal State ───────────────────────────────────────────────────
+  const [modal, setModal] = useState({
+    open: false,
+    action: null,   // "start" | "stop"
+    item: null,
+    username: DEFAULT_USERNAME,
+    password: DEFAULT_PASSWORD,
+    showPassword: false,
+    error: ""
+  });
+
+  // API endpoints
   const endpoints = {
     UAT: {
       search: "http://10.177.44.180:8443//UAT/duplicate/ApiSearch",
@@ -37,7 +48,7 @@ function ApiSearch() {
     },
   };
 
-  // ─── Toast helpers ───────────────────────────────────────────────────────────
+  // ─── Toast helpers ────────────────────────────────────────────────────────────
   const addToast = (message, type = "success") => {
     const id = Date.now();
     setToasts(prev => [...prev, { id, message, type }]);
@@ -117,33 +128,63 @@ function ApiSearch() {
     }
   };
 
+  // ─── Open credential modal ────────────────────────────────────────────────────
+  const openModal = (action, item) => {
+    setModal({
+      open: true,
+      action,
+      item,
+      username: DEFAULT_USERNAME,
+      password: DEFAULT_PASSWORD,
+      showPassword: false,
+      error: ""
+    });
+  };
+
+  const closeModal = () => {
+    setModal(prev => ({ ...prev, open: false, error: "" }));
+  };
+
+  // ─── Confirm action from modal ────────────────────────────────────────────────
+  const confirmAction = async () => {
+    const { action, item, username, password } = modal;
+
+    if (!username.trim() || !password.trim()) {
+      setModal(prev => ({ ...prev, error: "Username and password are required." }));
+      return;
+    }
+
+    closeModal();
+    await handleServiceAction(action, item, username, password);
+  };
+
   // ─── Start / Stop service ─────────────────────────────────────────────────────
-  // FIX: Added response logging so you can see exactly what the server returns.
-  //      The endpoint maps "start" -> "start" and anything else -> "teardown".
-  const handleServiceAction = async (action, item) => {
+  const handleServiceAction = async (action, item, username, password) => {
     const key = `${item.ApiName}-${item.IntegrationServer}`;
     const actionLabel = action === "start" ? "Starting" : "Stopping";
     const doneLabel   = action === "start" ? "started"  : "stopped";
 
-    // Mark in-progress
     setServiceActionMap(prev => ({ ...prev, [key]: action === "start" ? "starting" : "stopping" }));
 
     const endpoint = action === "start" ? "start" : "teardown";
     const url = `http://10.177.44.180:8443/ACCOUNT_EXP/apiv2/servers/${item.IntegrationServer}/rest-apis/${item.ApiName}/${endpoint}`;
 
+    const basicAuth = btoa(`${username}:${password}`);
+
     try {
       const response = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Basic ${basicAuth}`
+        },
       });
 
-      // Log full server response so you can debug any issues
       const responseText = await response.text();
       console.log(`${actionLabel} response [${response.status}]:`, responseText);
 
       if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText} — ${responseText}`);
 
-      // Optimistically update local state so badge flips immediately
       setData(prev =>
         prev.map(d =>
           d.ApiName === item.ApiName && d.IntegrationServer === item.IntegrationServer
@@ -300,6 +341,7 @@ function ApiSearch() {
 
   return (
     <div className="app-container">
+
       {/* ── Toast Container ── */}
       <div className="toast-container">
         {toasts.map(toast => (
@@ -309,11 +351,92 @@ function ApiSearch() {
         ))}
       </div>
 
+      {/* ══════════════════════════════════════════════════════════════
+          CREDENTIAL MODAL
+      ══════════════════════════════════════════════════════════════ */}
+      {modal.open && (
+        <div className="modal-overlay" onClick={closeModal}>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+
+            {/* Modal Header */}
+            <div className={`modal-header ${modal.action === "start" ? "modal-header-start" : "modal-header-stop"}`}>
+              <div className="modal-header-icon">
+                {modal.action === "start" ? "▶" : "⏹"}
+              </div>
+              <div>
+                <h3 className="modal-title">
+                  {modal.action === "start" ? "Start API" : "Stop API"}
+                </h3>
+                <p className="modal-subtitle">{modal.item?.ApiName}</p>
+              </div>
+              <button className="modal-close" onClick={closeModal}>✕</button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="modal-body">
+              <p className="modal-info">
+                Enter credentials to {modal.action === "start" ? "start" : "stop"} this API on <strong>{modal.item?.IntegrationServer}</strong>
+              </p>
+
+              {modal.error && (
+                <div className="modal-error">⚠ {modal.error}</div>
+              )}
+
+              <div className="modal-field">
+                <label>Username</label>
+                <input
+                  type="text"
+                  value={modal.username}
+                  onChange={e => setModal(prev => ({ ...prev, username: e.target.value, error: "" }))}
+                  placeholder="Enter username"
+                  autoFocus
+                />
+              </div>
+
+              <div className="modal-field">
+                <label>Password</label>
+                <div className="modal-password-wrapper">
+                  <input
+                    type={modal.showPassword ? "text" : "password"}
+                    value={modal.password}
+                    onChange={e => setModal(prev => ({ ...prev, password: e.target.value, error: "" }))}
+                    placeholder="Enter password"
+                    onKeyDown={e => e.key === "Enter" && confirmAction()}
+                  />
+                  <button
+                    className="toggle-password"
+                    onClick={() => setModal(prev => ({ ...prev, showPassword: !prev.showPassword }))}
+                    type="button"
+                  >
+                    {modal.showPassword ? "🙈" : "👁"}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="modal-footer">
+              <button className="modal-cancel-btn" onClick={closeModal}>
+                Cancel
+              </button>
+              <button
+                className={`modal-confirm-btn ${modal.action === "start" ? "confirm-start" : "confirm-stop"}`}
+                onClick={confirmAction}
+              >
+                {modal.action === "start" ? "▶ Start API" : "⏹ Stop API"}
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* ── Header ── */}
       <header className="app-header">
         <h1>API Search</h1>
       </header>
 
-      {/* Environment Tabs */}
+      {/* ── Environment Tabs ── */}
       <div className="environment-tabs">
         {["UAT", "SIT", "Preprod"].map((env) => (
           <button
@@ -328,7 +451,7 @@ function ApiSearch() {
         ))}
       </div>
 
-      {/* Controls */}
+      {/* ── Controls ── */}
       <div className="controls-container">
         <div className="action-buttons">
           <button className="secondary-button" onClick={handleRefresh} disabled={loading || data.length === 0}>
@@ -341,7 +464,7 @@ function ApiSearch() {
         </div>
       </div>
 
-      {/* Loading State */}
+      {/* ── Loading State ── */}
       {loading && (
         <div className="loading-state">
           <div className="loading-spinner-large"></div>
@@ -350,7 +473,7 @@ function ApiSearch() {
         </div>
       )}
 
-      {/* Filters Section */}
+      {/* ── Filters Section ── */}
       {!loading && (
         <div className="filters-section">
           <div className="filters-header">
@@ -400,7 +523,12 @@ function ApiSearch() {
             <div className="filter-group">
               <label>API Name</label>
               <div className="search-input-wrapper">
-                <input type="text" placeholder="Search API name..." value={filters.apiName} onChange={(e) => handleFilterChange("apiName", e.target.value)} />
+                <input
+                  type="text"
+                  placeholder="Search API name..."
+                  value={filters.apiName}
+                  onChange={(e) => handleFilterChange("apiName", e.target.value)}
+                />
                 <span className="search-icon">🔍</span>
               </div>
             </div>
@@ -427,7 +555,7 @@ function ApiSearch() {
         </div>
       )}
 
-      {/* Integration Servers Summary */}
+      {/* ── Integration Servers ── */}
       {!loading && Object.keys(groupedData).length > 0 && (
         <div className="servers-section">
           <div className="section-header">
@@ -503,6 +631,7 @@ function ApiSearch() {
                                 {/* ── Actions Column ── */}
                                 <td>
                                   <div className="action-cell">
+
                                     {/* Download BAR */}
                                     <button
                                       className={`download-button ${downloading ? 'downloading' : ''}`}
@@ -510,40 +639,42 @@ function ApiSearch() {
                                       disabled={downloading}
                                       title="Download BAR file"
                                     >
-                                      {downloading ? (<><span className="button-spinner"></span>Downloading...</>) : (<><span className="icon">⬇️</span>Download BAR</>)}
+                                      {downloading
+                                        ? (<><span className="button-spinner"></span>Downloading...</>)
+                                        : (<><span className="icon">⬇️</span>Download BAR</>)
+                                      }
                                     </button>
 
-                                    {/* ── Start Button — shown only when API is STOPPED ── */}
+                                    {/* Start Button — shown when STOPPED */}
                                     {!running && (
                                       <button
                                         className={`service-btn start-btn ${serviceAction === "starting" ? "in-progress" : ""}`}
-                                        onClick={(e) => { e.stopPropagation(); handleServiceAction("start", item); }}
+                                        onClick={(e) => { e.stopPropagation(); openModal("start", item); }}
                                         disabled={isActionInProgress}
                                         title={`Start ${item.ApiName}`}
                                       >
-                                        {serviceAction === "starting" ? (
-                                          <><span className="button-spinner"></span>Starting...</>
-                                        ) : (
-                                          <><span className="icon">▶</span>Start</>
-                                        )}
+                                        {serviceAction === "starting"
+                                          ? (<><span className="button-spinner"></span>Starting...</>)
+                                          : (<><span className="btn-icon">▶</span>Start</>)
+                                        }
                                       </button>
                                     )}
 
-                                    {/* ── Stop Button — shown only when API is RUNNING ── */}
+                                    {/* Stop Button — shown when RUNNING */}
                                     {running && (
                                       <button
                                         className={`service-btn stop-btn ${serviceAction === "stopping" ? "in-progress" : ""}`}
-                                        onClick={(e) => { e.stopPropagation(); handleServiceAction("stop", item); }}
+                                        onClick={(e) => { e.stopPropagation(); openModal("stop", item); }}
                                         disabled={isActionInProgress}
                                         title={`Stop ${item.ApiName}`}
                                       >
-                                        {serviceAction === "stopping" ? (
-                                          <><span className="button-spinner"></span>Stopping...</>
-                                        ) : (
-                                          <><span className="icon">⏹</span>Stop</>
-                                        )}
+                                        {serviceAction === "stopping"
+                                          ? (<><span className="button-spinner"></span>Stopping...</>)
+                                          : (<><span className="btn-icon">⏹</span>Stop</>)
+                                        }
                                       </button>
                                     )}
+
                                   </div>
                                 </td>
                               </tr>
@@ -581,8 +712,9 @@ function ApiSearch() {
           <button className="primary-button" onClick={clearFilters}>Clear Filters</button>
         </div>
       )}
+
     </div>
   );
 }
 
-export default ApiSearch
+export default ApiSearch;
