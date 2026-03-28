@@ -1,0 +1,22 @@
+server {
+    listen 80;
+
+    location / {
+        # Your existing proxy config
+        proxy_pass http://10.177.44.180:8443;
+
+        # ── Add these CORS headers ──
+        add_header 'Access-Control-Allow-Origin' '*' always;
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
+        add_header 'Access-Control-Allow-Headers' 'Content-Type, Authorization' always;
+
+        # Handle preflight OPTIONS request
+        if ($request_method = 'OPTIONS') {
+            add_header 'Access-Control-Allow-Origin' '*';
+            add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS';
+            add_header 'Access-Control-Allow-Headers' 'Content-Type, Authorization';
+            add_header 'Content-Length' '0';
+            return 204;
+        }
+    }
+}
