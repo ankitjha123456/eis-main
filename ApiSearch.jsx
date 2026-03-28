@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useEffect } from "react";
 import "./ApiSearch.css";
 
-// ─── Default credentials (change these to your actual credentials) ────────────
+
 const DEFAULT_USERNAME = "admin";
-const DEFAULT_PASSWORD = "admin123";
+const DEFAULT_PASSWORD = "Ankit@1801";
 
 function ApiSearch() {
   const [activeEnv, setActiveEnv] = useState("UAT");
@@ -26,8 +26,8 @@ function ApiSearch() {
     open: false,
     action: null,   // "start" | "stop"
     item: null,
-    username: DEFAULT_USERNAME,
-    password: DEFAULT_PASSWORD,
+    username: "",
+    password: "",
     showPassword: false,
     error: ""
   });
@@ -134,8 +134,8 @@ function ApiSearch() {
       open: true,
       action,
       item,
-      username: DEFAULT_USERNAME,
-      password: DEFAULT_PASSWORD,
+      username: "",
+      password: "",
       showPassword: false,
       error: ""
     });
