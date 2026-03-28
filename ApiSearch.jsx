@@ -118,17 +118,18 @@ function ApiSearch() {
   };
 
   // ─── Start / Stop service ─────────────────────────────────────────────────────
+  // FIX: Added response logging so you can see exactly what the server returns.
+  //      The endpoint maps "start" -> "start" and anything else -> "teardown".
   const handleServiceAction = async (action, item) => {
     const key = `${item.ApiName}-${item.IntegrationServer}`;
     const actionLabel = action === "start" ? "Starting" : "Stopping";
-    const doneLabel  = action === "start" ? "started"  : "stopped";
+    const doneLabel   = action === "start" ? "started"  : "stopped";
 
     // Mark in-progress
     setServiceActionMap(prev => ({ ...prev, [key]: action === "start" ? "starting" : "stopping" }));
 
-    // URL pattern from your screenshot:
-    // https://<ServerIP>:4420/apiv2/servers/<IntegrationServer>/rest-apis/<ApiName>/start|teardown
-    const url = `http://10.177.44.180:8443/ACCOUNT_EXP/apiv2/servers/${item.IntegrationServer}/rest-apis/${item.ApiName}/${action === "start" ? "start" : "teardown"}`;
+    const endpoint = action === "start" ? "start" : "teardown";
+    const url = `http://10.177.44.180:8443/ACCOUNT_EXP/apiv2/servers/${item.IntegrationServer}/rest-apis/${item.ApiName}/${endpoint}`;
 
     try {
       const response = await fetch(url, {
@@ -136,9 +137,13 @@ function ApiSearch() {
         headers: { "Content-Type": "application/json" },
       });
 
-      if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      // Log full server response so you can debug any issues
+      const responseText = await response.text();
+      console.log(`${actionLabel} response [${response.status}]:`, responseText);
 
-      // Optimistically update local state so button flips immediately
+      if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText} — ${responseText}`);
+
+      // Optimistically update local state so badge flips immediately
       setData(prev =>
         prev.map(d =>
           d.ApiName === item.ApiName && d.IntegrationServer === item.IntegrationServer
@@ -580,4 +585,4 @@ function ApiSearch() {
   );
 }
 
-export default ApiSearch;
+export default ApiSearch
