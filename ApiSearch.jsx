@@ -1,9 +1,17 @@
 import React, { useState, useMemo, useEffect } from "react";
 import "./ApiSearch.css";
 
-
+// ─── Default credentials — change these to your real credentials ──────────────
 const DEFAULT_USERNAME = "admin";
 const DEFAULT_PASSWORD = "Ankit@1801";
+
+// ─── Helper: extract last octet from IP ───────────────────────────────────────
+// e.g. "10.177.44.50" → "50"
+const getLastOctet = (ip) => {
+  if (!ip || typeof ip !== "string") return "";
+  const parts = ip.split(".");
+  return parts[parts.length - 1];
+};
 
 function ApiSearch() {
   const [activeEnv, setActiveEnv] = useState("UAT");
@@ -99,8 +107,15 @@ function ApiSearch() {
   };
 
   // ─── Download BAR file ────────────────────────────────────────────────────────
-  const downloadBarFile = async (apiName, integrationServer, integrationNode) => {
-    const downloadUrl = `http://10.177.44.180:8443/${integrationNode}/apiv2/servers/${integrationServer}?application=${apiName}&referenced_app_domains=true&referenced_policy_projects=true&exclude_source=true&depth=4`;
+  // URL pattern: http://10.177.44.180:8443/{IntegrationNode}{lastOctet}/apiv2/servers/...
+  // Example: IntegrationNode=ACCOUNT_EXP, IP=10.177.44.50 → ACCOUNT_EXP50
+  const downloadBarFile = async (apiName, integrationServer, integrationNode, serverIP) => {
+    const lastOctet = getLastOctet(serverIP);
+    const brokerPath = `${integrationNode}${lastOctet}`;
+    const downloadUrl = `http://10.177.44.180:8443/${brokerPath}/apiv2/servers/${integrationServer}?application=${apiName}&referenced_app_domains=true&referenced_policy_projects=true&exclude_source=true&depth=4`;
+
+    console.log("Download URL:", downloadUrl); // e.g. .../ACCOUNT_EXP50/apiv2/servers/...
+
     setDownloadingApis(prev => new Set(prev).add(`${apiName}-${integrationServer}`));
     try {
       const response = await fetch(downloadUrl, {
@@ -146,14 +161,24 @@ function ApiSearch() {
   };
 
   // ─── Confirm action from modal ────────────────────────────────────────────────
+  // FIX 1: Validate credentials locally against DEFAULT_USERNAME / DEFAULT_PASSWORD
+  // before calling the API. If wrong → show error in modal, do NOT proceed.
   const confirmAction = async () => {
     const { action, item, username, password } = modal;
 
+    // Empty check
     if (!username.trim() || !password.trim()) {
       setModal(prev => ({ ...prev, error: "Username and password are required." }));
       return;
     }
 
+    // ── Credential match check ──
+    if (username.trim() !== DEFAULT_USERNAME || password !== DEFAULT_PASSWORD) {
+      setModal(prev => ({ ...prev, error: "❌ Password not match. Please check your credentials." }));
+      return;
+    }
+
+    // Credentials matched → close modal and proceed
     closeModal();
     await handleServiceAction(action, item, username, password);
   };
@@ -166,8 +191,13 @@ function ApiSearch() {
 
     setServiceActionMap(prev => ({ ...prev, [key]: action === "start" ? "starting" : "stopping" }));
 
+    // FIX 2: Use IntegrationNode + lastOctet for the service start/stop URL as well
+    const lastOctet = getLastOctet(item.ServerIP);
+    const brokerPath = `${item.IntegrationNode}${lastOctet}`;
     const endpoint = action === "start" ? "start" : "teardown";
-    const url = `http://10.177.44.180:8443/ACCOUNT_EXP/apiv2/servers/${item.IntegrationServer}/rest-apis/${item.ApiName}/${endpoint}`;
+    const url = `http://10.177.44.180:8443/${brokerPath}/apiv2/servers/${item.IntegrationServer}/rest-apis/${item.ApiName}/${endpoint}`;
+
+    console.log(`${actionLabel} URL:`, url);
 
     const basicAuth = btoa(`${username}:${password}`);
 
@@ -378,6 +408,7 @@ function ApiSearch() {
                 Enter credentials to {modal.action === "start" ? "start" : "stop"} this API on <strong>{modal.item?.IntegrationServer}</strong>
               </p>
 
+              {/* Error message shown here when credentials don't match */}
               {modal.error && (
                 <div className="modal-error">⚠ {modal.error}</div>
               )}
@@ -632,10 +663,13 @@ function ApiSearch() {
                                 <td>
                                   <div className="action-cell">
 
-                                    {/* Download BAR */}
+                                    {/* Download BAR — now passes serverIP for last-octet URL */}
                                     <button
                                       className={`download-button ${downloading ? 'downloading' : ''}`}
-                                      onClick={(e) => { e.stopPropagation(); downloadBarFile(item.ApiName, item.IntegrationServer, item.IntegrationNode); }}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        downloadBarFile(item.ApiName, item.IntegrationServer, item.IntegrationNode, item.ServerIP);
+                                      }}
                                       disabled={downloading}
                                       title="Download BAR file"
                                     >
