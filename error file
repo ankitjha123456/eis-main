@@ -1,0 +1,194 @@
+my NGINX Command
+
+server {
+  listen  8443;
+  server_name 10.177.44.180;
+
+root /var/www/build/index.html;
+ssl_certificate  /etc/nginx/ssl/selfsigned.crt;
+ssl_certificate_key  /etc/nginx/ssl/selfsigned.key;
+
+ssl_protocols TLSv1.2 TLSv1.3;
+ssl_ciphers HIGH:!aNULL:!MD5;
+
+location /ACCOUNT_EXP/ {
+    proxy_pass https://10.177.44.51:4418/;
+
+    add_header Access-Control-Allow-Origin *;
+    add_header Access-Control-Allow-Methods "GET, POST, DELETE, OPTIONS";
+    add_header Access-Control-Allow-Headers "*";
+}
+
+IN my HEADER FILE:
+Request URL
+http://10.177.44.180:8443/ACCOUNT_EXP/apiv2/servers/Account_E_08/rest-apis/cifAssociatedAccountEnquiry_bth_expDS/teardown
+Referrer Policy
+strict-origin-when-cross-origin
+content-type
+application/json
+referer
+http://localhost:3000/
+user-agent
+Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36
+
+
+In IBM REST API IT CALL 2 URL
+one start the header for that 
+Request URL
+https://10.177.44.51:4418/apiv2/servers/Account_E_01/rest-apis/hrmsEmpData_expDS/start
+Request Method
+POST
+Status Code
+200 OK
+Remote Address
+10.177.44.51:4418
+Referrer Policy
+origin
+cache-control
+no-store, no-cache, must-revalidate, proxy-revalidate
+connection
+keep-alive
+content-length
+0
+content-security-policy
+default-src 'none';object-src 'none';script-src 'self';img-src 'self';font-src 'self' https://1.www.s81c.com;connect-src 'self' http://eisuatexp02:* https://eisuatexp02:* wss://localhost:4418 wss://127.0.0.1:4418;child-src 'self' blob:;style-src 'self';frame-ancestors 'self';form-action 'self'
+content-type
+application/json; charset=utf-8
+date
+Sat, 28 Mar 2026 04:12:04 GMT
+etag
+W/"0-2jmj7l5rSw0yVb/vlWAYkK/YBwk"
+expires
+0
+keep-alive
+timeout=5
+referrer-policy
+origin
+strict-transport-security
+max-age=86400000; includeSubDomains; preload
+surrogate-control
+no-store
+vary
+X-HTTP-Method-Override, Accept-Encoding
+x-content-type-options
+nosniff
+x-frame-options
+SAMEORIGIN
+x-ibm-bip-client-requestid
+1774671123563-adminui-0000
+x-xss-protection
+0
+accept
+application/json
+accept-encoding
+gzip, deflate, br, zstd
+accept-language
+en-US,en;q=0.9
+connection
+keep-alive
+content-length
+0
+host
+10.177.44.51:4418
+origin
+https://10.177.44.51:4418
+referer
+https://10.177.44.51:4418/
+sec-ch-ua
+"Chromium";v="146", "Not-A.Brand";v="24", "Google Chrome";v="146"
+sec-ch-ua-mobile
+?0
+sec-ch-ua-platform
+"Windows"
+sec-fetch-dest
+empty
+sec-fetch-mode
+cors
+sec-fetch-site
+same-origin
+user-agent
+Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36
+x-csrf-token
+x-ibm-bip-client
+adminui
+x-ibm-bip-client-version
+9.3.96
+
+2nd one header
+Request URL
+https://10.177.44.51:4418/apiv2/servers/Account_E_01/rest-apis/hrmsEmpData_expDS?depth=4
+Request Method
+GET
+Status Code
+200 OK
+Remote Address
+10.177.44.51:4418
+Referrer Policy
+origin
+cache-control
+no-store, no-cache, must-revalidate, proxy-revalidate
+connection
+keep-alive
+content-encoding
+br
+content-security-policy
+default-src 'none';object-src 'none';script-src 'self';img-src 'self';font-src 'self' https://1.www.s81c.com;connect-src 'self' http://eisuatexp02:* https://eisuatexp02:* wss://localhost:4418 wss://127.0.0.1:4418;child-src 'self' blob:;style-src 'self';frame-ancestors 'self';form-action 'self'
+content-type
+application/json; charset=utf-8
+date
+Sat, 28 Mar 2026 04:12:04 GMT
+etag
+W/"66f1-+QoX7U+jqgVj6fURuT2YqEp4olg"
+expires
+0
+keep-alive
+timeout=5
+referrer-policy
+origin
+strict-transport-security
+max-age=86400000; includeSubDomains; preload
+surrogate-control
+no-store
+transfer-encoding
+chunked
+vary
+Accept-Encoding
+x-content-type-options
+nosniff
+x-frame-options
+SAMEORIGIN
+x-ibm-bip-client-requestid
+1774671124235-adminui-0000
+x-xss-protection
+0
+accept
+application/json
+accept-encoding
+gzip, deflate, br, zstd
+accept-language
+en-US,en;q=0.9
+connection
+keep-alive
+host
+10.177.44.51:4418
+referer
+https://10.177.44.51:4418/
+sec-ch-ua
+"Chromium";v="146", "Not-A.Brand";v="24", "Google Chrome";v="146"
+sec-ch-ua-mobile
+?0
+sec-ch-ua-platform
+"Windows"
+sec-fetch-dest
+empty
+sec-fetch-mode
+cors
+sec-fetch-site
+same-origin
+user-agent
+Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36
+x-csrf-token
+x-ibm-bip-client
+adminui
+x-ibm-bip-client-version
+9.3.96
