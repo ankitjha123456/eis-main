@@ -1,1 +1,70 @@
 
+import com.ibm.broker.javacompute.MbJavaComputeNode;
+import com.ibm.broker.plugin.*;
+
+import java.io.File;
+import java.io.FilenameFilter;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+
+public class ListFilesJCN extends MbJavaComputeNode {
+
+    @Override
+    public void evaluate(MbMessageAssembly inAssembly) throws MbException {
+
+        MbOutputTerminal out = getOutputTerminal("out");
+
+        MbMessage inMessage = inAssembly.getMessage();
+        MbMessage outMessage = new MbMessage(inMessage);
+
+        MbMessageAssembly outAssembly = new MbMessageAssembly(inAssembly, outMessage);
+
+        try {
+            // Get Environment variables
+            MbElement envRoot = inAssembly.getGlobalEnvironment().getRootElement();
+            MbElement variables = envRoot.getFirstElementByPath("Variables");
+
+            String filePath = variables.getFirstElementByPath("FilePath").getValueAsString();
+            String pattern = variables.getFirstElementByPath("Pattern").getValueAsString();
+
+            // Convert *.xsd → regex
+            String regex = pattern.replace("*", ".*");
+
+            File dir = new File(filePath);
+
+            if (!dir.exists() || !dir.isDirectory()) {
+                throw new MbUserException(this, "evaluate()", "", "", 
+                        "Invalid directory path: " + filePath, null);
+            }
+
+            File[] files = dir.listFiles(new FilenameFilter() {
+                @Override
+                public boolean accept(File d, String name) {
+                    return name.matches(regex);
+                }
+            });
+
+            // Prepare LocalEnvironment
+            MbElement localEnv = outAssembly.getLocalEnvironment().getRootElement();
+            MbElement filesRoot = localEnv.createElementAsLastChild(MbElement.TYPE_NAME, "Files", null);
+
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+
+            if (files != null) {
+                for (File f : files) {
+                    MbElement fileElement = filesRoot.createElementAsLastChild(MbElement.TYPE_NAME, "File", null);
+
+                    fileElement.createElementAsLastChild(MbElement.TYPE_NAME_VALUE, "FileName", f.getName());
+                    fileElement.createElementAsLastChild(MbElement.TYPE_NAME_VALUE, "Directory", f.getParent());
+                    fileElement.createElementAsLastChild(MbElement.TYPE_NAME_VALUE, "LastModified",
+                            sdf.format(new Date(f.lastModified())));
+                }
+            }
+
+        } catch (Exception e) {
+            throw new MbUserException(this, "evaluate()", "", "", e.toString(), null);
+        }
+
+        out.propagate(outAssembly);
+    }
+}
