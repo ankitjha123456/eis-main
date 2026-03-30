@@ -1,34 +1,3 @@
-Edit the code below i need in this exact tree structure
-
-LocalEnvironment
-	Files
-			TimeStamp:CHARACTER:20260330_063107_349376
-			ProcessedBy:CHARACTER:File Exists
-			FromFTP:BOOLEAN:false
-			TotalInList:INTEGER:3
-			File
-					Directory:CHARACTER:/tmp/personalCifCreation_orchDS/personalCifCreation_orchDS/IBMdefined
-					Name:CHARACTER:GeneralPurposeFormat.xsd
-					LastModified:TIMESTAMP:java.util.GregorianCalendar[time=1711634302000,areFieldsSet=true,areAllFieldsSet=false,lenient=true,zone=sun.util.calendar.ZoneInfo[id="Asia/Calcutta",offset=19800000,dstSavings=0,useDaylight=false,transitions=7,lastRule=null],firstDayOfWeek=1,minimalDaysInFirstWeek=1,ERA=?,YEAR=2024,MONTH=2,WEEK_OF_YEAR=?,WEEK_OF_MONTH=?,DAY_OF_MONTH=28,DAY_OF_YEAR=?,DAY_OF_WEEK=?,DAY_OF_WEEK_IN_MONTH=?,AM_PM=1,HOUR=7,HOUR_OF_DAY=19,MINUTE=28,SECOND=22,MILLISECOND=0,ZONE_OFFSET=?,DST_OFFSET=?]
-					IsEmpty:BOOLEAN:false
-					Wildcard
-							WildcardMatch:CHARACTER:GeneralPurposeFormat
-			File
-					Directory:CHARACTER:/tmp/personalCifCreation_orchDS/personalCifCreation_orchDS
-					Name:CHARACTER:form60.xsd
-					LastModified:TIMESTAMP:java.util.GregorianCalendar[time=1711634302000,areFieldsSet=true,areAllFieldsSet=false,lenient=true,zone=sun.util.calendar.ZoneInfo[id="Asia/Calcutta",offset=19800000,dstSavings=0,useDaylight=false,transitions=7,lastRule=null],firstDayOfWeek=1,minimalDaysInFirstWeek=1,ERA=?,YEAR=2024,MONTH=2,WEEK_OF_YEAR=?,WEEK_OF_MONTH=?,DAY_OF_MONTH=28,DAY_OF_YEAR=?,DAY_OF_WEEK=?,DAY_OF_WEEK_IN_MONTH=?,AM_PM=1,HOUR=7,HOUR_OF_DAY=19,MINUTE=28,SECOND=22,MILLISECOND=0,ZONE_OFFSET=?,DST_OFFSET=?]
-					IsEmpty:BOOLEAN:false
-					Wildcard
-							WildcardMatch:CHARACTER:form60
-			File
-					Directory:CHARACTER:/tmp/personalCifCreation_orchDS/personalCifCreation_orchDS
-					Name:CHARACTER:panValidate.xsd
-					LastModified:TIMESTAMP:java.util.GregorianCalendar[time=1711634302000,areFieldsSet=true,areAllFieldsSet=false,lenient=true,zone=sun.util.calendar.ZoneInfo[id="Asia/Calcutta",offset=19800000,dstSavings=0,useDaylight=false,transitions=7,lastRule=null],firstDayOfWeek=1,minimalDaysInFirstWeek=1,ERA=?,YEAR=2024,MONTH=2,WEEK_OF_YEAR=?,WEEK_OF_MONTH=?,DAY_OF_MONTH=28,DAY_OF_YEAR=?,DAY_OF_WEEK=?,DAY_OF_WEEK_IN_MONTH=?,AM_PM=1,HOUR=7,HOUR_OF_DAY=19,MINUTE=28,SECOND=22,MILLISECOND=0,ZONE_OFFSET=?,DST_OFFSET=?]
-					IsEmpty:BOOLEAN:false
-					Wildcard
-							WildcardMatch:CHARACTER:panValidate
-
-
 import com.ibm.broker.javacompute.MbJavaComputeNode;
 import com.ibm.broker.plugin.*;
 
@@ -36,6 +5,7 @@ import java.io.File;
 import java.io.FilenameFilter;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.GregorianCalendar;
 
 public class ListFilesJCN extends MbJavaComputeNode {
 
@@ -46,7 +16,6 @@ public class ListFilesJCN extends MbJavaComputeNode {
 
         MbMessage inMessage = inAssembly.getMessage();
         MbMessage outMessage = new MbMessage(inMessage);
-
         MbMessageAssembly outAssembly = new MbMessageAssembly(inAssembly, outMessage);
 
         try {
@@ -57,37 +26,59 @@ public class ListFilesJCN extends MbJavaComputeNode {
             String filePath = variables.getFirstElementByPath("FilePath").getValueAsString();
             String pattern = variables.getFirstElementByPath("Pattern").getValueAsString();
 
-            // Convert *.xsd → regex
             String regex = pattern.replace("*", ".*");
 
             File dir = new File(filePath);
 
             if (!dir.exists() || !dir.isDirectory()) {
-                throw new MbUserException(this, "evaluate()", "", "", 
+                throw new MbUserException(this, "evaluate()", "", "",
                         "Invalid directory path: " + filePath, null);
             }
 
-            File[] files = dir.listFiles(new FilenameFilter() {
-                @Override
-                public boolean accept(File d, String name) {
-                    return name.matches(regex);
-                }
-            });
+            File[] files = dir.listFiles((d, name) -> name.matches(regex));
 
-            // Prepare LocalEnvironment
-            MbElement localEnv = outAssembly.getLocalEnvironment().getRootElement();
-            MbElement filesRoot = localEnv.createElementAsLastChild(MbElement.TYPE_NAME, "Files", null);
+            // LocalEnvironment
+            MbElement localEnvRoot = outAssembly.getLocalEnvironment().getRootElement();
 
-            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+            // Files root
+            MbElement filesRoot = localEnvRoot.createElementAsLastChild(MbElement.TYPE_NAME, "Files", null);
 
+            // ===== Header Fields =====
+            String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss_SSSSSS").format(new Date());
+
+            filesRoot.createElementAsLastChild(MbElement.TYPE_NAME_VALUE, "TimeStamp", timeStamp);
+            filesRoot.createElementAsLastChild(MbElement.TYPE_NAME_VALUE, "ProcessedBy", "File Exists");
+            filesRoot.createElementAsLastChild(MbElement.TYPE_NAME_VALUE, "FromFTP", false);
+
+            int totalFiles = (files != null) ? files.length : 0;
+            filesRoot.createElementAsLastChild(MbElement.TYPE_NAME_VALUE, "TotalInList", totalFiles);
+
+            // ===== File List =====
             if (files != null) {
                 for (File f : files) {
+
                     MbElement fileElement = filesRoot.createElementAsLastChild(MbElement.TYPE_NAME, "File", null);
 
-                    fileElement.createElementAsLastChild(MbElement.TYPE_NAME_VALUE, "FileName", f.getName());
                     fileElement.createElementAsLastChild(MbElement.TYPE_NAME_VALUE, "Directory", f.getParent());
-                    fileElement.createElementAsLastChild(MbElement.TYPE_NAME_VALUE, "LastModified",
-                            sdf.format(new Date(f.lastModified())));
+                    fileElement.createElementAsLastChild(MbElement.TYPE_NAME_VALUE, "Name", f.getName());
+
+                    // TIMESTAMP as GregorianCalendar
+                    GregorianCalendar cal = new GregorianCalendar();
+                    cal.setTimeInMillis(f.lastModified());
+
+                    fileElement.createElementAsLastChild(MbElement.TYPE_NAME_VALUE, "LastModified", cal);
+
+                    fileElement.createElementAsLastChild(MbElement.TYPE_NAME_VALUE, "IsEmpty", f.length() == 0);
+
+                    // Wildcard structure
+                    MbElement wildcard = fileElement.createElementAsLastChild(MbElement.TYPE_NAME, "Wildcard", null);
+
+                    String baseName = f.getName();
+                    if (baseName.contains(".")) {
+                        baseName = baseName.substring(0, baseName.lastIndexOf("."));
+                    }
+
+                    wildcard.createElementAsLastChild(MbElement.TYPE_NAME_VALUE, "WildcardMatch", baseName);
                 }
             }
 
