@@ -1,3 +1,33 @@
+Edit the code below i need in this exact tree structure
+
+LocalEnvironment
+	Files
+			TimeStamp:CHARACTER:20260330_063107_349376
+			ProcessedBy:CHARACTER:File Exists
+			FromFTP:BOOLEAN:false
+			TotalInList:INTEGER:3
+			File
+					Directory:CHARACTER:/tmp/personalCifCreation_orchDS/personalCifCreation_orchDS/IBMdefined
+					Name:CHARACTER:GeneralPurposeFormat.xsd
+					LastModified:TIMESTAMP:java.util.GregorianCalendar[time=1711634302000,areFieldsSet=true,areAllFieldsSet=false,lenient=true,zone=sun.util.calendar.ZoneInfo[id="Asia/Calcutta",offset=19800000,dstSavings=0,useDaylight=false,transitions=7,lastRule=null],firstDayOfWeek=1,minimalDaysInFirstWeek=1,ERA=?,YEAR=2024,MONTH=2,WEEK_OF_YEAR=?,WEEK_OF_MONTH=?,DAY_OF_MONTH=28,DAY_OF_YEAR=?,DAY_OF_WEEK=?,DAY_OF_WEEK_IN_MONTH=?,AM_PM=1,HOUR=7,HOUR_OF_DAY=19,MINUTE=28,SECOND=22,MILLISECOND=0,ZONE_OFFSET=?,DST_OFFSET=?]
+					IsEmpty:BOOLEAN:false
+					Wildcard
+							WildcardMatch:CHARACTER:GeneralPurposeFormat
+			File
+					Directory:CHARACTER:/tmp/personalCifCreation_orchDS/personalCifCreation_orchDS
+					Name:CHARACTER:form60.xsd
+					LastModified:TIMESTAMP:java.util.GregorianCalendar[time=1711634302000,areFieldsSet=true,areAllFieldsSet=false,lenient=true,zone=sun.util.calendar.ZoneInfo[id="Asia/Calcutta",offset=19800000,dstSavings=0,useDaylight=false,transitions=7,lastRule=null],firstDayOfWeek=1,minimalDaysInFirstWeek=1,ERA=?,YEAR=2024,MONTH=2,WEEK_OF_YEAR=?,WEEK_OF_MONTH=?,DAY_OF_MONTH=28,DAY_OF_YEAR=?,DAY_OF_WEEK=?,DAY_OF_WEEK_IN_MONTH=?,AM_PM=1,HOUR=7,HOUR_OF_DAY=19,MINUTE=28,SECOND=22,MILLISECOND=0,ZONE_OFFSET=?,DST_OFFSET=?]
+					IsEmpty:BOOLEAN:false
+					Wildcard
+							WildcardMatch:CHARACTER:form60
+			File
+					Directory:CHARACTER:/tmp/personalCifCreation_orchDS/personalCifCreation_orchDS
+					Name:CHARACTER:panValidate.xsd
+					LastModified:TIMESTAMP:java.util.GregorianCalendar[time=1711634302000,areFieldsSet=true,areAllFieldsSet=false,lenient=true,zone=sun.util.calendar.ZoneInfo[id="Asia/Calcutta",offset=19800000,dstSavings=0,useDaylight=false,transitions=7,lastRule=null],firstDayOfWeek=1,minimalDaysInFirstWeek=1,ERA=?,YEAR=2024,MONTH=2,WEEK_OF_YEAR=?,WEEK_OF_MONTH=?,DAY_OF_MONTH=28,DAY_OF_YEAR=?,DAY_OF_WEEK=?,DAY_OF_WEEK_IN_MONTH=?,AM_PM=1,HOUR=7,HOUR_OF_DAY=19,MINUTE=28,SECOND=22,MILLISECOND=0,ZONE_OFFSET=?,DST_OFFSET=?]
+					IsEmpty:BOOLEAN:false
+					Wildcard
+							WildcardMatch:CHARACTER:panValidate
+
 
 import com.ibm.broker.javacompute.MbJavaComputeNode;
 import com.ibm.broker.plugin.*;
