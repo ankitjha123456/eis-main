@@ -1,23 +1,72 @@
+ExceptionList
+	RecoverableException
+			File:CHARACTER:/build/jenkins_swg/slot0/product-build/WMB/src/DataFlowEngine/MessageServices/ImbDataFlowNode.cpp
+			Line:INTEGER:1886
+			Function:CHARACTER:ImbDataFlowNode::createExceptionList
+			Type:CHARACTER:InputNode
+			Name:CHARACTER:gen.API_VALIDATION_UPDATE#FCMComposite_1_12.postUpdate#FCMComposite_1_6.API_VALIDATION_UPDATEInputFailureHandler#InTerminal.Input_1
+			Label:CHARACTER:gen.API_VALIDATION_UPDATE.postUpdate (Implementation).API_VALIDATION_UPDATEInputFailureHandler.API_VALIDATION_UPDATEInputFailureHandler#InTerminal.Input_1
+			Catalog:CHARACTER:BIPmsgs
+			Severity:INTEGER:3
+			Number:INTEGER:2230
+			Text:CHARACTER:Node throwing exception
+			Insert
+					Type:INTEGER:14
+					Text:CHARACTER:gen.API_VALIDATION_UPDATE.postUpdate (Implementation).API_VALIDATION_UPDATEInputFailureHandler.API_VALIDATION_UPDATEInputFailureHandler#InTerminal.Input_1
+			RecoverableException
+					File:CHARACTER:/build/jenkins_swg/slot0/product-build/WMB/src/WebServices/WSLibrary/ImbWSReplyNode.cpp
+					Line:INTEGER:1017
+					Function:CHARACTER:ImbWSReplyNode::evaluate
+					Type:CHARACTER:ComIbmWSReplyNode
+					Name:CHARACTER:gen.API_VALIDATION_UPDATE#FCMComposite_1_3
+					Label:CHARACTER:gen.API_VALIDATION_UPDATE.HTTP Reply
+					Catalog:CHARACTER:BIPmsgs
+					Severity:INTEGER:3
+					Number:INTEGER:2230
+					Text:CHARACTER:Caught exception and rethrowing
+					Insert
+							Type:INTEGER:14
+							Text:CHARACTER:gen.API_VALIDATION_UPDATE.HTTP Reply
+					RecoverableException
+							File:CHARACTER:/build/jenkins_swg/slot0/product-build/WMB/src/WebServices/WSLibrary/ImbWSReplyNode.cpp
+							Line:INTEGER:676
+							Function:CHARACTER:ImbWSReplyNode::evaluate
+							Type:CHARACTER:ComIbmWSReplyNode
+							Name:CHARACTER:gen.API_VALIDATION_UPDATE#FCMComposite_1_3
+							Label:CHARACTER:gen.API_VALIDATION_UPDATE.HTTP Reply
+							Catalog:CHARACTER:BIPmsgs
+							Severity:INTEGER:3
+							Number:INTEGER:3143
+							Text:CHARACTER:Need return context info
+
+
+
+
 CREATE COMPUTE MODULE postUpdate_Compute1
-    CREATE FUNCTION Main() RETURNS BOOLEAN
-    BEGIN
-        CREATE LASTCHILD OF OutputRoot DOMAIN('JSON');
+	CREATE FUNCTION Main() RETURNS BOOLEAN
+	BEGIN
+	    CREATE LASTCHILD OF Environment DOMAIN('JSON');
+	    SET OutputLocalEnvironment.Destination.Collector.Name = 'FileGroup';
+	    SET OutputLocalEnvironment.Destination.Collector.Count = Environment.Variable.TotalInList ;
+	    SET Environment.JSON.Data.File.FileName = InputLocalEnvironment.File.Read.Name ;
+	    SET Environment.JSON.Data.File.FileContent = CAST(InputRoot.BLOB.BLOB AS CHARACTER CCSID COALESCE(InputRoot.Properties.CodedCharSetId ,5348)  ENCODING COALESCE(InputRoot.Properties.Encoding ,546)) ;
+	    
+		RETURN TRUE;
+	END;
 
-        SET OutputRoot.JSON.Data.FileName = InputLocalEnvironment.File.Read.Name;
+	
+END MODULE;
 
-        -- Cast BLOB to string
-        DECLARE rawContent CHARACTER;
-        SET rawContent = CAST(InputRoot.BLOB.BLOB AS CHARACTER
-                            CCSID COALESCE(InputRoot.Properties.CodedCharSetId, 5348)
-                            ENCODING COALESCE(InputRoot.Properties.Encoding, 546));
 
-        -- Remove newlines and tabs
-        SET rawContent = REPLACE(rawContent, '\n', '');
-        SET rawContent = REPLACE(rawContent, '\t', '');
-        SET rawContent = REPLACE(rawContent, '\r', '');
+After collector
 
-        SET OutputRoot.JSON.Data.FileContent = rawContent;
 
-        RETURN TRUE;
-    END;
+
+CREATE COMPUTE MODULE postUpdate_Compute2
+	CREATE FUNCTION Main() RETURNS BOOLEAN
+	BEGIN
+		SET OutputRoot = InputRoot;
+		RETURN TRUE;
+	END;
+
 END MODULE;
