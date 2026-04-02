@@ -211,15 +211,21 @@ function ApiSearch() {
 
       if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText} — ${responseText}`);
 
+      // Optimistic local update — update the exact API + all its replicas (same ApiName)
       setData(prev =>
         prev.map(d =>
-          d.ApiName === item.ApiName && d.IntegrationServer === item.IntegrationServer
+          d.ApiName === item.ApiName
             ? { ...d, ApiState: action === "start" ? "running" : "stopped" }
             : d
         )
       );
 
       addToast(`✅ ${item.ApiName} ${doneLabel} successfully`, "success");
+
+      // After stop (or start), refresh from server to get accurate latest state
+      if (action === "stop") {
+        await fetchData(endpoints[activeEnv].refresh);
+      }
     } catch (err) {
       console.error(`${actionLabel} failed:`, err);
       addToast(`❌ Failed to ${action} ${item.ApiName}: ${err.message}`, "error");
