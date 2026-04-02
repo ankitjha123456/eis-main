@@ -1,4 +1,3 @@
-import React, { useState, useMemo, useEffect } from "react";
 import "./ApiSearch.css";
 
 // ─── Default credentials — change these to your real credentials ──────────────
@@ -106,15 +105,13 @@ function ApiSearch() {
     }
   };
 
-  // ─── Download BAR file ────────────────────────────────────────────────────────
-  // URL pattern: http://10.177.44.180:8443/{IntegrationNode}{lastOctet}/apiv2/servers/...
-  // Example: IntegrationNode=ACCOUNT_EXP, IP=10.177.44.50 → ACCOUNT_EXP50
+
   const downloadBarFile = async (apiName, integrationServer, integrationNode, serverIP) => {
     const lastOctet = getLastOctet(serverIP);
     const brokerPath = `${integrationNode}${lastOctet}`;
     const downloadUrl = `http://10.177.44.180:8443/${brokerPath}/apiv2/servers/${integrationServer}?application=${apiName}&referenced_app_domains=true&referenced_policy_projects=true&exclude_source=true&depth=4`;
 
-    console.log("Download URL:", downloadUrl); // e.g. .../ACCOUNT_EXP50/apiv2/servers/...
+    console.log("Download URL:", downloadUrl); 
 
     setDownloadingApis(prev => new Set(prev).add(`${apiName}-${integrationServer}`));
     try {
@@ -143,7 +140,7 @@ function ApiSearch() {
     }
   };
 
-  // ─── Open credential modal ────────────────────────────────────────────────────
+
   const openModal = (action, item) => {
     setModal({
       open: true,
@@ -160,9 +157,6 @@ function ApiSearch() {
     setModal(prev => ({ ...prev, open: false, error: "" }));
   };
 
-  // ─── Confirm action from modal ────────────────────────────────────────────────
-  // FIX 1: Validate credentials locally against DEFAULT_USERNAME / DEFAULT_PASSWORD
-  // before calling the API. If wrong → show error in modal, do NOT proceed.
   const confirmAction = async () => {
     const { action, item, username, password } = modal;
 
@@ -174,7 +168,7 @@ function ApiSearch() {
 
     // ── Credential match check ──
     if (username.trim() !== DEFAULT_USERNAME || password !== DEFAULT_PASSWORD) {
-      setModal(prev => ({ ...prev, error: "❌ Password not match. Please check your credentials." }));
+      setModal(prev => ({ ...prev, error: "Password not match. Please check your credentials." }));
       return;
     }
 
@@ -389,12 +383,12 @@ function ApiSearch() {
           <div className="modal-box" onClick={e => e.stopPropagation()}>
 
             {/* Modal Header */}
-            <div className={`modal-header ${modal.action === "start" ? "modal-header-start" : "modal-header-stop"}`}>
+            <div className={`modal-header1 ${modal.action === "start" ? "modal-header-start" : "modal-header-stop"}`}>
               <div className="modal-header-icon">
                 {modal.action === "start" ? "▶" : "⏹"}
               </div>
               <div>
-                <h3 className="modal-title">
+                <h3 className="modal-title" >
                   {modal.action === "start" ? "Start API" : "Stop API"}
                 </h3>
                 <p className="modal-subtitle">{modal.item?.ApiName}</p>
