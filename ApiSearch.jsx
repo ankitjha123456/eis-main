@@ -222,10 +222,8 @@ function ApiSearch() {
 
       addToast(`✅ ${item.ApiName} ${doneLabel} successfully`, "success");
 
-      // After stop (or start), refresh from server to get accurate latest state
-      if (action === "stop") {
-        await fetchData(endpoints[activeEnv].refresh);
-      }
+      // After stop or start, refresh from server to get accurate latest state
+      await fetchData(endpoints[activeEnv].refresh);
     } catch (err) {
       console.error(`${actionLabel} failed:`, err);
       addToast(`❌ Failed to ${action} ${item.ApiName}: ${err.message}`, "error");
