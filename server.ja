@@ -1,0 +1,98 @@
+// ============================================================
+//  NC Checker — Backend Server
+//  The check always runs FROM this server (10.177.44.58)
+//  TO whatever IP:port you type in the UI
+// ============================================================
+
+const express    = require("express");
+const { exec }   = require("child_process");
+const cors       = require("cors");
+
+const app  = express();
+const PORT = 4423;
+
+// ── Optional: Fix the SOURCE IP (the interface nc binds to) ──
+// If your server has multiple network cards / IPs, you can force
+// nc to always send from a specific one.
+// Leave as null to use the server's default interface.
+const SOURCE_IP = null;
+// const SOURCE_IP = "10.177.44.58";   // ← uncomment and set if needed
+
+app.use(cors());
+app.use(express.json());
+
+// ── Health Check ──────────────────────────────────────────
+app.get("/health", (req, res) => {
+  res.json({
+    status:    "ok",
+    server_ip: "10.177.44.58",         // this server's IP
+    source_ip: SOURCE_IP || "default interface",
+    time:      new Date().toISOString()
+  });
+});
+
+// ── NC Check ──────────────────────────────────────────────
+app.post("/check", (req, res) => {
+  const { ip, port } = req.body;
+
+  // Validate
+  if (!ip || !port) {
+    return res.status(400).json({ error: "Both ip and port are required" });
+  }
+
+  const ipRegex = /^[a-zA-Z0-9.\-:]+$/;
+  if (!ipRegex.test(ip)) {
+    return res.status(400).json({ error: "Invalid IP or hostname" });
+  }
+
+  const portNum = parseInt(port, 10);
+  if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
+    return res.status(400).json({ error: "Port must be between 1 and 65535" });
+  }
+
+  // Build command
+  // -v       = verbose output
+  // -z       = zero I/O, just check port
+  // -w 5     = timeout after 5 seconds
+  // -s <ip>  = bind to this source IP (only if SOURCE_IP is set)
+  const sourceFlag = SOURCE_IP ? `-s ${SOURCE_IP}` : "";
+  const command    = `nc -vz -w 5 ${sourceFlag} ${ip} ${portNum} 2>&1`;
+
+  console.log(`[${new Date().toISOString()}]`);
+  console.log(`  Source (from) : ${SOURCE_IP || "10.177.44.58 (default)"}`);
+  console.log(`  Target (to)   : ${ip}:${portNum}`);
+  console.log(`  Command       : ${command}`);
+
+  exec(command, { timeout: 10000 }, (error, stdout, stderr) => {
+    const rawOutput  = (stdout || "") + (stderr || "");
+    const outputLower = rawOutput.toLowerCase();
+
+    const isOpen =
+      error === null ||
+      outputLower.includes("succeeded") ||
+      outputLower.includes("open") ||
+      outputLower.includes("connected");
+
+    res.json({
+      source_ip:  SOURCE_IP || "10.177.44.58",   // WHERE the check ran from
+      target_ip:  ip,                             // WHERE it checked TO
+      port:       portNum,
+      command:    `nc -vz ${ip} ${portNum}`,
+      output:     rawOutput.trim() || (error ? error.message : "No output"),
+      success:    isOpen,
+      timestamp:  new Date().toISOString()
+    });
+  });
+});
+
+// ── Start ─────────────────────────────────────────────────
+app.listen(PORT, "0.0.0.0", () => {
+  console.log("================================================");
+  console.log(`  NC Checker Backend running`);
+  console.log(`  Server IP  : 10.177.44.58`);
+  console.log(`  Port       : ${PORT}`);
+  console.log(`  Source IP  : ${SOURCE_IP || "default interface"}`);
+  console.log(`  Health     : http://10.177.44.58:${PORT}/health`);
+  console.log(`  Endpoint   : POST http://10.177.44.58:${PORT}/check`);
+  console.log("================================================");
+});
