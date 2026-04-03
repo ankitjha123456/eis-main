@@ -1,0 +1,18 @@
+[Unit]
+Description=NC Checker Backend
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/node/eisuat/backend
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+Environment=NODE_ENV=production
+Environment=PORT=4423
+
+[Install]
+WantedBy=multi-user.target
