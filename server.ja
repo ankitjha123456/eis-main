@@ -4,7 +4,7 @@
 //  Flow:
 //    Browser → POST /check { source_ip, target_ip, port }
 //           → Node calls: bash check.sh <source_ip> <target_ip> <port>
-//           → check.sh SSHes into source_ip (if not local)
+//           → check.sh SSHes into source_ip (if not 10.177.44.58)
 //           → runs: nc -vz -w5 <target_ip> <port>
 //           → result returned to browser as JSON
 //
@@ -20,61 +20,38 @@ const path     = require("path");
 const app  = express();
 const PORT = 4423;
 
-// ── Path to check.sh (same folder as server.js) ───────────
+// Path to check.sh — same folder as server.js
 const SCRIPT_PATH = path.join(__dirname, "check.sh");
-
-// ── Source Servers ────────────────────────────────────────
-// List of all servers that have passwordless SSH from 10.177.44.58
-// Add or remove servers here as needed
-const SOURCE_SERVERS = [
-  { label: "Server 1 (Main)", ip: "10.177.44.58" },  // this server — runs nc locally
-  { label: "Server 2",        ip: "10.177.44.59" },  // SSH into .59, run nc from there
-  { label: "Server 3",        ip: "10.177.44.60" },  // SSH into .60, run nc from there
-  { label: "Server 4",        ip: "10.177.44.61" },  // SSH into .61, run nc from there
-];
 
 app.use(cors());
 app.use(express.json());
 
-// ── GET /sources ──────────────────────────────────────────
-// Returns the list of source servers to populate the UI dropdown
-app.get("/sources", (req, res) => {
-  res.json(SOURCE_SERVERS);
-});
-
 // ── GET /health ───────────────────────────────────────────
-// Simple health check to verify the server is running
 app.get("/health", (req, res) => {
   res.json({
-    status:      "ok",
+    status: "ok",
     main_server: "10.177.44.58",
-    script:      SCRIPT_PATH,
-    sources:     SOURCE_SERVERS.length,
-    time:        new Date().toISOString(),
+    script: SCRIPT_PATH,
+    time:   new Date().toISOString(),
   });
 });
 
 // ── POST /check ───────────────────────────────────────────
-// Main endpoint — receives source_ip, target_ip, port
-// Calls check.sh which SSHes into source_ip and runs nc -vz
-//
-// Request body:
-//   { "source_ip": "10.177.44.59", "target_ip": "192.168.1.100", "port": "3306" }
-//
-// Response:
-//   { source_ip, target_ip, port, command, output, success, timestamp }
+// Body: { source_ip, target_ip, port }
+// source_ip → any IP — check.sh will SSH into it and run nc
+// target_ip → the server to check connectivity to
+// port      → port to test
 app.post("/check", (req, res) => {
   const { source_ip, target_ip, port } = req.body;
 
-  // ── 1. Validate all three fields are present ─────────────
+  // 1. Validate all three fields are present
   if (!source_ip || !target_ip || !port) {
     return res.status(400).json({
       error: "source_ip, target_ip and port are all required"
     });
   }
 
-  // ── 2. Validate IP/hostname format ────────────────────────
-  // Only allow safe characters to prevent command injection
+  // 2. Validate IP/hostname format — prevent command injection
   const ipRegex = /^[a-zA-Z0-9.\-]+$/;
   if (!ipRegex.test(source_ip)) {
     return res.status(400).json({ error: "Invalid source_ip format" });
@@ -83,64 +60,48 @@ app.post("/check", (req, res) => {
     return res.status(400).json({ error: "Invalid target_ip format" });
   }
 
-  // ── 3. Validate port is a number between 1–65535 ─────────
+  // 3. Validate port
   const portNum = parseInt(port, 10);
   if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
-    return res.status(400).json({ error: "Port must be a number between 1 and 65535" });
+    return res.status(400).json({ error: "Port must be between 1 and 65535" });
   }
 
-  // ── 4. Validate source_ip is in the allowed list ─────────
-  // Prevents arbitrary SSH targets
-  const sourceServer = SOURCE_SERVERS.find(s => s.ip === source_ip);
-  if (!sourceServer) {
-    return res.status(400).json({
-      error: `Source IP "${source_ip}" is not in the allowed server list`
-    });
-  }
-
-  // ── 5. Build the shell command ────────────────────────────
-  // check.sh args: <source_ip> <target_ip> <port>
+  // 4. Build shell command
+  // check.sh <source_ip> <target_ip> <port>
   const shellCommand = `bash ${SCRIPT_PATH} ${source_ip} ${target_ip} ${portNum}`;
 
   console.log(`\n[${new Date().toISOString()}]`);
-  console.log(`  Source  : ${source_ip} (${sourceServer.label})`);
+  console.log(`  Source  : ${source_ip}`);
   console.log(`  Target  : ${target_ip}:${portNum}`);
-  console.log(`  Command : ${shellCommand}`);
+  console.log(`  Running : ${shellCommand}`);
 
-  // ── 6. Execute check.sh ───────────────────────────────────
-  // Timeout 15s — 8s for SSH + 5s for nc + buffer
+  // 5. Execute — 15s timeout (8s SSH + 5s nc + buffer)
   exec(shellCommand, { timeout: 15000 }, (error, stdout, stderr) => {
 
-    // Combine stdout and stderr — check.sh writes everything to stdout
     const rawOutput   = (stdout || "") + (stderr || "");
     const outputLower = rawOutput.toLowerCase();
 
-    // Determine if port is open based on:
-    // - exit code 0 (check.sh exits 0 on success)
-    // - or keywords in nc output (different OS versions output differently)
+    // Determine open/closed
     const isOpen =
       (error === null) ||
       outputLower.includes("succeeded") ||
       outputLower.includes(" open")     ||
       outputLower.includes("connected");
 
-    // If the process was killed due to timeout
     const timedOut = error && error.killed;
 
-    // Clean output — strip ANSI color codes from check.sh output
+    // Strip ANSI color codes from check.sh output
     const cleanOutput = rawOutput
-      .replace(/\x1b\[[0-9;]*m/g, "")   // remove color codes
+      .replace(/\x1b\[[0-9;]*m/g, "")
       .trim();
 
     console.log(`  Result  : ${isOpen ? "✅ OPEN" : "❌ CLOSED"}`);
-    console.log(`  Output  : ${cleanOutput.split("\n").slice(-3).join(" | ")}`);
 
-    // ── 7. Send JSON response to browser ─────────────────────
     res.json({
       source_ip,
       target_ip,
       port:      portNum,
-      command:   `nc -vz -w 5 ${target_ip} ${portNum}`,   // clean command shown in UI
+      command:   `nc -vz -w 5 ${target_ip} ${portNum}`,
       output:    timedOut
                    ? "Check timed out after 15 seconds"
                    : cleanOutput || (error ? error.message : "No output received"),
@@ -150,16 +111,12 @@ app.post("/check", (req, res) => {
   });
 });
 
-// ── Start Server ──────────────────────────────────────────
+// ── Start ─────────────────────────────────────────────────
 app.listen(PORT, "0.0.0.0", () => {
   console.log("================================================");
-  console.log("  NC Checker — Multi Source Backend");
-  console.log(`  Listening  : http://0.0.0.0:${PORT}`);
-  console.log(`  Health     : http://10.177.44.58:${PORT}/health`);
-  console.log(`  Script     : ${SCRIPT_PATH}`);
-  console.log(`  Sources    : ${SOURCE_SERVERS.length} servers configured`);
-  SOURCE_SERVERS.forEach(s =>
-    console.log(`    → ${s.ip}   ${s.label}`)
-  );
+  console.log("  NC Checker Backend");
+  console.log(`  Listening : http://0.0.0.0:${PORT}`);
+  console.log(`  Health    : http://10.177.44.58:${PORT}/health`);
+  console.log(`  Script    : ${SCRIPT_PATH}`);
   console.log("================================================");
 });
