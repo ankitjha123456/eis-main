@@ -1,61 +1,30 @@
-
-
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 import "./Connection.css";
 
 const BACKEND = "http://10.177.44.58:4423";
 
-function DataRow({ label, value }) {
-  return (
-    <div className="data-row">
-      <span className="data-label">{label}</span>
-      <span className="data-value">{value}</span>
-    </div>
-  );
-}
-
-// ── Main Component ────────────────────────────────────────
 export default function Connection() {
-  const [sources, setSources]     = useState([]);           // source server list from /sources
-  const [sourceIp, setSourceIp]   = useState("");           // selected source server IP
-  const [targetIp, setTargetIp]   = useState("");           // target IP typed by user
-  const [port, setPort]           = useState("");           // port typed by user
-  const [loading, setLoading]     = useState(false);        // button loading state
-  const [result, setResult]       = useState(null);         // response from /check
-  const [error, setError]         = useState("");           // error message
-  const [sourcesError, setSourcesError] = useState("");     
-  const resultRef = useRef(null);
+  const [sourceIp, setSourceIp] = useState("");
+  const [targetIp, setTargetIp] = useState("");
+  const [port, setPort]         = useState("");
+  const [loading, setLoading]   = useState(false);
+  const [result, setResult]     = useState(null);
+  const [error, setError]       = useState("");
+  const resultRef               = useRef(null);
 
   const QUICK_PORTS = [22, 80, 443, 5001, 9001, 8523, 8524, 3001];
 
-
-  useEffect(() => {
-    fetch(`${BACKEND}/sources`)
-      .then(res => {
-        if (!res.ok) throw new Error("Failed to load sources");
-        return res.json();
-      })
-      .then(data => {
-        setSources(data);
-        if (data.length > 0) setSourceIp(data[0].ip); // default to first server
-      })
-      .catch(() => {
-        setSourcesError(`Cannot reach backend at ${BACKEND}. Is server running?`);
-      });
-  }, []);
-
-  // ── Handle Check button click ─────────────────────────────
   async function handleCheck() {
-    if (!sourceIp) {
-      setError("Please select a source server.");
+    if (!sourceIp.trim()) {
+      setError("Please enter the Source IP.");
       return;
     }
     if (!targetIp.trim()) {
-      setError("Please enter a target IP or hostname.");
+      setError("Please enter the Target IP.");
       return;
     }
     if (!port.trim()) {
-      setError("Please enter a port number.");
+      setError("Please enter the Port.");
       return;
     }
 
@@ -68,9 +37,9 @@ export default function Connection() {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          source_ip: sourceIp,          // where nc runs FROM (via SSH)
-          target_ip: targetIp.trim(),   // where nc checks TO
-          port:      port.trim(),       // port to check
+          source_ip: sourceIp.trim(),
+          target_ip: targetIp.trim(),
+          port:      port.trim(),
         }),
       });
 
@@ -78,7 +47,6 @@ export default function Connection() {
       if (!res.ok) throw new Error(data.error || "Server error");
 
       setResult(data);
-      // Scroll to result after render
       setTimeout(() => resultRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
 
     } catch (e) {
@@ -97,84 +65,63 @@ export default function Connection() {
   }
 
   function handleReset() {
+    setSourceIp("");
     setTargetIp("");
     setPort("");
     setResult(null);
     setError("");
   }
 
-  // Find label for selected source
-  const selectedSource = sources.find(s => s.ip === sourceIp);
-
   return (
     <div className="page">
       <div className="bg-grid" />
 
-      {/* ── Header ── */}
+      {/* Header */}
       <div className="header fade-up">
-        {/* <div className="pill">Multi-Source Network Diagnostic</div> */}
         <h1 className="title">
           Connection <span className="accent">Checker</span>
         </h1>
       </div>
 
-      {/* ── Input Card ── */}
+      {/* Input Card */}
       <div className="card fade-up delay-1">
 
-        {/* Source server load error */}
-        {sourcesError && (
-          <div className="error-box" style={{ marginBottom: 16 }}>
-            <span className="error-icon">⚠</span> {sourcesError}
-          </div>
-        )}
-
-        {/* Source Server Dropdown */}
-        <div className="input-group" style={{ marginBottom: 16 }}>
-          <label className="label">
-            <span className="label-icon">⌖</span> Source Server (nc runs FROM here)
-          </label>
-          <select
-            value={sourceIp}
-            onChange={e => setSourceIp(e.target.value)}
-            className="inp inp--select"
-          >
-            {sources.length === 0 && (
-              <option value="">Loading servers…</option>
-            )}
-            {sources.map(srv => (
-              <option key={srv.ip} value={srv.ip}>
-                {srv.label}  —  {srv.ip}
-              </option>
-            ))}
-          </select>
-          {/* Hint showing SSH flow */}
-          {/* {selectedSource && (
-            <div className="source-hint">
-              {sourceIp === "10.177.44.58"
-                ? `▶  nc will run directly on ${sourceIp} (no SSH needed)`
-                : `▶  10.177.44.58  →  SSH  →  ${sourceIp}  →  nc -vz`
-              }
-            </div>
-          )} */}
-        </div>
-
-        {/* Target IP + Port row */}
+        {/* Source IP + Target IP row */}
         <div className="input-row">
+
+          {/* Source IP */}
           <div className="input-group input-group--grow">
             <label className="label">
-              <span className="label-icon">◈</span> Target IP / Host (nc checks TO here)
+              <span className="label-icon">⌖</span> Source IP (nc runs FROM here)
+            </label>
+            <input
+              type="text"
+              value={sourceIp}
+              onChange={e => setSourceIp(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="10.177.44.51"
+              className="inp"
+              spellCheck={false}
+            />
+          </div>
+
+          {/* Target IP */}
+          <div className="input-group input-group--grow">
+            <label className="label">
+              <span className="label-icon">◈</span> Target IP (nc checks TO here)
             </label>
             <input
               type="text"
               value={targetIp}
               onChange={e => setTargetIp(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="192.168.1.100"
+              placeholder="10.177.44.67"
               className="inp"
               spellCheck={false}
             />
           </div>
 
+          {/* Port */}
           <div className="input-group input-group--port">
             <label className="label">
               <span className="label-icon">◉</span> Port
@@ -190,7 +137,18 @@ export default function Connection() {
               className="inp"
             />
           </div>
+
         </div>
+
+        {/* SSH hint */}
+        {sourceIp.trim() && (
+          <div className="source-hint">
+            {sourceIp.trim() === "10.177.44.58"
+              ? `▶  nc will run directly on ${sourceIp} (no SSH needed)`
+              : `▶  10.177.44.58  →  SSH  →  ${sourceIp}  →  nc -vz  →  ${targetIp || "target"}:${port || "port"}`
+            }
+          </div>
+        )}
 
         {/* Quick Ports */}
         <div className="quick-row">
@@ -206,18 +164,18 @@ export default function Connection() {
           ))}
         </div>
 
-        {/* Validation Error */}
+        {/* Error */}
         {error && (
           <div className="error-box">
             <span className="error-icon">⚠</span> {error}
           </div>
         )}
 
-        {/* Action Buttons */}
+        {/* Buttons */}
         <div className="btn-row">
           <button
             onClick={handleCheck}
-            disabled={loading || sources.length === 0}
+            disabled={loading}
             className="check-btn"
           >
             {loading
@@ -231,7 +189,7 @@ export default function Connection() {
         </div>
       </div>
 
-      {/* ── Result Card — appears after check ── */}
+      {/* Result Card */}
       {result && (
         <div className="result-card fade-up" ref={resultRef}>
 
@@ -253,23 +211,6 @@ export default function Connection() {
             </div>
           </div>
 
-          {/* Data Grid */}
-          {/* <div className="data-grid">
-            <DataRow label="Source IP (nc ran from)" value={result.source_ip} />
-            <DataRow label="Target IP (checked to)"  value={result.target_ip} />
-            <DataRow label="Port"                     value={result.port} />
-            <DataRow label="Status"                   value={result.success ? "✅ Open" : "❌ Closed"} />
-          </div> */}
-
-          {/* Command */}
-          {/* <div className="section">
-            <div className="section-label">Command Executed on {result.source_ip}</div>
-            <div className="command-box">
-              <span className="prompt">$</span>
-              <span className="command-text">{result.command}</span>
-            </div>
-          </div> */}
-
           {/* Output */}
           <div className="section section--last">
             <div className="section-label">Raw Output</div>
@@ -277,12 +218,6 @@ export default function Connection() {
               {result.output || "No output received"}
             </div>
           </div>
-
-          {/* Raw JSON toggle */}
-          {/* <details className="details">
-            <summary className="summary">View Raw JSON Response</summary>
-            <pre className="json-pre">{JSON.stringify(result, null, 2)}</pre>
-          </details> */}
 
         </div>
       )}
