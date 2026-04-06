@@ -1,9 +1,10 @@
+
+
 import { useState, useEffect, useRef } from "react";
 import "./Connection.css";
 
 const BACKEND = "http://10.177.44.58:4423";
 
-// ── Small reusable DataRow ────────────────────────────────
 function DataRow({ label, value }) {
   return (
     <div className="data-row">
@@ -22,13 +23,12 @@ export default function Connection() {
   const [loading, setLoading]     = useState(false);        // button loading state
   const [result, setResult]       = useState(null);         // response from /check
   const [error, setError]         = useState("");           // error message
-  const [sourcesError, setSourcesError] = useState("");     // error loading sources
+  const [sourcesError, setSourcesError] = useState("");     
   const resultRef = useRef(null);
 
-  const QUICK_PORTS = [22, 80, 443, 3306, 5432, 6379, 8080, 27017];
+  const QUICK_PORTS = [22, 80, 443, 5001, 9001, 8523, 8524, 3001];
 
-  // ── Load source servers on mount ──────────────────────────
-  // Calls GET /sources to get the list of servers
+
   useEffect(() => {
     fetch(`${BACKEND}/sources`)
       .then(res => {
@@ -112,15 +112,10 @@ export default function Connection() {
 
       {/* ── Header ── */}
       <div className="header fade-up">
-        <div className="pill">Multi-Source Network Diagnostic</div>
+        {/* <div className="pill">Multi-Source Network Diagnostic</div> */}
         <h1 className="title">
           Connection <span className="accent">Checker</span>
         </h1>
-        <p className="subtitle">
-          Select a <span className="server-tag">source server</span> — Node on{" "}
-          <span className="server-tag">10.177.44.58</span> will SSH into it
-          and run <code className="inline-code">nc -vz</code> from there
-        </p>
       </div>
 
       {/* ── Input Card ── */}
@@ -153,14 +148,14 @@ export default function Connection() {
             ))}
           </select>
           {/* Hint showing SSH flow */}
-          {selectedSource && (
+          {/* {selectedSource && (
             <div className="source-hint">
               {sourceIp === "10.177.44.58"
                 ? `▶  nc will run directly on ${sourceIp} (no SSH needed)`
                 : `▶  10.177.44.58  →  SSH  →  ${sourceIp}  →  nc -vz`
               }
             </div>
-          )}
+          )} */}
         </div>
 
         {/* Target IP + Port row */}
@@ -259,21 +254,21 @@ export default function Connection() {
           </div>
 
           {/* Data Grid */}
-          <div className="data-grid">
+          {/* <div className="data-grid">
             <DataRow label="Source IP (nc ran from)" value={result.source_ip} />
             <DataRow label="Target IP (checked to)"  value={result.target_ip} />
             <DataRow label="Port"                     value={result.port} />
             <DataRow label="Status"                   value={result.success ? "✅ Open" : "❌ Closed"} />
-          </div>
+          </div> */}
 
           {/* Command */}
-          <div className="section">
+          {/* <div className="section">
             <div className="section-label">Command Executed on {result.source_ip}</div>
             <div className="command-box">
               <span className="prompt">$</span>
               <span className="command-text">{result.command}</span>
             </div>
-          </div>
+          </div> */}
 
           {/* Output */}
           <div className="section section--last">
@@ -284,10 +279,10 @@ export default function Connection() {
           </div>
 
           {/* Raw JSON toggle */}
-          <details className="details">
+          {/* <details className="details">
             <summary className="summary">View Raw JSON Response</summary>
             <pre className="json-pre">{JSON.stringify(result, null, 2)}</pre>
-          </details>
+          </details> */}
 
         </div>
       )}
