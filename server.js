@@ -1,17 +1,3 @@
-// ============================================================
-//  NC Checker — Backend Server
-//
-//  Flow:
-//    Browser → POST /check { source_ip, target_ip, port }
-//           → Node calls: bash check.sh <source_ip> <target_ip> <port>
-//           → check.sh SSHes into source_ip (if not 10.177.44.58)
-//           → runs: nc -vz -w5 <target_ip> <port>
-//           → result returned to browser as JSON
-//
-//  Port : 4423
-//  Start: node server.js
-// ============================================================
-
 const express  = require("express");
 const { exec } = require("child_process");
 const cors     = require("cors");
