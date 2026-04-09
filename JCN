@@ -1,72 +1,82 @@
-ExceptionList
-	RecoverableException
-			File:CHARACTER:/build/jenkins_swg/slot0/product-build/WMB/src/DataFlowEngine/MessageServices/ImbDataFlowNode.cpp
-			Line:INTEGER:1886
-			Function:CHARACTER:ImbDataFlowNode::createExceptionList
-			Type:CHARACTER:InputNode
-			Name:CHARACTER:gen.API_VALIDATION_UPDATE#FCMComposite_1_12.postUpdate#FCMComposite_1_6.API_VALIDATION_UPDATEInputFailureHandler#InTerminal.Input_1
-			Label:CHARACTER:gen.API_VALIDATION_UPDATE.postUpdate (Implementation).API_VALIDATION_UPDATEInputFailureHandler.API_VALIDATION_UPDATEInputFailureHandler#InTerminal.Input_1
-			Catalog:CHARACTER:BIPmsgs
-			Severity:INTEGER:3
-			Number:INTEGER:2230
-			Text:CHARACTER:Node throwing exception
-			Insert
-					Type:INTEGER:14
-					Text:CHARACTER:gen.API_VALIDATION_UPDATE.postUpdate (Implementation).API_VALIDATION_UPDATEInputFailureHandler.API_VALIDATION_UPDATEInputFailureHandler#InTerminal.Input_1
-			RecoverableException
-					File:CHARACTER:/build/jenkins_swg/slot0/product-build/WMB/src/WebServices/WSLibrary/ImbWSReplyNode.cpp
-					Line:INTEGER:1017
-					Function:CHARACTER:ImbWSReplyNode::evaluate
-					Type:CHARACTER:ComIbmWSReplyNode
-					Name:CHARACTER:gen.API_VALIDATION_UPDATE#FCMComposite_1_3
-					Label:CHARACTER:gen.API_VALIDATION_UPDATE.HTTP Reply
-					Catalog:CHARACTER:BIPmsgs
-					Severity:INTEGER:3
-					Number:INTEGER:2230
-					Text:CHARACTER:Caught exception and rethrowing
-					Insert
-							Type:INTEGER:14
-							Text:CHARACTER:gen.API_VALIDATION_UPDATE.HTTP Reply
-					RecoverableException
-							File:CHARACTER:/build/jenkins_swg/slot0/product-build/WMB/src/WebServices/WSLibrary/ImbWSReplyNode.cpp
-							Line:INTEGER:676
-							Function:CHARACTER:ImbWSReplyNode::evaluate
-							Type:CHARACTER:ComIbmWSReplyNode
-							Name:CHARACTER:gen.API_VALIDATION_UPDATE#FCMComposite_1_3
-							Label:CHARACTER:gen.API_VALIDATION_UPDATE.HTTP Reply
-							Catalog:CHARACTER:BIPmsgs
-							Severity:INTEGER:3
-							Number:INTEGER:3143
-							Text:CHARACTER:Need return context info
+const downloadValidationFiles = async (apiName, integrationNode, serverIP, integrationServer) => {
+    const key = `${apiName}-${integrationServer}`;
 
+    setDownloadingValidations(prev => new Set(prev).add(key));
 
+    try {
+      const response = await fetch("http://10.177.44.58:4423/api/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ip: serverIP,
+          brokerName: integrationNode,
+          egName: integrationServer,
+          apiName: apiName
+        })
+      });
 
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
-CREATE COMPUTE MODULE postUpdate_Compute1
-	CREATE FUNCTION Main() RETURNS BOOLEAN
-	BEGIN
-	    CREATE LASTCHILD OF Environment DOMAIN('JSON');
-	    SET OutputLocalEnvironment.Destination.Collector.Name = 'FileGroup';
-	    SET OutputLocalEnvironment.Destination.Collector.Count = Environment.Variable.TotalInList ;
-	    SET Environment.JSON.Data.File.FileName = InputLocalEnvironment.File.Read.Name ;
-	    SET Environment.JSON.Data.File.FileContent = CAST(InputRoot.BLOB.BLOB AS CHARACTER CCSID COALESCE(InputRoot.Properties.CodedCharSetId ,5348)  ENCODING COALESCE(InputRoot.Properties.Encoding ,546)) ;
-	    
-		RETURN TRUE;
-	END;
+      const xmlText = await response.text();
 
-	
-END MODULE;
+      // Parse XML response
+      const parser = new DOMParser();
+      const xmlDoc = parser.parseFromString(xmlText, "application/xml");
 
+      // Check for error tag
+      const error = xmlDoc.querySelector("error");
+      if (error) {
+        addToast(`Validation error: ${error.textContent}`, "error");
+        return;
+      }
 
-After collector
+      const validationFiles = xmlDoc.querySelector("validationFiles");
+      if (!validationFiles) {
+        addToast("No validation files found in response.", "error");
+        return;
+      }
 
+      const apiNodes = validationFiles.children;
 
+      if (apiNodes.length === 0) {
+        addToast("No files returned from server.", "error");
+        return;
+      }
 
-CREATE COMPUTE MODULE postUpdate_Compute2
-	CREATE FUNCTION Main() RETURNS BOOLEAN
-	BEGIN
-		SET OutputRoot = InputRoot;
-		RETURN TRUE;
-	END;
+      // Download each file separately
+      let downloadCount = 0;
+      Array.from(apiNodes).forEach((node) => {
+        const fileName    = node.querySelector("fileName")?.textContent?.trim();
+        const fileContent = node.querySelector("fileContent")?.textContent?.trim();
 
-END MODULE;
+        if (!fileName || fileContent === undefined) return;
+
+        // Name format: apiName(fileName).txt
+        const downloadName = `${apiName}(${fileName}).txt`;
+
+        const blob = new Blob([fileContent], { type: "text/plain" });
+        const url  = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href  = url;
+        link.setAttribute("download", downloadName);
+        document.body.appendChild(link);
+        link.click();
+        link.parentNode.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        downloadCount++;
+      });
+
+      addToast(`✅ Downloaded ${downloadCount} validation file${downloadCount > 1 ? "s" : ""} for ${apiName}`, "success");
+
+    } catch (error) {
+      console.error("Validation download failed:", error);
+      addToast(`Failed to download validation files for ${apiName}: ${error.message}`, "error");
+    } finally {
+      setDownloadingValidations(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(key);
+        return newSet;
+      });
+    }
+  };
+  // ────────────────────────────────────────────────────────────────────────────
