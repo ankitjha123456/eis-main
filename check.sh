@@ -14,33 +14,26 @@ service=$4
 REMOTE_PATH="/var/mqsi/components/${broker}/servers/${eg}/run/${service}"
 
 ssh -tq "$server" "
-        cd $REMOTE_PATH || { echo '{\"error\": \"Path not found\"}'; exit 1; }
+        cd $REMOTE_PATH || { echo '<error>Path not found</error>'; exit 1; }
 
-        # Build JSON manually
-        first=1
-        result='{'
+        echo '<?xml version=\"1.0\" encoding=\"UTF-8\"?>'
+        echo '<validationFiles>'
 
         for file in *.xsd; do
                 if [ -e \"\$file\" ]; then
-                        # Get filename without extension as key
                         key=\$(basename \"\$file\" .xsd)
 
-                        # Read file content and escape special JSON characters
-                        content=\$(cat \"\$file\" | sed 's/\\\\/\\\\\\\\/g; s/\"/\\\\\"/g; s/\t/\\\\t/g' | tr -d '\r' | awk '{printf \"%s\\\\n\", \$0}' | tr -d '\n')
-
-                        if [ \"\$first\" -eq 1 ]; then
-                                first=0
-                        else
-                                result=\"\$result,\"
-                        fi
-
-                        result=\"\$result\\\"'\$key'\\\":\\\"'\$content'\\\"\"
+                        echo \"  <\$key>\"
+                        echo '    <fileName>'\"\$file\"'</fileName>'
+                        echo '    <fileContent>'
+                        cat \"\$file\"
+                        echo '    </fileContent>'
+                        echo \"  </\$key>\"
                 else
-                        echo '{\"error\": \"No validation files found\"}'
+                        echo '<error>No validation files found</error>'
                         exit 1
                 fi
         done
 
-        result=\"\$result}\"
-        echo \"\$result\"
+        echo '</validationFiles>'
 "
