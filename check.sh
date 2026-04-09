@@ -13,27 +13,28 @@ service=$4
 
 REMOTE_PATH="/var/mqsi/components/${broker}/servers/${eg}/run/${service}"
 
-ssh -tq "$server" "
-        cd $REMOTE_PATH || { echo '<error>Path not found</error>'; exit 1; }
+# Switch to eisuser and run SSH
+su - eisuser -c "ssh -tq eisuser@$server '
+        cd $REMOTE_PATH || { echo \"<error>Path not found</error>\"; exit 1; }
 
-        echo '<?xml version=\"1.0\" encoding=\"UTF-8\"?>'
-        echo '<validationFiles>'
+        echo \"<?xml version=\\\"1.0\\\" encoding=\\\"UTF-8\\\"?>\"
+        echo \"<validationFiles>\"
 
         for file in *.xsd; do
                 if [ -e \"\$file\" ]; then
                         key=\$(basename \"\$file\" .xsd)
 
                         echo \"  <\$key>\"
-                        echo '    <fileName>'\"\$file\"'</fileName>'
-                        echo '    <fileContent>'
+                        echo \"    <fileName>\$file</fileName>\"
+                        echo \"    <fileContent>\"
                         cat \"\$file\"
-                        echo '    </fileContent>'
+                        echo \"    </fileContent>\"
                         echo \"  </\$key>\"
                 else
-                        echo '<error>No validation files found</error>'
+                        echo \"<error>No validation files found</error>\"
                         exit 1
                 fi
         done
 
-        echo '</validationFiles>'
-"
+        echo \"</validationFiles>\"
+'"
