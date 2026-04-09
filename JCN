@@ -1,95 +1,8 @@
-const downloadValidationFiles = async (apiName, integrationNode, serverIP, integrationServer) => {
-    const key = `${apiName}-${integrationServer}`;
+#!/bin/bash
 
-    setDownloadingValidations(prev => new Set(prev).add(key));
-
-    try {
-      const response = await fetch("http://10.177.44.58:4423/api/validate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ip: serverIP,
-          brokerName: integrationNode,
-          egName: integrationServer,
-          apiName: apiName
-        })
-      });
-
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-
-      const xmlText = await response.text();
-
-      // Parse XML response
-      const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(xmlText, "application/xml");
-
-      // Check for error tag
-      const error = xmlDoc.querySelector("error");
-      if (error) {
-        addToast(`Validation error: ${error.textContent}`, "error");
-        return;
-      }
-
-      const validationFiles = xmlDoc.querySelector("validationFiles");
-      if (!validationFiles) {
-        addToast("No validation files found in response.", "error");
-        return;
-      }
-
-      const apiNodes = validationFiles.children;
-
-      if (apiNodes.length === 0) {
-        addToast("No files returned from server.", "error");
-        return;
-      }
-
-      // Download each file separately
-      let downloadCount = 0;
-      Array.from(apiNodes).forEach((node) => {
-        const fileName    = node.querySelector("fileName")?.textContent?.trim();
-        const fileContent = node.querySelector("fileContent")?.textContent?.trim();
-
-        if (!fileName || fileContent === undefined) return;
-
-        // Name format: apiName(fileName).txt
-        const downloadName = `${apiName}(${fileName}).txt`;
-
-        const blob = new Blob([fileContent], { type: "text/plain" });
-        const url  = window.URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href  = url;
-        link.setAttribute("download", downloadName);
-        document.body.appendChild(link);
-        link.click();
-        link.parentNode.removeChild(link);
-        window.URL.revokeObjectURL(url);
-        downloadCount++;
-      });
-
-      addToast(`✅ Downloaded ${downloadCount} validation file${downloadCount > 1 ? "s" : ""} for ${apiName}`, "success");
-
-    } catch (error) {
-      console.error("Validation download failed:", error);
-      addToast(`Failed to download validation files for ${apiName}: ${error.message}`, "error");
-    } finally {
-      setDownloadingValidations(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(key);
-        return newSet;
-      });
-    }
-  };
-  // ────────────────────────────────────────────────────────────────────────────
-  
-  
-  
-  this is shell script from where the content comes:
-  #!/bin/bash
-
-# Check input
 if [ "$#" -ne 4 ]; then
-        echo "Usage: $0 <server> <broker> <eg_name> <service_name>"
-        return 1
+    echo "Usage: $0 <server> <broker> <eg_name> <service_name>"
+    exit 1
 fi
 
 server=$1
@@ -99,27 +12,24 @@ service=$4
 
 REMOTE_PATH="/var/mqsi/components/${broker}/servers/${eg}/run/${service}"
 
-# Switch to eisuser and run SSH
 su - eisuser -c "ssh -tq eisuser@$server '
-        cd $REMOTE_PATH || { echo \"<error>Path not found</error>\"; exit 1; }
+    cd $REMOTE_PATH || { echo \"<error>Path not found</error>\"; exit 1; }
 
-        echo \"<validationFiles>\"
+    echo \"<validationFiles>\"
 
-        for file in *.xsd; do
-                if [ -e \"\$file\" ]; then
-                        key=\$(basename \"\$file\" .xsd)
+    for file in *.xsd; do
+        if [ -e \"\$file\" ]; then
+            echo \"  <Validation>\"
+            echo \"    <fileName>\$file</fileName>\"
+            echo \"    <fileContent><![CDATA[\"
+            cat \"\$file\"
+            echo \"    ]]></fileContent>\"
+            echo \"  </Validation>\"
+        else
+            echo \"<error>No validation files found</error>\"
+            exit 1
+        fi
+    done
 
-                        echo \"  <\$key>\"
-                        echo \"    <fileName>\$file</fileName>\"
-                        echo \"    <fileContent>\"
-                        cat \"\$file\"
-                        echo \"    </fileContent>\"
-                        echo \"  </\$key>\"
-                else
-                        echo \"<error>No validation files found</error>\"
-                        exit 1
-                fi
-        done
-
-        echo \"</validationFiles>\"
+    echo \"</validationFiles>\"
 '"
