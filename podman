@@ -1,0 +1,24 @@
+# Base Image
+FROM localhost/rhel:9.6
+
+# Set environment variables
+ENV ACE_HOME=/opt/ace
+ENV PATH=$ACE_HOME/server/bin:$PATH
+
+# Create ACE directory
+RUN mkdir -p /opt/ace
+
+# Copy ACE installation (unzipped folder)
+COPY ace/ $ACE_HOME/
+
+# Create working directory (this will be mounted externally)
+RUN mkdir -p /home/aceuser/workdir
+
+# Set working directory
+WORKDIR /home/aceuser
+
+# Expose default ACE port (optional, change as needed)
+EXPOSE 7600
+
+# Default command to run Integration Server
+CMD ["IntegrationServer", "--work-dir", "/home/aceuser/workdir"]
