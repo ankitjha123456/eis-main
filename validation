@@ -1,5 +1,6 @@
 #!/bin/bash
 
+# Validate input arguments
 if [ "$#" -ne 4 ]; then
     echo "Usage: $0 <server> <broker> <eg_name> <service_name>"
     exit 1
@@ -12,24 +13,30 @@ service=$4
 
 REMOTE_PATH="/var/mqsi/components/${broker}/servers/${eg}/run/${service}"
 
+# Execute remote command
 su - eisuser -c "ssh -tq eisuser@$server '
-    cd $REMOTE_PATH || { echo \"<error>Path not found</error>\"; exit 1; }
+    cd \"$REMOTE_PATH\" || { echo \"<error>Path not found</error>\"; exit 1; }
 
     echo \"<validationFiles>\"
 
-    for file in *.xsd; do
-        if [ -e \"\$file\" ]; then
+    # Find all .xsd files recursively (including gen folder)
+    find . -type f -name \"*.xsd\" 2>/dev/null | while read -r file; do
+        if [ -f \"\$file\" ]; then
             echo \"  <Validation>\"
             echo \"    <fileName>\$file</fileName>\"
             echo \"    <fileContent><![CDATA[\"
             cat \"\$file\"
             echo \"    ]]></fileContent>\"
             echo \"  </Validation>\"
-        else
-            echo \"<error>No validation files found</error>\"
-            exit 1
         fi
     done
+
+    # Check if no files found
+    if ! find . -type f -name \"*.xsd\" | grep -q .; then
+        echo \"  <error>No validation files found</error>\"
+        echo \"</validationFiles>\"
+        exit 1
+    fi
 
     echo \"</validationFiles>\"
 '"
