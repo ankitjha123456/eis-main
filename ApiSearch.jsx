@@ -105,8 +105,6 @@ function ApiSearch() {
     const brokerPath = `${integrationNode}${lastOctet}`;
     const downloadUrl = `http://10.177.44.180:8443/${brokerPath}/apiv2/servers/${integrationServer}?application=${apiName}&referenced_app_domains=true&referenced_policy_projects=true&exclude_source=true&depth=4`;
 
-    console.log("Download URL:", downloadUrl);
-
     setDownloadingApis(prev => new Set(prev).add(`${apiName}-${integrationServer}`));
     try {
       const response = await fetch(downloadUrl, {
@@ -134,10 +132,8 @@ function ApiSearch() {
     }
   };
 
-  // ── NEW: Download Validation Files ──────────────────────────────────────────
   const downloadValidationFiles = async (apiName, integrationNode, serverIP, integrationServer) => {
     const key = `${apiName}-${integrationServer}`;
-
     setDownloadingValidations(prev => new Set(prev).add(key));
 
     try {
@@ -155,12 +151,9 @@ function ApiSearch() {
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
       const xmlText = await response.text();
-
-      // Parse XML response
       const parser = new DOMParser();
       const xmlDoc = parser.parseFromString(xmlText, "application/xml");
 
-      // Check for error tag
       const error = xmlDoc.querySelector("error");
       if (error) {
         addToast(`Validation error: ${error.textContent}`, "error");
@@ -174,29 +167,23 @@ function ApiSearch() {
       }
 
       const apiNodes = validationFiles.children;
-
       if (apiNodes.length === 0) {
         addToast("No files returned from server.", "error");
         return;
       }
 
-      // Download each file separately
       let downloadCount = 0;
       Array.from(apiNodes).forEach((node) => {
-        const fileName    = node.querySelector("fileName")?.textContent?.trim();
+        const fileName = node.querySelector("fileName")?.textContent?.trim();
         let fileContent = node.querySelector("fileContent")?.innerHTML?.trim();
-
-        fileContent =fileContent.replace(/^<!\[CDATA\[/, "").replace(/\]\]>$/, "").trim();
-
+        fileContent = fileContent.replace(/^<!\[CDATA\[/, "").replace(/\]\]>$/, "").trim();
         if (!fileName || fileContent === undefined) return;
 
-        // Name format: apiName(fileName).txt
         const downloadName = `${apiName}(${fileName}).txt`;
-
         const blob = new Blob([fileContent], { type: "text/plain" });
-        const url  = window.URL.createObjectURL(blob);
+        const url = window.URL.createObjectURL(blob);
         const link = document.createElement("a");
-        link.href  = url;
+        link.href = url;
         link.setAttribute("download", downloadName);
         document.body.appendChild(link);
         link.click();
@@ -206,7 +193,6 @@ function ApiSearch() {
       });
 
       addToast(`✅ Downloaded ${downloadCount} validation file${downloadCount > 1 ? "s" : ""} for ${apiName}`, "success");
-
     } catch (error) {
       console.error("Validation download failed:", error);
       addToast(`Failed to download validation files for ${apiName}: ${error.message}`, "error");
@@ -218,18 +204,9 @@ function ApiSearch() {
       });
     }
   };
-  // ────────────────────────────────────────────────────────────────────────────
 
   const openModal = (action, item) => {
-    setModal({
-      open: true,
-      action,
-      item,
-      username: "",
-      password: "",
-      showPassword: false,
-      error: ""
-    });
+    setModal({ open: true, action, item, username: "", password: "", showPassword: false, error: "" });
   };
 
   const closeModal = () => {
@@ -238,17 +215,14 @@ function ApiSearch() {
 
   const confirmAction = async () => {
     const { action, item, username, password } = modal;
-
     if (!username.trim() || !password.trim()) {
       setModal(prev => ({ ...prev, error: "Username and password are required." }));
       return;
     }
-
     if (username.trim() !== DEFAULT_USERNAME || password !== DEFAULT_PASSWORD) {
       setModal(prev => ({ ...prev, error: "Password not match. Please check your credentials." }));
       return;
     }
-
     closeModal();
     await handleServiceAction(action, item, username, password);
   };
@@ -256,7 +230,7 @@ function ApiSearch() {
   const handleServiceAction = async (action, item, username, password) => {
     const key = `${item.ApiName}-${item.IntegrationServer}`;
     const actionLabel = action === "start" ? "Starting" : "Stopping";
-    const doneLabel   = action === "start" ? "started"  : "stopped";
+    const doneLabel = action === "start" ? "started" : "stopped";
 
     setServiceActionMap(prev => ({ ...prev, [key]: action === "start" ? "starting" : "stopping" }));
 
@@ -264,23 +238,15 @@ function ApiSearch() {
     const brokerPath = `${item.IntegrationNode}${lastOctet}`;
     const endpoint = action === "start" ? "start" : "teardown";
     const url = `http://10.177.44.180:8443/${brokerPath}/apiv2/servers/${item.IntegrationServer}/rest-apis/${item.ApiName}/${endpoint}`;
-
-    console.log(`${actionLabel} URL:`, url);
-
     const basicAuth = btoa(`${username}:${password}`);
 
     try {
       const response = await fetch(url, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Basic ${basicAuth}`
-        },
+        headers: { "Content-Type": "application/json", "Authorization": `Basic ${basicAuth}` },
       });
 
       const responseText = await response.text();
-      console.log(`${actionLabel} response [${response.status}]:`, responseText);
-
       if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText} — ${responseText}`);
 
       setData(prev =>
@@ -292,11 +258,10 @@ function ApiSearch() {
       );
 
       addToast(`✅ ${item.ApiName} ${doneLabel} successfully`, "success");
-
       await fetchData(endpoints[activeEnv].refresh);
     } catch (err) {
       console.error(`${actionLabel} failed:`, err);
-      addToast(` Failed to ${action} ${item.ApiName}: ${err.message}`, "error");
+      addToast(`Failed to ${action} ${item.ApiName}: ${err.message}`, "error");
     } finally {
       setServiceActionMap(prev => {
         const copy = { ...prev };
@@ -444,6 +409,7 @@ function ApiSearch() {
   return (
     <div className="app-container">
 
+      {/* Toast Notifications */}
       <div className="toast-container">
         {toasts.map(toast => (
           <div key={toast.id} className={`toast toast-${toast.type}`}>
@@ -452,10 +418,10 @@ function ApiSearch() {
         ))}
       </div>
 
+      {/* Credential Modal */}
       {modal.open && (
         <div className="modal-overlay" onClick={closeModal}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
-
             <div className={`modal-header1 ${modal.action === "start" ? "modal-header-start" : "modal-header-stop"}`}>
               <div className="modal-header-icon">
                 {modal.action === "start" ? "▶" : "⏹"}
@@ -514,9 +480,7 @@ function ApiSearch() {
             </div>
 
             <div className="modal-footer">
-              <button className="modal-cancel-btn" onClick={closeModal}>
-                Cancel
-              </button>
+              <button className="modal-cancel-btn" onClick={closeModal}>Cancel</button>
               <button
                 className={`modal-confirm-btn ${modal.action === "start" ? "confirm-start" : "confirm-stop"}`}
                 onClick={confirmAction}
@@ -524,15 +488,16 @@ function ApiSearch() {
                 {modal.action === "start" ? "▶ Start API" : "⏹ Stop API"}
               </button>
             </div>
-
           </div>
         </div>
       )}
 
+      {/* Header */}
       <header className="app-header">
         <h1>API Search</h1>
       </header>
 
+      {/* Environment Tabs */}
       <div className="environment-tabs">
         {["UAT", "SIT", "Preprod"].map((env) => (
           <button
@@ -547,6 +512,7 @@ function ApiSearch() {
         ))}
       </div>
 
+      {/* Controls */}
       <div className="controls-container">
         <div className="action-buttons">
           <button className="secondary-button" onClick={handleRefresh} disabled={loading || data.length === 0}>
@@ -559,6 +525,7 @@ function ApiSearch() {
         </div>
       </div>
 
+      {/* Loading State */}
       {loading && (
         <div className="loading-state">
           <div className="loading-spinner-large"></div>
@@ -567,6 +534,7 @@ function ApiSearch() {
         </div>
       )}
 
+      {/* Filters */}
       {!loading && (
         <div className="filters-section">
           <div className="filters-header">
@@ -597,9 +565,6 @@ function ApiSearch() {
                 <option value="">All Integration Nodes</option>
                 {uniqueValues.integrationNodes.map(node => <option key={node} value={node}>{node}</option>)}
               </select>
-              {filters.serverIP && uniqueValues.integrationNodes.length === 0 && (
-                <div className="filter-hint">No integration nodes available for selected IP</div>
-              )}
             </div>
 
             <div className="filter-group tertiary-filter">
@@ -608,9 +573,6 @@ function ApiSearch() {
                 <option value="">All Integration Servers</option>
                 {uniqueValues.integrationServers.map(server => <option key={server} value={server}>{server}</option>)}
               </select>
-              {(filters.serverIP || filters.integrationNode) && uniqueValues.integrationServers.length === 0 && (
-                <div className="filter-hint">No integration servers available for selected filters</div>
-              )}
             </div>
 
             <div className="filter-group">
@@ -648,6 +610,7 @@ function ApiSearch() {
         </div>
       )}
 
+      {/* Servers Grid */}
       {!loading && Object.keys(groupedData).length > 0 && (
         <div className="servers-section">
           <div className="section-header">
@@ -696,16 +659,16 @@ function ApiSearch() {
                             <th>Server IP</th>
                             <th>Deployment Date</th>
                             <th>State</th>
-                            <th>Actions</th>
+                            <th style={{ textAlign: "center" }}>Actions</th>
                           </tr>
                         </thead>
                         <tbody>
                           {serverData.items.map((item, index) => {
-                            const downloading          = isDownloading(item.ApiName, item.IntegrationServer);
+                            const downloading = isDownloading(item.ApiName, item.IntegrationServer);
                             const downloadingValidation = isDownloadingValidation(item.ApiName, item.IntegrationServer);
-                            const serviceAction        = getServiceAction(item.ApiName, item.IntegrationServer);
-                            const running              = isApiRunning(item.ApiState);
-                            const isActionInProgress   = !!serviceAction;
+                            const serviceAction = getServiceAction(item.ApiName, item.IntegrationServer);
+                            const running = isApiRunning(item.ApiState);
+                            const isActionInProgress = !!serviceAction;
 
                             return (
                               <tr key={index}>
@@ -721,69 +684,82 @@ function ApiSearch() {
                                   </span>
                                 </td>
 
+                                {/* ── Centralized Action Toolbar ── */}
                                 <td>
-                                  <div className="action-cell">
+                                  <div className="action-toolbar">
 
-                                    {/* Download BAR Button */}
-                                    <button
-                                      className={`download-button ${downloading ? 'downloading' : ''}`}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        downloadBarFile(item.ApiName, item.IntegrationServer, item.IntegrationNode, item.ServerIP);
-                                      }}
-                                      disabled={downloading}
-                                      title="Download BAR file"
-                                    >
-                                      {downloading
-                                        ? (<><span className="button-spinner"></span>Downloading...</>)
-                                        : (<><span className="icon">⬇️</span>Download BAR</>)
-                                      }
-                                    </button>
-
-                                    {/* Download Validation Button */}
-                                    <button
-                                      className={`download-button ${downloadingValidation ? 'downloading' : ''}`}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        downloadValidationFiles(item.ApiName, item.IntegrationNode, item.ServerIP, item.IntegrationServer);
-                                      }}
-                                      disabled={downloadingValidation}
-                                      title="Download Validation File"
-                                    >
-                                      {downloadingValidation
-                                        ? (<><span className="button-spinner"></span>Fetching...</>)
-                                        : (<><span className="icon">📄</span>Validation</>)
-                                      }
-                                    </button>
-
-                                    {/* Start Button */}
-                                    {!running && (
+                                    {/* Download BAR */}
+                                    <div className="toolbar-btn-wrap">
                                       <button
-                                        className={`service-btn start-btn ${serviceAction === "starting" ? "in-progress" : ""}`}
-                                        onClick={(e) => { e.stopPropagation(); openModal("start", item); }}
-                                        disabled={isActionInProgress}
-                                        title={`Start ${item.ApiName}`}
+                                        className={`toolbar-btn btn-bar ${downloading ? "btn-loading" : ""}`}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          downloadBarFile(item.ApiName, item.IntegrationServer, item.IntegrationNode, item.ServerIP);
+                                        }}
+                                        disabled={downloading}
+                                        aria-label="Download BAR file"
                                       >
-                                        {serviceAction === "starting"
-                                          ? (<><span className="button-spinner"></span>Starting...</>)
-                                          : (<><span className="btn-icon">▶</span>Start</>)
+                                        {downloading
+                                          ? <span className="btn-spin"></span>
+                                          : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                                         }
                                       </button>
-                                    )}
+                                      <span className="toolbar-tooltip">Download BAR</span>
+                                    </div>
 
-                                    {/* Stop Button */}
-                                    {running && (
+                                    {/* Download Validation */}
+                                    <div className="toolbar-btn-wrap">
                                       <button
-                                        className={`service-btn stop-btn ${serviceAction === "stopping" ? "in-progress" : ""}`}
-                                        onClick={(e) => { e.stopPropagation(); openModal("stop", item); }}
-                                        disabled={isActionInProgress}
-                                        title={`Stop ${item.ApiName}`}
+                                        className={`toolbar-btn btn-validate ${downloadingValidation ? "btn-loading" : ""}`}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          downloadValidationFiles(item.ApiName, item.IntegrationNode, item.ServerIP, item.IntegrationServer);
+                                        }}
+                                        disabled={downloadingValidation}
+                                        aria-label="Download Validation"
                                       >
-                                        {serviceAction === "stopping"
-                                          ? (<><span className="button-spinner"></span>Stopping...</>)
-                                          : (<><span className="btn-icon">⏹</span>Stop</>)
+                                        {downloadingValidation
+                                          ? <span className="btn-spin"></span>
+                                          : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
                                         }
                                       </button>
+                                      <span className="toolbar-tooltip">Validation</span>
+                                    </div>
+
+                                    {/* Divider */}
+                                    <div className="toolbar-divider"></div>
+
+                                    {/* Start / Stop */}
+                                    {!running ? (
+                                      <div className="toolbar-btn-wrap">
+                                        <button
+                                          className={`toolbar-btn btn-start ${serviceAction === "starting" ? "btn-loading" : ""}`}
+                                          onClick={(e) => { e.stopPropagation(); openModal("start", item); }}
+                                          disabled={isActionInProgress}
+                                          aria-label="Start API"
+                                        >
+                                          {serviceAction === "starting"
+                                            ? <span className="btn-spin"></span>
+                                            : <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                                          }
+                                        </button>
+                                        <span className="toolbar-tooltip">Start API</span>
+                                      </div>
+                                    ) : (
+                                      <div className="toolbar-btn-wrap">
+                                        <button
+                                          className={`toolbar-btn btn-stop ${serviceAction === "stopping" ? "btn-loading" : ""}`}
+                                          onClick={(e) => { e.stopPropagation(); openModal("stop", item); }}
+                                          disabled={isActionInProgress}
+                                          aria-label="Stop API"
+                                        >
+                                          {serviceAction === "stopping"
+                                            ? <span className="btn-spin"></span>
+                                            : <svg viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+                                          }
+                                        </button>
+                                        <span className="toolbar-tooltip">Stop API</span>
+                                      </div>
                                     )}
 
                                   </div>
