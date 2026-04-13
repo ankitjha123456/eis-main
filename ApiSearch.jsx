@@ -137,8 +137,6 @@ function ApiSearch() {
   // ── NEW: Download Validation Files ──────────────────────────────────────────
   const downloadValidationFiles = async (apiName, integrationNode, serverIP, integrationServer) => {
     const key = `${apiName}-${integrationServer}`;
-    const lastOctet = getLastOctet(serverIP);
-    const brokerName = `${integrationNode}${lastOctet}`;
 
     setDownloadingValidations(prev => new Set(prev).add(key));
 
@@ -148,7 +146,7 @@ function ApiSearch() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ip: serverIP,
-          brokerName: brokerName,
+          brokerName: integrationNode,
           egName: integrationServer,
           apiName: apiName
         })
@@ -186,7 +184,9 @@ function ApiSearch() {
       let downloadCount = 0;
       Array.from(apiNodes).forEach((node) => {
         const fileName    = node.querySelector("fileName")?.textContent?.trim();
-        const fileContent = node.querySelector("fileContent")?.textContent?.trim();
+        let fileContent = node.querySelector("fileContent")?.innerHTML?.trim();
+
+        fileContent =fileContent.replace(/^<!\[CDATA\[/, "").replace(/\]\]>$/, "").trim();
 
         if (!fileName || fileContent === undefined) return;
 
