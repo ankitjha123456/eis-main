@@ -1,35 +1,17 @@
-#!/bin/bash
-
-if [ "$#" -ne 4 ]; then
-    echo "Usage: $0 <server> <broker> <eg_name> <service_name>"
-    exit 1
-fi
-
-server=$1
-broker=$2
-eg=$3
-service=$4
-
-REMOTE_PATH="/var/mqsi/components/${broker}/servers/${eg}/run/${service}"
-
-su - eisuser -c "ssh -tq eisuser@$server '
-    cd $REMOTE_PATH || { echo \"<error>Path not found</error>\"; exit 1; }
-
-    echo \"<validationFiles>\"
-
-    for file in *.xsd; do
-        if [ -e \"\$file\" ]; then
-            echo \"  <Validation>\"
-            echo \"    <fileName>\$file</fileName>\"
-            echo \"    <fileContent><![CDATA[\"
-            cat \"\$file\"
-            echo \"    ]]></fileContent>\"
-            echo \"  </Validation>\"
-        else
-            echo \"<error>No validation files found</error>\"
-            exit 1
-        fi
-    done
-
-    echo \"</validationFiles>\"
-'"
+podman run -it --rm \
+  --name Payment_E_01 \
+  --hostname Payment_E_01 \
+  -v ace_workdir:/var/mqsi:z \
+  -v /home/eisuser/INTEGRATION_SERVER/odbc.ini:/opt/IBM/ace/server/ODBC/unixodbc/odbc.ini:z \
+  -v /home/eisuser/INTEGRATION_SERVER/server.conf.yaml:/mnt/server.conf.yaml:z \
+  -v /home/eisuser/INTEGRATION_SERVER/EndPoint_Public:/opt/IBM/EndPoint_Public:z \
+  -v /home/eisuser/INTEGRATION_SERVER/Keystore:/opt/IBM/Keystore:z \
+  -v /home/eisuser/INTEGRATION_SERVER/RSAKeystore:/opt/IBM/RSAKeystore:z \
+  -v /home/eisuser/INTEGRATION_SERVER/extvault:/var/mqsi/extvault:z \
+  -p 4001:4001 \
+  -p 4415:7600 \
+  -p 4416:5001 \
+  -e SERVER_NAME=Payment_E_01 \
+  -e ADMIN_USER=eisadmin \
+  -e ADMIN_PASS=password \
+  server:v8.0
