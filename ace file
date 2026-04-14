@@ -1,0 +1,229 @@
+this is my yml
+
+---
+- name: ACE Minor Version Upgrade
+  hosts: all
+  become: yes
+
+  vars_prompt:
+    - name: "ace_tar_file"
+      prompt: "Enter ACE tar file path"
+      private: no
+
+    - name: "ace_backup_name"
+      prompt: "Enter backup folder name for existing ace"
+      private: no
+
+  vars:
+    ace_base_dir: /opt/IBM
+    mqsi_profile: /opt/IBM/ace/server/bin/mqsiprofile
+    ace_current_dir: "{{ ace_base_dir }}/ace"
+    ace_backup_dir: "{{ ace_base_dir }}/{{ ace_backup_name }}"
+
+  tasks:
+
+    - name: Check version of ace
+      ansible.builtin.shell: |
+        . {{ mqsi_profile }} >/dev/null 2>&1
+        mqsiservice -v | grep ": Version:" | awk '{print $0}'
+      register: version
+
+    - name: Diplay Ace version
+      debug:
+        msg: "{{ version.stdout }}"
+
+    - name: Check if HEART_BEAT is Running
+      ansible.builtin.shell: |
+        . {{ mqsi_profile }} >/dev/null 2>&1
+        mqsilist | grep -i HEART_BEAT | cut -d"'" -f5
+      register: heart_beat_status
+
+    - name: get HB check Integration server Name
+      ansible.builtin.shell: |
+        . {{ mqsi_profile }} >/dev/null 2>&1
+        mqsilist HEART_BEAT | grep -v log | grep Integration | cut -d"'" -f2
+      register: hb_name
+      when: heart_beat_status.stdout is search("running")
+
+    - name: Display lb HB CHECK name
+      debug:
+        msg: "{{ hb_name.stdout }}"
+      when: heart_beat_status.stdout is search("running")
+
+    - name: Check lbMapper status
+      ansible.builtin.shell: |
+        . {{ mqsi_profile }} >/dev/null 2>&1
+        mqsilist HEART_BEAT | grep -i {{ hb_name.stdout }} | cut -d"'" -f5
+      register: lbMapper_status
+      when:
+        - heart_beat_status.stdout is search("running")
+        - hb_name.stdout | length > 0
+
+    - name: Stoping lbMapper
+      ansible.builtin.shell: |
+        . {{ mqsi_profile }} >/dev/null 2>&1
+        mqsistopmsgflow HEART_BEAT -e {{ hb_name.stdout }}
+      when:
+        - heart_beat_status.stdout is search("running")
+        - lbMapper_status.stdout is search("running")
+
+    - name: Geting IntegrationNode Names
+      ansible.builtin.shell: |
+        . {{ mqsi_profile }} >/dev/null 2>&1
+        mqsilist | grep -Ev 'HEART_BEAT' | grep -i 'running' | cut -d"'" -f2
+      register: Brokers
+
+    - name: Debug Output of Integration Nodes
+      debug:
+        msg: "Found Integration Nodes: {{ Brokers.stdout_lines }}"
+
+    - name: Stop each running Integration Node
+      ansible.builtin.shell: |
+        . {{ mqsi_profile }} >/dev/null 2>&1
+        mqsistop -i {{ item }}
+      loop: "{{ Brokers.stdout_lines }}"
+      when: Brokers.stdout_lines | length > 0
+
+    - name: Stoping HEART_BEAT broker
+      ansible.builtin.shell: |
+        . {{ mqsi_profile }} >/dev/null 2>&1
+        mqsistop HEART_BEAT -i
+      when: heart_beat_status.stdout is search("running")
+
+    - name: Check if current ACE directory exists
+      ansible.builtin.stat:
+        path: "{{ ace_current_dir }}"
+      register: ace_dir_stat
+
+    - name: Fail if ACE directory does not exist
+      ansible.builtin.fail:
+        msg: "ACE directory {{ ace_current_dir }} not found. Aborting upgrade."
+      when: not ace_dir_stat.stat.exists
+
+    - name: Backup existing ACE directory
+      ansible.builtin.command:
+        cmd: mv {{ ace_current_dir }} {{ ace_backup_dir }}
+      args:
+        creates: "{{ ace_backup_dir }}"
+
+    - name: Extract new ACE tar file
+      ansible.builtin.unarchive:
+        src: "{{ ace_tar_file }}"
+        dest: "{{ ace_base_dir }}"
+        remote_src: yes
+
+    - name: Rename extracted ACE directory to ace
+      ansible.builtin.shell: |
+        mv {{ ace_base_dir }}/ace-13.0.5.0 {{ ace_current_dir }}
+      args:
+        creates: "{{ ace_current_dir }}"
+
+    - name: Accept ACE license silently (run inside /opt/IBM/ace)
+      ansible.builtin.shell: |
+        ./ace make registry global accept license silently
+      args:
+        chdir: "{{ ace_current_dir }}"
+
+    - name: Start HEART_BEAT broker
+      ansible.builtin.shell: |
+        . {{ mqsi_profile }} >/dev/null 2>&1
+        mqsistart HEART_BEAT -w 300
+      when: heart_beat_status.stdout is search("running")
+
+    - name: start the other brokers
+      ansible.builtin.shell:
+        cmd: |
+          . {{ mqsi_profile }} >/dev/null 2>&1
+          mqsistart {{ item }} -w 600
+      environment:
+        ODBCINI: /opt/IBM/Broker_Properties/ODBC/unixodbc/odbc.ini
+        ODBCSYSINI: /opt/IBM/Broker_Properties/ODBC/unixodbc
+      async: 600
+      poll: 0
+      register: async_broker_start
+      loop: "{{ Brokers.stdout_lines  }}"
+      when: Brokers.stdout_lines is defined and Brokers.stdout_lines | length > 0
+      tags:
+        - reboot
+
+    - name: Wait for all async Integration Node stop tasks to finish
+      ansible.builtin.async_status:
+        jid: "{{ item.ansible_job_id }}"
+      register: async_poll_results_brokers_start
+      until: async_poll_results_brokers_start.finished
+      retries: 60
+      delay: 10
+      loop: "{{ async_broker_start.results }}"
+
+
+    - name: Clean up async job files for Integration Nodes starting
+      ansible.builtin.async_status:
+        jid: "{{ item.ansible_job_id }}"
+        mode: cleanup
+      loop: "{{ async_broker_start.results }}"
+
+
+    - name: Hit cache
+      ansible.builtin.shell:
+        cmd: curl --location 'http://{{ inventory_hostname }}:8002/cacheOnDB' -d'{"UPDATE":"Y"}'
+      register: cache_result
+      when:
+        - heart_beat_status.stdout is search("running")
+        - Brokers.stdout_lines is search("CACHE")
+      retries: 2
+      delay: 20
+      until: cache_result.rc == 0
+      ignore_errors: true
+
+
+
+    - name: Show success message if cache hit succeeds
+      debug:
+        msg: "Cache hit successful on {{ inventory_hostname }}"
+      when:
+        - heart_beat_status.stdout is search("running")
+        - cache_result.stdout is search("SUCCESS")
+
+
+    - name: Show failure message if cache hit fails after retry
+      debug:
+        msg: "Cache hit failed on {{ inventory_hostname }}"
+      when:
+        - heart_beat_status.stdout is search("running")
+        - cache_result.stdout is search("FAILED")
+
+
+    - name: Start lbMapper flows
+      ansible.builtin.shell:
+        cmd: |
+          . {{ mqsi_profile }} >/dev/null 2>&1
+          mqsistartmsgflow HEART_BEAT -e {{ hb_name.stdout }} -w 300
+      when:
+        - heart_beat_status.stdout is search("running")
+        - cache_result.stdout is search("SUCCESS")
+        - lbMapper_status.stdout is search("running")
+
+
+    - name: Check version of ace after upgradation
+      ansible.builtin.shell: |
+        . {{ mqsi_profile }} >/dev/null 2>&1
+        mqsiservice -v | grep ": Version:" | awk '{print $0}'
+      register: version2
+
+    - name: Diplay Ace version
+      debug:
+        msg: "{{ version2.stdout }}"
+
+
+
+giving this error while extracting
+
+54
+TASK [Extract new ACE tar file] ************************************************  
+11:58:51 AM
+55
+fatal: [10.177.44.21]: FAILED! => {"changed": false, "dest": "/opt/IBM", "extract_results": {"cmd": ["/bin/gtar", "--extract", "-C", "/opt/IBM", "-z", "-f", "/tmp/13.0-ACE-LINUXX64-13.0.7.0.tar.gz"], "err": "/bin/gtar: ace-13.0.7.0/tools/plugins/org.eclipse.platform.doc.isv_4.31.0.v20240228-1609.jar: Wrote only 3584 of 10240 bytes\n/bin/gtar: ace-13.0.7.0/tools/plugins/org.eclipse.platform.doc.user_4.31.0.v20240228-1609.jar: Cannot open: No space left on device\n/bin/gtar: ace-13.0.7.0/tools/plugins/org.eclipse.platform.source_4.31.100.v20240229-0520.jar: Cannot open: No space left on device\n/bin/gtar: ace-13.0.7.0/tools/plugins/org.eclipse.rcp_4.31.0.v20240229-0520.jar: Cannot open: No space left on device\n/bin/gtar: ace-13.0.7.0/tools/plugins/org.eclipse.search.core_3.16.100.v20240207-1054.jar: Cannot open: No space left on device\n/bin/gtar: ace-13.0.7.0/tools/plugins/org.eclipse.search.source_3.16.100.v20240125-0858.jar: Cannot open: No space left on device\n/bin/gtar: ace-13.0.7.0/tools/plugins…
+56
+
+
+
