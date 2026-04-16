@@ -1,34 +1,94 @@
-app.post("/api/validate", (req, res) => {
-    const { ip, brokerName, egName, apiName } = req.body;
+user nginx;
+worker_processes auto;
 
-    // Validate all fields are present
-    if (!ip || !brokerName || !egName || !apiName) {
-        return res.status(400).json({
-            error: "Missing required fields: ip, brokerName, egName, apiName"
-        });
+error_log /var/log/nginx/error.log warn;
+pid /var/run/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+
+    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                    '$status $body_bytes_sent "$http_referer" '
+                    '"$http_user_agent" "$http_x_forwarded_for"';
+
+    access_log /var/log/nginx/access.log main;
+
+    sendfile on;
+    keepalive_timeout 65;
+
+    # =========================
+    # UPSTREAM GROUPS (LOAD BALANCING)
+    # =========================
+
+    upstream backend_4001 {
+        least_conn;
+        server 10.0.0.1:4001;
+        server 10.0.0.2:4001;
     }
 
-    // Sanitize inputs to prevent shell injection
-    const sanitize = (str) => str.replace(/[^a-zA-Z0-9._-]/g, "");
+    upstream backend_4002 {
+        least_conn;
+        server 10.0.0.3:4002;
+        server 10.0.0.4:4002;
+    }
 
-    const safeIp         = sanitize(ip);
-    const safeBroker     = sanitize(brokerName);
-    const safeEg         = sanitize(egName);
-    const safeApi        = sanitize(apiName);
+    # =========================
+    # ROUTING MAP (CI/CD MANAGED)
+    # =========================
 
-    const scriptPath = path.join(__dirname, "valid.sh");
-    const command = `bash ${scriptPath} ${safeIp} ${safeBroker} ${safeEg} ${safeApi}`;
+    map $uri $backend {
+        default "";
 
-    exec(command, { timeout: 30000 }, (error, stdout, stderr) => {
-        if (error) {
-            return res.status(500).json({
-                error: "Script execution failed",
-                details: stderr || error.message
-            });
+        include /etc/nginx/routes.map;
+    }
+
+    # optional: improve map performance for large datasets
+    map_hash_bucket_size 128;
+    map_hash_max_size 4096;
+
+    # =========================
+    # SERVER BLOCK
+    # =========================
+
+    server {
+        listen 3001;
+        server_name _;
+
+        location / {
+
+            # safety check
+            if ($backend = "") {
+                return 404;
+            }
+
+            proxy_pass http://$backend;
+
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+
+            proxy_connect_timeout 5s;
+            proxy_read_timeout 60s;
         }
 
-        // Return XML output
-        res.setHeader("Content-Type", "application/xml");
-        res.send(stdout);
-    });
-});
+        access_log /var/log/nginx/app_access.log;
+        error_log /var/log/nginx/app_error.log;
+    }
+}
+
+
+/etc/nginx/routes.map
+
+/path1 backend_4001;
+/path2 backend_4001;
+/path3 backend_4001;
+
+/path5 backend_4002;
+/path6 backend_4002;
