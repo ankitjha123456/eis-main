@@ -1,1 +1,34 @@
 
+#!/bin/bash
+
+find . -name "*.json" | while read f; do
+  # Extract basePath
+  basePath=$(python3 -c "
+import json, sys
+try:
+    d = json.load(open('$f'))
+    print(d.get('basePath',''))
+except: pass
+" 2>/dev/null)
+
+  [ -z "$basePath" ] && continue
+
+  # Extract paths
+  python3 -c "
+import json, sys
+try:
+    d = json.load(open('$f'))
+    basePath = d.get('basePath','')
+    paths = d.get('paths', {})
+    for p in paths:
+        print(basePath.rstrip('/') + p)
+except: pass
+" 2>/dev/null | while read fullPath; do
+    # Extract service name (parent dir of run/)
+    service=$(echo "$f" | sed 's|.*/run/||' | cut -d'/' -f1)
+    # Extract account (e.g. Account_E_05)
+    account=$(echo "$f" | sed 's|\./||' | cut -d'/' -f1)
+    echo "$fullPath  $service  $account"
+  done
+
+done
