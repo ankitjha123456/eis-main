@@ -1,17 +1,258 @@
-podman run -it --rm \
-  --name Payment_E_01 \
-  --hostname Payment_E_01 \
-  -v ace_workdir:/var/mqsi:z \
-  -v /home/eisuser/INTEGRATION_SERVER/odbc.ini:/opt/IBM/ace/server/ODBC/unixodbc/odbc.ini:z \
-  -v /home/eisuser/INTEGRATION_SERVER/server.conf.yaml:/mnt/server.conf.yaml:z \
-  -v /home/eisuser/INTEGRATION_SERVER/EndPoint_Public:/opt/IBM/EndPoint_Public:z \
-  -v /home/eisuser/INTEGRATION_SERVER/Keystore:/opt/IBM/Keystore:z \
-  -v /home/eisuser/INTEGRATION_SERVER/RSAKeystore:/opt/IBM/RSAKeystore:z \
-  -v /home/eisuser/INTEGRATION_SERVER/extvault:/var/mqsi/extvault:z \
-  -p 4001:4001 \
-  -p 4415:7600 \
-  -p 4416:5001 \
-  -e SERVER_NAME=Payment_E_01 \
-  -e ADMIN_USER=eisadmin \
-  -e ADMIN_PASS=password \
-  server:v8.0
+[eisuser@EISUATEXP01 servers]$ pwd
+/var/mqsi/components/ACCOUNT_EXP/servers
+[eisuser@EISUATEXP01 servers]$ grep -r "basePath"
+Account_E_01/run/dishonourEnquiry_th_expDS/DishonourEnquiry_Swagger.json:  "basePath" : "/070873/bancs/cbs",
+Account_E_01/run/dishonourEnquiry_th_expDS/dishonourEnquiry_th_expDS.json:  "basePath" : "/dishonour_th/enquiry",
+Account_E_01/run/depositAccountDetails_orchDS/customerDetails_swagger_V2.json:  "basePath" : "/cif/accounts/v1",
+Account_E_01/run/depositAccountDetails_orchDS/accountShortDetails_Swagger_V2.0.0.json:  "basePath" : "/account/detail/v1",
+Account_E_01/run/depositAccountDetails_orchDS/depositAccountDetails_Swagger_V1.0.0.json:  "basePath" : "/accountDeposits/Details",
+Account_E_01/run/creditSummationEnquiry_bth_expDS/CrditSummationEnquiry_exp.json:  "basePath" : "/creditSummation_bth/enquiry",
+Account_E_01/run/accountInformationMR_expDS/accInfo.json:  "basePath" : "/accountInfo/enquiry",
+Account_E_01/run/accountInformationMR_expDS/Account_Information_Swagger_V1.0.0.json:  "basePath" : "/CA/mr/cbs",
+Account_E_01/run/cashDrawerEnquiry_expDS/cashDrawerEnquiry_expDS.json:  "basePath" : "/cashDrawer/enquiry",
+Account_E_01/run/cashDrawerEnquiry_expDS/cashDrawerEnquiry_NBC_sys.json:  "basePath": "/NBC/070883/bancs/cbs",
+Account_E_02/run/onlineDDEEligibilityRTXC_orchDS/onlineDDEEligibilityRTXC_orchDS.json:  "basePath" : "/RTXC/onlineDDE/eligibility",
+Account_E_02/run/longEnquiry_expDS/swagger (2).json:  "basePath" : "/long/Enquiry",
+Account_E_02/run/modeOfOperationDetailsEnquiry_expDS/modeOfOperationEnquiry_th_expDS_Swagger.json:  "basePath" : "/modeOfOperationDetails/enquiry",
+Account_E_02/run/ckycWriteback_expDS/ckycWriteback_expDS.json.json:  "basePath" : "/ckyc/Writeback",
+Account_E_02/run/recalculateRTXC_orchDS/recalculateRTXC_orchDS.json:  "basePath" : "/RTXC/recalculate",
+Account_E_02/run/loanAcceptance_bth_expDS/loanAcceptance_bth_expDS_Swagger.json:  "basePath" : "/loansAcceptance_bth/DL_TL",
+Account_E_02/run/contingentAccountEnquiry_expDS/ContingentAccount_Enquiry_Swagger.json:  "basePath" : "/contingentDetails/enquiry",
+Account_E_02/run/smsAlertAmend_th_orchDS/Swagger Specifications_smsAlertAmend_expDS.json:  "basePath" : "/deposits/sms_th/alerts",
+Account_E_03/run/cifAssociatedAccountEnquiry_expDS/cifAssociatedAccountEnquirySwagger.json:  "basePath" : "/cifAssociatedAccount/enquiry",
+Account_E_03/run/linkCIFEnquiry_th_expDS/linkCifEnquiry_expDS.json:  "basePath" : "/linkCIF_th/enquiry",
+Account_E_03/run/linkCIFEnquiry_th_expDS/linkCifEnquiry_NBC_sys.json:  "basePath" : "/NBC/070833/bancs/cbs",
+Account_E_03/run/fetchLLMSData_OrchDS/fetchLLMSData_OrchDS.json:  "basePath" : "/fetchLLMSData/enquiry",
+Account_E_03/run/setStopOnAccount_th_expDS/setStopOnAccount_expDS.json:  "basePath" : "/setStopOnAccount_th",
+Account_E_03/run/welcomeCheckDigit_bth_expDS/checkdigit.json:  "basePath" : "/generate_bth/checkDigit",
+Account_E_04/run/IPOPanEnquiry_bth_OrchDS/CIF Associated Account Enquiry_Swagger.json:  "basePath" : "/IPOPan_bth/enquiry",
+Account_E_04/run/createCollateralShare_bth_orchDS/createCollateralShare.json:  "basePath" : "/collateralShare_bth/create",
+Account_E_04/run/loanAcceptance_expDS/LoanAcceptance_Swagger_V1.0.0.json:  "basePath" : "/loansAcceptance/DL_TL",
+Account_E_04/run/aadharLinkingAccountAmend_expDS/aadharLinkingAccountAmend_expDS.json:  "basePath" : "/aadhaarlinking/amend",
+Account_E_04/run/registrationDedupCersaiSI_sys/registrationCersaiSI_sys.json:  "basePath" : "/SI/dedupRegistration/cersai",
+Account_E_04/run/registrationCersaiSI_sys/swagger_Cersai.json:  "basePath" : "/SI/registration/cersai",
+Account_E_04/run/amendODDetails_orchDS/Swagger Specification for Deposits Amend Overdraft Details V1.0.json:  "basePath" : "/amendOD/details",
+Account_E_04/run/createRandomKey_bth_expDS/createRandomKey_expDS.json:  "basePath" : "/cmp/RandomKey_bth",
+Account_E_05/run/cardBlocking_orchDS/cardBlocking_orchDS.json:  "basePath" : "/cardBlocking",
+Account_E_05/run/fatcaCaptureDetailsCreate_orchDS/Swagger Specification_fatcaEnquiry_expDS.json:  "basePath" : "/fatca/Details/Create",
+Account_E_05/run/debitCardIssue_bth_orchDS/debitCardIssue_orchDS.json:  "basePath" : "/debitCard_bth/issue",
+Account_E_05/run/accountSummary_bth_orchDS/AccountSummary_Swagger_V2.0.0 .json:  "basePath" : "/accountSummary_bth",
+Account_E_05/run/KCCToATLConversionDetails_expDS/KCCToATLConversionDetails_expDS (1).json:  "basePath" : "/KCCToATLConversionDetails/create",
+Account_E_05/run/CIFEnquiryByID_expDS/CIFEnquiryByID_expDS.json:  "basePath" : "/customers/active/CIFByID/enquiry",
+Account_E_05/run/glReconciliationEnquiry_bth_expDS/glReconciliationenquiry_expDS.json:  "basePath" : "/glReconciliation_bth/enquiry",
+Account_E_05/run/glReconciliationEnquiry_bth_expDS/glReferenceNumberSearch_NBC_sys.json:  "basePath" : "/NBC/029043/bancs/cbs",
+
+[eisuser@EISUATEXP01 servers]$ cat Account_E_05/run/glReconciliationEnquiry_bth_expDS/glReferenceNumberSearch_NBC_sys.json
+{
+  "swagger" : "2.0",
+  "info" : {
+    "description" : "Developers may use this swagger specification to create an API to search G/L Reference Number. Kindly check description of individual API methods for Night enable information.",
+    "version" : "1.0.0",
+    "title" : "Swagger Specification to search G/L Reference Number V1.0",
+    "termsOfService" : "Please refer to SBI usage policy at developer.sbi.co.in/tos",
+    "contact" : {
+      "email" : "apisupport@sbi.co.in"
+    },
+    "x-ibm-name" : "G/L Reference Number search"
+  },
+  "basePath" : "/NBC/029043/bancs/cbs",
+  "schemes" : [ "https" ],
+  "paths" : {
+    "/accounts" : {
+      "post" : {
+        "tags" : [ "G/L Reference Number search" ],
+        "description" : "API to search G/L Reference Number",
+        "operationId" : "glReconciliationEnquiry_NBC_sys",
+        "produces" : [ "application/json" ],
+        "consumes" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "API to search G/L Reference Number",
+          "description" : "API to search G/L Reference Number",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/PlainJSONRequest"
+          },
+          "in" : "body"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Success",
+            "schema" : {
+              "$ref" : "#/definitions/PlainJSONResponse"
+            }
+          }
+        }
+      }
+    }
+  },
+  "definitions" : {
+    "PlainJSONRequest" : {
+      "properties" : {
+        "REQUEST_REFERENCE_NUMBER" : {
+          "type" : "string",
+          "description" : "Unique Reference Number created by calling app for internal tracking ",
+          "maxLength" : 25
+        },
+        "SOURCE_ID" : {
+          "type" : "string",
+          "description" : "Unique code assigned to identify from which channel the request is initiated",
+          "maxLength" : 5
+        },
+        "REQUEST_TELLER_ID" : {
+          "type" : "string",
+          "description" : "Maker ID for the given transaction-Not required for Public API",
+          "maxLength" : 7
+        },
+        "REQUEST_AUTH_ID" : {
+          "type" : "string",
+          "description" : "Checker ID for the given transaction-Not required for Public API",
+          "maxLength" : 7
+        },
+        "BRANCH_CODE" : {
+          "type" : "string",
+          "description" : "Unique code assigned to individual branch(physical/virtual) from where the request is initiated-Not required for Public API",
+          "maxLength" : 5
+        },
+        "BGL_ACCOUNT_NUMBER" : {
+          "description" : "BGL account number",
+          "type" : "string",
+          "maxLength" : 17
+        },
+        "AMOUNT" : {
+          "description" : "Amount with a decimal value of 3",
+          "type" : "string",
+          "maxLength" : 17
+        },
+        "RECONCILIATION_STATUS" : {
+          "description" : "Reconciliation status",
+          "type" : "string",
+          "maxLength" : 1
+        },
+        "ENTRY_TYPE" : {
+          "description" : "Entry type",
+          "type" : "string",
+          "maxLength" : 1
+        },
+        "FROM_DATE" : {
+          "description" : "From date",
+          "type" : "string",
+          "maxLength" : 8
+        },
+        "TO_DATE" : {
+          "description" : "To date",
+          "type" : "string",
+          "maxLength" : 8
+        },
+        "REFERENCE_NUMBER" : {
+          "description" : "Reference number",
+          "type" : "string",
+          "maxLength" : 20
+        },
+        "SEQUENCE_NUMBER" : {
+          "description" : "Sequence Number",
+          "type" : "string",
+          "maxLength" : 16
+        },
+        "START_FROM" : {
+          "description" : "Start from",
+          "type" : "string",
+          "maxLength" : 4
+        },
+        "LATEST_RECO_KEY" : {
+          "description" : "Start from",
+          "type" : "string",
+          "maxLength" : 53
+        }
+      },
+      "required" : [ "REQUEST_REFERENCE_NUMBER", "BRANCH_CODE", "SOURCE_ID", "REQUEST_TELLER_ID", "BGL_ACCOUNT_NUMBER" ]
+    },
+    "PlainJSONResponse" : {
+      "properties" : {
+        "REQUEST_REFERENCE_NUMBER" : {
+          "description" : "Unique Reference Number created by calling app for internal tracking",
+          "type" : "string",
+          "maxLength" : 25
+        },
+        "RESPONSE_STATUS" : {
+          "description" : " '0' for successful transaction and '1' for failure",
+          "type" : "string",
+          "maxLength" : 1
+        },
+        "ERROR_CODE" : {
+          "description" : "Error Code (in case of transaction failure)",
+          "enum" : [ "SI569 : API parameter missing (applicable for missing Branch and Teller configuration)", "SI570 : API configuration missing (applicable for enquiry APIs)", "SI014:  Timeout while calling SYS from EXP", "SI002 : connection refused", "SI002 : no connections available acquired", "SI002:  Failed to finish connect operation", "SI002:  detected a SOCKET error whilst invoking a web service", "SI002 : 503 Service Unavailable", "SI002 : 404 Not Found", "SI002 : 401 Unauthorised", "SI002 : 500 Internal Server Errore", "SI002 : Connection reset by peer", "SI002 : unhandled exception while calling SYS from EXP", "SI011 : Invalid Data for <dynamic field name>, ParserException xmlnsc", "SI011:  Missing field (field name will not be provided), ParserException xmlnsc", "SI011 : Excess field provided (field name will not be provided), No root element was found while writing the XML message", "SI011 : 5706-JSON writing errors have occurred", "SI011 : CastException", "SI001 : Issues With Request String", "SI001 : Issues with encryption library invoke", "SI001 : Any other unhandled error" ],
+          "type" : "string",
+          "maxLength" : 5
+        },
+        "ERROR_DESCRIPTION" : {
+          "description" : "Error Description (in case of transaction failure)",
+          "type" : "string",
+          "maxLength" : 100
+        },
+        "TRANSACTION_DETAILS" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/definitions/DETAILS"
+          }
+        },
+        "START_FROM" : {
+          "description" : "Start from",
+          "type" : "string",
+          "maxLength" : 4
+        },
+        "LATEST_RECO_KEY" : {
+          "description" : "Start from",
+          "type" : "string",
+          "maxLength" : 53
+        }
+      },
+      "required" : [ "ERROR_CODE", "ERROR_DESCRIPTION", "RESPONSE_STATUS", "REQUEST_REFERENCE_NUMBER" ]
+    },
+    "DETAILS" : {
+      "properties" : {
+        "REFERENCE_NUMBER" : {
+          "description" : "Reference number",
+          "type" : "string",
+          "maxLength" : 20
+        },
+        "ENTRY_DATE" : {
+          "description" : "Entry date",
+          "type" : "string",
+          "maxLength" : 8
+        },
+        "AMOUNT" : {
+          "description" : "Amount",
+          "type" : "string",
+          "maxLength" : 17
+        },
+        "CURRENCY" : {
+          "description" : "Currency",
+          "type" : "string",
+          "maxLength" : 3
+        },
+        "ENTRY_DESCRIPTION" : {
+          "description" : "Entry description",
+          "type" : "string",
+          "maxLength" : 18
+        },
+        "RECONCILE_SEQUENCE_NUMBER" : {
+          "description" : "Reconcile sequence number",
+          "type" : "string",
+          "maxLength" : 16
+        },
+        "JOURNAL_NO" : {
+          "description" : "Journal no",
+          "type" : "string",
+          "maxLength" : 9
+        }
+      },
+      "required" : [ "REFERENCE_NUMBER", "ENTRY_DATE", "AMOUNT", "CURRENCY", "ENTRY_DESCRIPTION", "RECONCILE_SEQUENCE_NUMBER", "JOURNAL_NO" ]
+    }
+  }
+}[eisuser@EISUATEXP01 servers]$
+
+
+give me linux script to get all the api full path like for example api glReconciliationEnquiry_bth_expDS in Account_E_05 has url /NBC/029043/bancs/cbs/accounts (basePath+paths)
+
+give me in this format 
+/NBC/029043/bancs/cbs/accounts  glReconciliationEnquiry_bth_expDS Account_E_05
