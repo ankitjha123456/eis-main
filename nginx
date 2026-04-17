@@ -1,63 +1,91 @@
-user nginx;
-worker_processes auto;
-
-error_log /var/log/nginx/error.log warn;
-pid /var/run/nginx.pid;
-
-events {
-    worker_connections 1024;
-}
-
-http {
-
-    include       /etc/nginx/mime.types;
-    default_type  application/octet-stream;
-
-    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
-                    '$status $body_bytes_sent "$http_referer" '
-                    '"$http_user_agent" "$http_x_forwarded_for"';
-
-    access_log /var/log/nginx/access.log main;
-
-    sendfile on;
-    keepalive_timeout 65;
-
-    # =========================
-    # UPSTREAM GROUPS (LOAD BALANCING)
-    # =========================
-
-    upstream backend_4001 {
+upstream backend_4001 {
         least_conn;
-        server 10.0.0.1:4001;
-        server 10.0.0.2:4001;
+        server 10.177.44.180:4001;
     }
-
-    upstream backend_4002 {
+upstream backend_4002 {
         least_conn;
-        server 10.0.0.3:4002;
-        server 10.0.0.4:4002;
+        server 10.177.44.180:4002;
     }
-
-    # =========================
-    # ROUTING MAP (CI/CD MANAGED)
-    # =========================
-
-    map $uri $backend {
+upstream backend_4003 {
+        least_conn;
+        server 10.177.44.180:4003;
+    }
+upstream backend_4004 {
+        least_conn;
+        server 10.177.44.180:4004;
+    }
+upstream backend_4005 {
+        least_conn;
+        server 10.177.44.180:4005;
+    }
+upstream backend_4006 {
+        least_conn;
+        server 10.177.44.180:4006;
+    }
+upstream backend_4007 {
+        least_conn;
+        server 10.177.44.180:4007;
+    }
+upstream backend_4008 {
+        least_conn;
+        server 10.177.44.180:4008;
+    }
+upstream backend_4009 {
+        least_conn;
+        server 10.177.44.180:4009;
+    }
+upstream backend_4010 {
+        least_conn;
+        server 10.177.44.180:4010;
+    }
+upstream backend_4011 {
+        least_conn;
+        server 10.177.44.180:4011;
+    }
+upstream backend_4012 {
+        least_conn;
+        server 10.177.44.180:4012;
+    }
+upstream backend_4013 {
+        least_conn;
+        server 10.177.44.180:4013;
+    }
+upstream backend_4014 {
+        least_conn;
+        server 10.177.44.180:4014;
+    }
+upstream backend_4015 {
+        least_conn;
+        server 10.177.44.180:4015;
+    }
+upstream backend_4016 {
+        least_conn;
+        server 10.177.44.180:4016;
+    }
+upstream backend_4017 {
+        least_conn;
+        server 10.177.44.180:4017;
+    }
+upstream backend_4018 {
+        least_conn;
+        server 10.177.44.180:4018;
+    }
+upstream backend_4019 {
+        least_conn;
+        server 10.177.44.180:4019;
+    }
+upstream backend_4020 {
+        least_conn;
+        server 10.177.44.180:4020;
+    }
+map $uri $backend {
         default "";
 
         include /etc/nginx/routes.map;
     }
-
-    # optional: improve map performance for large datasets
-    map_hash_bucket_size 128;
-    map_hash_max_size 4096;
-
-    # =========================
-    # SERVER BLOCK
-    # =========================
-
-    server {
-        listen 3001;
+	
+server {
+        listen 9090;
         server_name _;
 
         location / {
@@ -69,10 +97,10 @@ http {
 
             proxy_pass http://$backend;
 
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
+           # proxy_set_header Host $host;
+           # proxy_set_header X-Real-IP $remote_addr;
+           # proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+           # proxy_set_header X-Forwarded-Proto $scheme;
 
             proxy_connect_timeout 5s;
             proxy_read_timeout 60s;
@@ -81,14 +109,3 @@ http {
         access_log /var/log/nginx/app_access.log;
         error_log /var/log/nginx/app_error.log;
     }
-}
-
-
-/etc/nginx/routes.map
-
-/path1 backend_4001;
-/path2 backend_4001;
-/path3 backend_4001;
-
-/path5 backend_4002;
-/path6 backend_4002;
