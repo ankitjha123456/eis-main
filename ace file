@@ -139,9 +139,6 @@
 /correction/CustomerToCustomer/payments backend_4002;
 /inspectionParameters/enquiry/amendDetails/customers    backend_4002;
 /NCMCAddMoney_bh/details/misc   backend_4002;
-/BGLToBGL/v1/fundTransfer       backend_4002;
-/BGLToCustomer/v1/fundTransfer  backend_4002;
-/CustomerToBGL/v1/fundTransfer  backend_4002;
 /disbursementDetails/create/accounts    backend_4002;
 /RMN_IVR/chequeDepositedClearance_bth/statusEnquiry/accounts    backend_4002;
 /customerToCustomer/fundTransfer_bh/throughCheque/payments      backend_4002;
@@ -250,7 +247,6 @@
 /customerAOI/dataFetch/misc     backend_4005;
 /form15GH/create/payments       backend_4005;
 /NBC/061000_C/bancs/cbs/customers       backend_4005;
-/limitFlag/update/misc  backend_4005;
 /transactionLimit/fetch/misc    backend_4005;
 /sma/details/CCOD/enquiry/accounts      backend_4005;
 /NBC/061558_E/bancs/cbs/payments        backend_4005;
@@ -274,21 +270,17 @@
 /BGLToCustomer_bth/payments     backend_4005;
 /fundTransfer_bh/enquiry/payments       backend_4005;
 /debitToLoanAcc_th/enquiry/payments     backend_4005;
-/NBC/020453_E/bancs/cbs/payments        backend_4005;
 /ccod/NegotiatedRepayment_bth/enquiry/payments  backend_4005;
 /fundTransfer/CtoC/payments     backend_4005;
 /BANCS/fundTransfer_bth/enquiry/payments        backend_4005;
 /NBC/008083/bancs/cbs/payments  backend_4005;
 /BANCS/fundTransfer/enquiry/payments    backend_4005;
-/NBC/008083/bancs/cbs/payments  backend_4005;
 /loanRepayment_th/transfer/payments     backend_4005;
 /BANCS/fundTransfer_th/enquiry/payments backend_4005;
-/NBC/008083/bancs/cbs/payments  backend_4005;
 /loanRepayment/transfer/payments        backend_4005;
 /BGLToCustomer_th/payments      backend_4005;
 /fundTransfer_Identify/CtoC/payments    backend_4005;
 /BRPaccounting_th/enquiry/payments      backend_4005;
-/NBC/069095/bancs/cbs/payments  backend_4005;
 /ccod/NegotiatedRepayment_th/enquiry/payments   backend_4005;
 /loans/negotiated_emi_repay/amend/payments      backend_4005;
 /loans/negotiated_emi_repay_th/amend/payments   backend_4005;
@@ -300,7 +292,6 @@
 /thirdParty/wrapper/rbih/services/misc  backend_4005;
 /microService/apphealthEnquiry/misc     backend_4005;
 /passbook_th/negativeAck/accounts       backend_4006;
-/NBC/061558_E/bancs/cbs/payments        backend_4006;
 /customer/TDSenquiry_th/payments        backend_4006;
 /glReconciliation/enquiry/accounts      backend_4006;
 /NBC/029043/bancs/cbs/accounts  backend_4006;
@@ -313,11 +304,9 @@
 /validate_bth/otp/payments      backend_4006;
 /digiLocker/getDataList/enquiry/misc    backend_4006;
 /debitToLoanAcc_bth/enquiry/payments    backend_4006;
-/NBC/020453_E/bancs/cbs/payments        backend_4006;
 /customerConsent/segmentation/customers backend_4006;
 /CustomerToBGL_th/payments      backend_4006;
 /BRPaccounting_bth/enquiry/payments     backend_4006;
-/NBC/069095/bancs/cbs/payments  backend_4006;
 /fundTransfer_bth/CtoC/payments backend_4006;
 /channelAccess/micro/enquiry/accounts   backend_4007;
 /panMobilebased/micro/enquiry/customers backend_4007;
@@ -355,11 +344,9 @@
 /customerCreate/TDS/payments    backend_4009;
 /NBC/061558/bancs/cbs/payments  backend_4009;
 /customerCreate_bth/TDS/payments        backend_4009;
-/NBC/061558/bancs/cbs/payments  backend_4009;
 /transactionStatusUpdate/gcc/payments   backend_4009;
 /inbRTGS/fundTransfer/payments  backend_4009;
 /customerCreate_th/TDS/payments backend_4009;
-/NBC/061558/bancs/cbs/payments  backend_4009;
 /NBC/000419/bancs/cbs/payments  backend_4009;
 /fee_th/enquiry/payments        backend_4009;
 /VOSTRO/fundTransfer/Reversal/payments  backend_4009;
@@ -380,7 +367,6 @@
 /depositDetails_bth/update/accounts     backend_4010;
 /customerToCustomer_bh/fundTransfer/payments    backend_4010;
 /customerEnquiry/lightweight/misc       backend_4010;
-/lightweight/customerEnquiry/Micro/customers    backend_4010;
 /loanAdvanceForGreenActivities/Enquiry/accounts backend_4010;
 /NBC/019954/bancs/cbs/accounts  backend_4010;
 /loanAcknowledgementReferred_bth/enquiry/payments       backend_4010;
@@ -409,7 +395,6 @@
 /CA/mr/cbs/accounts     backend_4013;
 /accountInfo/enquiry/accounts   backend_4013;
 /collateralSummary_th/Enquiry/accounts  backend_4014;
-/NBC/000419/bancs/cbs/payments  backend_4014;
 /fee/enquiry/payments   backend_4014;
 /LoansSetHold_th/payments       backend_4014;
 /LoansSetHold_bth/payments      backend_4014;
@@ -466,7 +451,6 @@
 /NBC/000450_47/bancs/cbs/accounts       backend_4019;
 /account_type/home_branch/details/enquiry/accounts      backend_4019;
 /ver/1.0.0/SAN/enquiry_bth/details/payments     backend_4019;
-/NBC/036028/bancs/cbs/payments  backend_4019;
 /accountName/Enquiry/accounts   backend_4019;
 /dedupOn_bth_Orch/PANMobileCheck/customers      backend_4020;
 /pan/loanAccount/creation/customers     backend_4020;
@@ -512,7 +496,6 @@
 /BGLToBGL_th/IBT/payments       backend_4020;
 /BGLToBGL_bth/IBT/payments      backend_4020;
 /SAN/enquiry_bth/details/payments       backend_4020;
-/NBC/036028/bancs/cbs/payments  backend_4020;
 /iCollectSbmops/branch/payments backend_4020;
 /sys_SBIICollect/sbmops/INB/v5/branchPayment    backend_4020;
 /rbi/DEAFaccounts/enquiry/misc  Payment_DEAF;
@@ -522,12 +505,3 @@
 /rbi/DeafReportingData/AmountWiseReport/misc    Payment_DEAF;
 /dotNet/generic/router/misc     Payment_E_N;
 /insta_th/HomeLoan/customers    Payment_E_N;
-
-
-
-for this route file i get 
-[root@eisuatsftp01 nginx]# nginx -t
-nginx: [emerg] conflicting parameter "/bgltobgl/v1/fundtransfer" in /etc/nginx/routes.map:142
-nginx: configuration file /etc/nginx/nginx.conf test failed
-
-this error
