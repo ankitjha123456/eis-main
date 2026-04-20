@@ -1,34 +1,6 @@
-
-#!/bin/bash
-
-find . -name "*.json" | while read f; do
-  # Extract basePath
-  basePath=$(python3 -c "
-import json, sys
-try:
-    d = json.load(open('$f'))
-    print(d.get('basePath',''))
-except: pass
-" 2>/dev/null)
-
-  [ -z "$basePath" ] && continue
-
-  # Extract paths
-  python3 -c "
-import json, sys
-try:
-    d = json.load(open('$f'))
-    basePath = d.get('basePath','')
-    paths = d.get('paths', {})
-    for p in paths:
-        print(basePath.rstrip('/') + p)
-except: pass
-" 2>/dev/null | while read fullPath; do
-    # Extract service name (parent dir of run/)
-    service=$(echo "$f" | sed 's|.*/run/||' | cut -d'/' -f1)
-    # Extract account (e.g. Account_E_05)
-    account=$(echo "$f" | sed 's|\./||' | cut -d'/' -f1)
-    echo "$fullPath  $service  $account"
-  done
-
-done
+2026-04-20 06:32:44.529700: BIP3120E: Exception condition detected on input node 'gen.customerToCustomerFundTransferMR_expDS.HTTP Input'.
+2026-04-20 06:32:44.529792: BIP2230E: Error detected whilst processing a message in node 'gen.customerToCustomerFundTransferMR_expDS.HTTP Reply'.
+2026-04-20 06:32:44.529824: BIP3742E: An attempt was made to use a EVHT message ReplyIdentifier after it had already been used.
+2026-04-20 06:33:57.346316: BIP3120E: Exception condition detected on input node 'gen.customerToBGLFundTransferMR_expDS.HTTP Input'.
+2026-04-20 06:33:57.346380: BIP2230E: Error detected whilst processing a message in node 'gen.customerToBGLFundTransferMR_expDS.HTTP Reply'.
+2026-04-20 06:33:57.346396: BIP3742E: An attempt was made to use a EVHT message ReplyIdentifier after it had already been used.
