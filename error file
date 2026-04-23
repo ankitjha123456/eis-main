@@ -1,131 +1,70 @@
-this is my ApiSearch.jsx:
-const downloadValidationFiles = async (apiName, integrationNode, serverIP, integrationServer) => {
-    const key = `${apiName}-${integrationServer}`;
-    const lastOctet = getLastOctet(serverIP);
-    const brokerName = `${integrationNode}${lastOctet}`;
+DESCRIBE EISAPP.url_mapper;
 
-    setDownloadingValidations(prev => new Set(prev).add(key));
+Name                      Null?    Type            
+------------------------- -------- --------------- 
+LB_URL                    NOT NULL VARCHAR2(500)   
+ROUTE_URL                 NOT NULL VARCHAR2(500)   
+CREATION_DATE_TIME        NOT NULL TIMESTAMP(6)    
+MODIFIED_DATE_TIME                 TIMESTAMP(6)    
+INTERNAL_EXTERNAL_PASS    NOT NULL VARCHAR2(50)    
+DEV_TEAM                  NOT NULL VARCHAR2(20)    
+TAG_MAKER_CHECKER_ENABLED          VARCHAR2(50)    
+SUPERVISORY_ENABLED                VARCHAR2(50)    
+BUSINESS_API_NAME                  VARCHAR2(100)   
+UPDATED_BY                         VARCHAR2(100)   
+WORKLOAD_COUNT                     NUMBER(38)      
+TIMEOUT                            NUMBER(38)      
+CR_NO                              VARCHAR2(100)   
+API_REMARKS                        VARCHAR2(10000) 
+UPLOADED_IN_DEV_PORTAL    NOT NULL VARCHAR2(1)     
+API_TITLE_IN_DEV_PORTAL   NOT NULL VARCHAR2(200)   
+IN_PRODUCTION                      VARCHAR2(1)     
+JAVA_LIBRARY                       VARCHAR2(500)
 
-    try {
-      const response = await fetch("http://10.177.44.58:4423/api/validate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ip: serverIP,
-          brokerName: brokerName,
-          egName: integrationServer,
-          apiName: apiName
-        })
-      });
-
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-
-      const xmlText = await response.text();
-
-      // Parse XML response
-      const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(xmlText, "application/xml");
-
-      // Check for error tag
-      const error = xmlDoc.querySelector("error");
-      if (error) {
-        addToast(`Validation error: ${error.textContent}`, "error");
-        return;
-      }
-
-      const validationFiles = xmlDoc.querySelector("validationFiles");
-      if (!validationFiles) {
-        addToast("No validation files found in response.", "error");
-        return;
-      }
-
-      const apiNodes = validationFiles.children;
-
-      if (apiNodes.length === 0) {
-        addToast("No files returned from server.", "error");
-        return;
-      }
-
-      // Download each file separately
-      let downloadCount = 0;
-      Array.from(apiNodes).forEach((node) => {
-        const fileName    = node.querySelector("fileName")?.textContent?.trim();
-        const fileContent = node.querySelector("fileContent")?.textContent?.trim();
-
-        if (!fileName || fileContent === undefined) return;
-
-        // Name format: apiName(fileName).txt
-        const downloadName = `${apiName}(${fileName}).txt`;
-
-        const blob = new Blob([fileContent], { type: "text/plain" });
-        const url  = window.URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href  = url;
-        link.setAttribute("download", downloadName);
-        document.body.appendChild(link);
-        link.click();
-        link.parentNode.removeChild(link);
-        window.URL.revokeObjectURL(url);
-        downloadCount++;
-      });
-
-      addToast(`✅ Downloaded ${downloadCount} validation file${downloadCount > 1 ? "s" : ""} for ${apiName}`, "success");
-
-    } catch (error) {
-      console.error("Validation download failed:", error);
-      addToast(`Failed to download validation files for ${apiName}: ${error.message}`, "error");
-    } finally {
-      setDownloadingValidations(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(key);
-        return newSet;
-      });
-    }
-  };
-
-
-this is POST url: http://10.177.44.58:4423/api/validate 
-this is data: {"ip":"10.177.44.51","brokerName":"ACCOUNT_EXP","egName":"Account_E_05","apiName":"loanChangeDetails_th_expDS"}
-
-this is response:
-<validationFiles>
-    <Validation>
-        <fileName>Validation.xsd</fileName>
-        <fileContent>
-            <?xml version="1.0" encoding="UTF-8"?>
-            <xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema">
-                <xsd:element name="Input">
-                    <xsd:complexType>
-                        <xsd:all>
-                            <xsd:element name="SOURCE_ID" type="xsd:string" minOccurs="1" maxOccurs="1"></xsd:element>
-                            <xsd:element name="BRANCH_CODE" minOccurs="1" maxOccurs="1">
-                                <xsd:simpleType>
-                                    <xsd:restriction base="xsd:string">
-                                        <xsd:pattern value="\d{1,5}"></xsd:pattern>
-                                    </xsd:restriction>
-                                </xsd:simpleType>
-                            </xsd:element>
-                            <xsd:element name="REQUEST_REFERENCE_NUMBER" minOccurs="1" maxOccurs="1">
-                                <xsd:simpleType>
-                                    <xsd:restriction base="xsd:string">
-                                        <xsd:pattern value="\w{25,25}"></xsd:pattern>
-                                    </xsd:restriction>
-                                </xsd:simpleType>
-                            </xsd:element>
-                            <xsd:element name="ACCOUNT_NUMBER" minOccurs="1" maxOccurs="1">
-                                <xsd:simpleType>
-                                    <xsd:restriction base="xsd:string">
-                                        <xsd:pattern value="\d{11,17}"></xsd:pattern>
-                                    </xsd:restriction>
-                                </xsd:simpleType>
-                            </xsd:element>
-                        </xsd:all>
-                    </xsd:complexType>
-                </xsd:element>
-            </xsd:schema>
-        </fileContent>
-    </Validation>
-</validationFiles>
-
-
-check this i getting internel server error
+DESCRIBE EISAPP.api_log;
+Name                  Null?    Type            
+--------------------- -------- --------------- 
+URN                   NOT NULL VARCHAR2(50)    
+ERROR_CODE                     VARCHAR2(50)    
+ERROR_DESCRIPTION              VARCHAR2(32767) 
+RESPONSE_STATUS                VARCHAR2(8)     
+SOURCE_ID                      VARCHAR2(10)    
+BROKER_EG                      VARCHAR2(40)    
+URL                            VARCHAR2(500)   
+REQUEST_DATE_TIME              TIMESTAMP(6)    
+RESPONSE_DATE_TIME             TIMESTAMP(6)    
+SOURCE_IP                      VARCHAR2(100)   
+CREATION_DATE_TIME             TIMESTAMP(6)    
+EXP_IP                         VARCHAR2(50)    
+ORIGIN_DATE_TIME               TIMESTAMP(6)    
+CLOB_TYPE                      VARCHAR2(1)     
+EXP_PORT                       VARCHAR2(50)    
+BROKER_NAME                    VARCHAR2(50)    
+ORCH                           VARCHAR2(1)     
+DPG_IP                         VARCHAR2(100)   
+DPG_PORT                       VARCHAR2(50)    
+MICRO_CALL                     VARCHAR2(1)     
+ACTIVITY                       VARCHAR2(1000)  
+SUP_FLAG                       VARCHAR2(5)     
+SUP_CAPABILITY                 VARCHAR2(5)     
+SUP_URL                        VARCHAR2(500)   
+TRANSACTION_URN                VARCHAR2(50)    
+ORIGINAL_URN                   VARCHAR2(50)    
+API_NAME                       VARCHAR2(500)   
+ACTUAL_ERROR                   VARCHAR2(32767) 
+DPG_REQUEST_DATE_TIME          TIMESTAMP(6)    
+DB_BROKER_IP                   VARCHAR2(50)    
+DB_QM_BROKER_EG                VARCHAR2(100)   
+URN_INSERT_BYPASS              VARCHAR2(50)    
+CACHE_READ_START               TIMESTAMP(6)    
+CACHE_READ_END                 TIMESTAMP(6)    
+DB_OPERATION                   VARCHAR2(100)   
+DB_INSERT_START                TIMESTAMP(6)    
+DB_INSERT_END                  TIMESTAMP(6)    
+WRITERTIMESTAMP                TIMESTAMP(6)    
+EXP_SYS_LINKER                 VARCHAR2(50)    
+DB_APPLICATION_NAME            VARCHAR2(50)    
+MQ_READ_TIMESTAMP              TIMESTAMP(6)    
+JOURNEY_ID                     VARCHAR2(50)    
+URL_SPECIFIER                  VARCHAR2(100)   
+IO_FLAG                        VARCHAR2(20)    
