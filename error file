@@ -1,70 +1,15 @@
-DESCRIBE EISAPP.url_mapper;
-
-Name                      Null?    Type            
-------------------------- -------- --------------- 
-LB_URL                    NOT NULL VARCHAR2(500)   
-ROUTE_URL                 NOT NULL VARCHAR2(500)   
-CREATION_DATE_TIME        NOT NULL TIMESTAMP(6)    
-MODIFIED_DATE_TIME                 TIMESTAMP(6)    
-INTERNAL_EXTERNAL_PASS    NOT NULL VARCHAR2(50)    
-DEV_TEAM                  NOT NULL VARCHAR2(20)    
-TAG_MAKER_CHECKER_ENABLED          VARCHAR2(50)    
-SUPERVISORY_ENABLED                VARCHAR2(50)    
-BUSINESS_API_NAME                  VARCHAR2(100)   
-UPDATED_BY                         VARCHAR2(100)   
-WORKLOAD_COUNT                     NUMBER(38)      
-TIMEOUT                            NUMBER(38)      
-CR_NO                              VARCHAR2(100)   
-API_REMARKS                        VARCHAR2(10000) 
-UPLOADED_IN_DEV_PORTAL    NOT NULL VARCHAR2(1)     
-API_TITLE_IN_DEV_PORTAL   NOT NULL VARCHAR2(200)   
-IN_PRODUCTION                      VARCHAR2(1)     
-JAVA_LIBRARY                       VARCHAR2(500)
-
-DESCRIBE EISAPP.api_log;
-Name                  Null?    Type            
---------------------- -------- --------------- 
-URN                   NOT NULL VARCHAR2(50)    
-ERROR_CODE                     VARCHAR2(50)    
-ERROR_DESCRIPTION              VARCHAR2(32767) 
-RESPONSE_STATUS                VARCHAR2(8)     
-SOURCE_ID                      VARCHAR2(10)    
-BROKER_EG                      VARCHAR2(40)    
-URL                            VARCHAR2(500)   
-REQUEST_DATE_TIME              TIMESTAMP(6)    
-RESPONSE_DATE_TIME             TIMESTAMP(6)    
-SOURCE_IP                      VARCHAR2(100)   
-CREATION_DATE_TIME             TIMESTAMP(6)    
-EXP_IP                         VARCHAR2(50)    
-ORIGIN_DATE_TIME               TIMESTAMP(6)    
-CLOB_TYPE                      VARCHAR2(1)     
-EXP_PORT                       VARCHAR2(50)    
-BROKER_NAME                    VARCHAR2(50)    
-ORCH                           VARCHAR2(1)     
-DPG_IP                         VARCHAR2(100)   
-DPG_PORT                       VARCHAR2(50)    
-MICRO_CALL                     VARCHAR2(1)     
-ACTIVITY                       VARCHAR2(1000)  
-SUP_FLAG                       VARCHAR2(5)     
-SUP_CAPABILITY                 VARCHAR2(5)     
-SUP_URL                        VARCHAR2(500)   
-TRANSACTION_URN                VARCHAR2(50)    
-ORIGINAL_URN                   VARCHAR2(50)    
-API_NAME                       VARCHAR2(500)   
-ACTUAL_ERROR                   VARCHAR2(32767) 
-DPG_REQUEST_DATE_TIME          TIMESTAMP(6)    
-DB_BROKER_IP                   VARCHAR2(50)    
-DB_QM_BROKER_EG                VARCHAR2(100)   
-URN_INSERT_BYPASS              VARCHAR2(50)    
-CACHE_READ_START               TIMESTAMP(6)    
-CACHE_READ_END                 TIMESTAMP(6)    
-DB_OPERATION                   VARCHAR2(100)   
-DB_INSERT_START                TIMESTAMP(6)    
-DB_INSERT_END                  TIMESTAMP(6)    
-WRITERTIMESTAMP                TIMESTAMP(6)    
-EXP_SYS_LINKER                 VARCHAR2(50)    
-DB_APPLICATION_NAME            VARCHAR2(50)    
-MQ_READ_TIMESTAMP              TIMESTAMP(6)    
-JOURNEY_ID                     VARCHAR2(50)    
-URL_SPECIFIER                  VARCHAR2(100)   
-IO_FLAG                        VARCHAR2(20)    
+SELECT 
+    um.LB_URL,
+    al.SOURCE_ID,
+    COUNT(*) AS HIT_COUNT
+FROM 
+    EISAPP.URL_MAPPER um
+JOIN 
+    EISAPP.API_LOG al
+    ON al.URL LIKE '%' || um.ROUTE_URL || '%'
+GROUP BY 
+    um.LB_URL,
+    al.SOURCE_ID
+ORDER BY 
+    um.LB_URL,
+    al.SOURCE_ID;
