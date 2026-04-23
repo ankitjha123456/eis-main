@@ -1,14 +1,16 @@
 SELECT 
     um.LB_URL,
+    um.ROUTE_URL,
     al.SOURCE_ID,
     COUNT(*) AS HIT_COUNT
 FROM 
     EISAPP.URL_MAPPER um
 JOIN 
     EISAPP.API_LOG al
-    ON al.URL LIKE '%' || um.ROUTE_URL || '%'
+    ON al.URL = um.ROUTE_URL
 GROUP BY 
     um.LB_URL,
+    um.ROUTE_URL,
     al.SOURCE_ID
 ORDER BY 
     um.LB_URL,
