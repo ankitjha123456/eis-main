@@ -1,6 +1,129 @@
-2026-04-20 06:32:44.529700: BIP3120E: Exception condition detected on input node 'gen.customerToCustomerFundTransferMR_expDS.HTTP Input'.
-2026-04-20 06:32:44.529792: BIP2230E: Error detected whilst processing a message in node 'gen.customerToCustomerFundTransferMR_expDS.HTTP Reply'.
-2026-04-20 06:32:44.529824: BIP3742E: An attempt was made to use a EVHT message ReplyIdentifier after it had already been used.
-2026-04-20 06:33:57.346316: BIP3120E: Exception condition detected on input node 'gen.customerToBGLFundTransferMR_expDS.HTTP Input'.
-2026-04-20 06:33:57.346380: BIP2230E: Error detected whilst processing a message in node 'gen.customerToBGLFundTransferMR_expDS.HTTP Reply'.
-2026-04-20 06:33:57.346396: BIP3742E: An attempt was made to use a EVHT message ReplyIdentifier after it had already been used.
+this is azure-pipelines.yml: trigger:
+  branches:
+    include:
+    - refs/heads/main
+
+resources:
+  repositories:
+    - repository: shared
+      type: git
+      name: azure-pipelines
+      ref: refs/heads/main
+
+extends:
+  template: cache.yml@shared
+
+this is cache.yml:
+IntegrationNode: ACCOUNT_EXP
+Cache:
+  - Query: "INSERT into EISDEV.cache_details (FIELD_NAME, FIELD_VALUE, REQUEST_ACTION, PROCESSING_ACTION, RESPONSE_ACTION, SOURCE_ID, BACKEND_TYPE, BACKEND_SUB_TYPE, TRAN_CODE, SERVICE_NAME,CREATION_TIME) VALUES('IT_JVP_THINK361_SA_DOWNLOAD_REPORT_CCSID_TEST13','ST|Y2','SOURCE_ID','SOURCE ID CONFIGURATION','NULL','MULTIPLE','THINK360','SA_DOWNLOAD_REPORT','IT_JVP','thirdPartyAAMAZE_sys',TRUNC(SYSDATE))"
+    FIELD_NAME: "IT_JVP_THINK361_SA_DOWNLOAD_REPORT_CCSID_TEST13"
+    FIELD_VALUE: "ST|Y2"
+in the same repos cache-pipeline
+
+
+and in azure-pipeline repo
+cache.yml: stages:
+# ================= CACHE STAGE =================
+  - stage: Cache
+    displayName: CACHE
+    pool:
+      name: TFS-RH-1
+  #   dependsOn:
+  #     - Validation_Stage
+  #     - Build
+  #   condition: |
+  #     and(
+  #       succeeded('Validation_Stage'),
+  #       eq(dependencies.Validation_Stage.outputs['Validation_Job.val_task.CacheFlag'], 'true'),
+  #       or(
+  #         eq(dependencies.Validation_Stage.outputs['Validation_Job.val_task.DeployFlag'], 'false'),
+  #         succeeded('Build')
+  #       ),
+  #       ne(variables['Build.SourceBranchName'], 'main')
+  #     )
+
+    jobs:
+      - job: Cache_Job
+        displayName: CACHE UPDATE
+        workspace:
+          clean: all
+
+        steps:
+
+          # - download: current
+          #   artifact: drop
+
+          - checkout: self
+            path: s/cache
+
+          - task: CmdLine@2
+            displayName: Update cache in Database
+            env:
+              BRANCH: $(Build.SourceBranchName)
+            inputs:
+              workingDirectory: $(Build.SourcesDirectory)
+              script: |
+                source ~/.bashrc
+                set -e
+                if [ ! -f cache.yml ]; then
+                  echo "cache.yml file was not found !!"
+                  exit 1
+                fi
+
+                yq ".Cache[].Query" cache.yml | while IFS= read -r SQL; do
+                  echo "Executing SQL: $SQL"
+                  OUTPUT=$(echo "$SQL" | isql "$BRANCH" "$DB_USER" "$DB_PASS" 2>&1)
+                  STATUS=$?
+                  if [[ $STATUS -eq 0 ]] && echo "$OUTPUT" | grep -qi "SQLRowCount"; then
+                    echo "SUCCESS: Query executed"
+                  else
+                    echo "FAILED: Query did not execute"
+                    exit 1
+                  fi
+                done
+
+          - task: CmdLine@2
+            displayName: Update Cache in Server
+            env:
+              BRANCH: $(Build.SourceBranchName)
+            inputs:
+              workingDirectory: $(Build.SourcesDirectory)
+              script: |
+                set -e
+                if [ ! -f cache.yml]; then
+                  echo "cache.yml file was not found !!"
+                IntegrationNode=($(yq e ".IntegrationNode" cache.yml))
+                broker_files=()
+
+                for node in "${IntegrationNode[@]}"; do
+                  for broker_file in /home/devops/broker/$BRANCH/${node}*; do
+                    fname=$(basename "$broker_file")
+                    if [[ $fname =~ ^${node}_([0-9]+)\.broker$ ]]; then
+                      broker_files+=("$broker_file")
+                    fi
+                  done
+                done
+
+                if [ ${#broker_files[@]} -eq 0 ]; then
+                  echo "Error: No Integration Node found for $IntegrationNode"
+                  exit 1
+                fi
+
+                for broker_file in "${broker_files[@]}"; do
+                  host=$(cat "$broker_file" | grep host | cut -d"\"" -f4)
+                  if yq -e ".Cache" cache.yml >/dev/null 2>&1; then
+                    response=$(curl --connect-timeout 3 --max-time 5 -s -k -X POST http://"$host":8002/cache/v1/loadCache \
+                    -H "Content-Type: application/json" \
+                    -d "$(yq -o=json ".Cache | map({\"FIELD_NAME\": .FIELD_NAME, \"FIELD_VALUE\": .FIELD_VALUE})" cache.yml)")
+                    if [[ "$response" != *'"RESPONSE":"success"'* ]]; then
+                      echo "Cache load failed: $response"
+                      exit 1
+                    fi
+                    echo "Cache load successful on $host"
+                    echo "$(yq -o=json ".Cache | map({\"FIELD_NAME\": .FIELD_NAME, \"FIELD_VALUE\": .FIELD_VALUE})" cache.yml)"
+                  fi
+                done
+
+
+my query is not inserting is giving fail and make stages also
