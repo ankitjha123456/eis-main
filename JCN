@@ -13,15 +13,20 @@ stages:
 
         steps:
 
+          # ✅ Checkout the shared/template repo (azure-pipelines)
           - checkout: self
-            path: s/cache
+            path: s/shared
+
+          # ✅ Checkout the calling repo (cache-pipeline) where cache.yml lives
+          - checkout: git://YOUR_PROJECT/cache-pipeline@refs/heads/main
+            path: s/cache-pipeline
 
           - task: CmdLine@2
             displayName: Update cache in Database
             env:
               BRANCH: $(Build.SourceBranchName)
             inputs:
-              workingDirectory: $(Build.SourcesDirectory)
+              workingDirectory: $(Agent.BuildDirectory)/s/cache-pipeline   # ✅ point to cache-pipeline
               script: |
                 source ~/.bashrc
                 set -e
@@ -49,7 +54,7 @@ stages:
             env:
               BRANCH: $(Build.SourceBranchName)
             inputs:
-              workingDirectory: $(Build.SourcesDirectory)
+              workingDirectory: $(Agent.BuildDirectory)/s/cache-pipeline   # ✅ point to cache-pipeline
               script: |
                 set -e
 
