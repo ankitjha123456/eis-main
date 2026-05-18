@@ -1,0 +1,34 @@
+========================== Starting Command Output ===========================
+/usr/bin/bash --noprofile --norc /home/azagent/_work/_temp/036501fc-c302-45c3-b59b-53786a8c18ca.sh
+Queued Query #1: INSERT into EISSIT.cache_details (FIELD_NAME, FIELD_VALUE, REQUEST_ACTION, PROCESSING_ACTION, RESPONSE_ACTION, SOURCE_ID, BACKEND_TYPE, BACKEND_SUB_TYPE, TRAN_CODE, SERVICE_NAME,CREATION_TIME) VALUES('IT_JVP_THINK360_SA_DOWNLOAD_REPORT_CCSID_TEST09','ST|Y2_test9','SOURCE_ID','SOURCE ID CONFIGURATION','NULL','MULTIPLE','THINK360','SA_DOWNLOAD_REPORT','IT_JVP','thirdPartyAAMAZE_sys',TRUNC(SYSDATE))
+Queued Query #2: INSERT into EISSIT.cache_details (FIELD_NAME, FIELD_VALUE, REQUEST_ACTION, PROCESSING_ACTION, RESPONSE_ACTION, SOURCE_ID, BACKEND_TYPE, BACKEND_SUB_TYPE, TRAN_CODE, SERVICE_NAME,CREATION_TIME) VALUES('IT_JVP_THINK360_SA_DOWNLOAD_REPORT_CCSID_TEST10','ST|Y2_test9','SOURCE_ID','SOURCE ID CONFIGURATION','NULL','MULTIPLE','THINK360','SA_DOWNLOAD_REPORT','IT_JVP','thirdPartyAAMAZE_sys',TRUNC(SYSDATE))
+Queued Query #3: INSERT into EISSIT.cache_det (FIELD_NAME, FIELD_VALUE, REQUEST_ACTION, PROCESSING_ACTION, RESPONSE_ACTION, SOURCE_ID, BACKEND_TYPE, BACKEND_SUB_TYPE, TRAN_CODE, SERVICE_NAME,CREATION_TIME) VALUES('IT_JVP_THINK360_SA_DOWNLOAD_REPORT_CCSID_TEST11','ST|Y2_test9','SOURCE_ID','SOURCE ID CONFIGURATION','NULL','MULTIPLE','THINK360','SA_DOWNLOAD_REPORT','IT_JVP','thirdPartyAAMAZE_sys',TRUNC(SYSDATE))
+Total queries to execute: 3
++---------------------------------------+
+| Connected!                            |
+|                                       |
+| sql-statement(s)[;]                   |
+| go                                    |
+| \noac                                 |
+| \ac                                   |
+| \commit                               |
+| \rollback                             |
+| \tables                               |
+| \columns <table-name>                 |
+| \quit                                 |
+|                                       |
++---------------------------------------+
+1 SQL> \noac
+AUTOCOMMIT OFF (return status = 0)
+*1 SQL> 
+<RT','IT_JVP','thirdPartyAAMAZE_sys',TRUNC(SYSDATE))
+*2 SQL> 
+<RT','IT_JVP','thirdPartyAAMAZE_sys',TRUNC(SYSDATE))
+*3 SQL> 
+<RT','IT_JVP','thirdPartyAAMAZE_sys',TRUNC(SYSDATE))
+*4 SQL> 
+*5 SQL> \commit
+COMMIT (return status = 0)
+*1 SQL> \quit
+SUCCESS: All 3 queries committed
+Finishing: Update cache in Database
