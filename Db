@@ -1,108 +1,43 @@
-# ================= CACHE STAGE =================
-- stage: Cache
-  displayName: CACHE
-  pool:
-    name: TFS-RH-1
-  dependsOn:
-    - Validation_Stage
-    - Build
-  condition: |
-    and(
-      succeeded('Validation_Stage'),
-      eq(dependencies.Validation_Stage.outputs['Validation_Job.val_task.CacheFlag'], 'true'),
-      or(
-        eq(dependencies.Validation_Stage.outputs['Validation_Job.val_task.DeployFlag'], 'false'),
-        succeeded('Build')
-      ),
-      ne(variables['Build.SourceBranchName'], 'main')
-    )
+script: |
+  source ~/.bashrc
+  set -e
+  if [ ! -f config.yml ]; then
+    echo "config.yml file was not found !!"
+    exit 1
+  fi
 
-  jobs:
-    - job: Cache_Job
-      displayName: CACHE UPDATE
-      workspace:
-        clean: all
+  QUERIES=""
+  QUERY_NUM=0
+  while IFS= read -r SQL; do
+    QUERY_NUM=$((QUERY_NUM + 1))
+    echo "Queued Query #${QUERY_NUM}: $SQL"
+    QUERIES="${QUERIES}${SQL}"$'\n'
+  done < <(yq ".Cache[].Query" config.yml)
 
-      steps:
+  echo "Total queries to execute: $QUERY_NUM"
 
-        - download: current
-          artifact: drop
+  OUTPUT=$(isql -v "$BRANCH" "$DB_USER" "$DB_PASS" 2>&1 <<EOF
+\noac
+${QUERIES}
+\commit
+\quit
+EOF
+  )
+  STATUS=$?
+  echo "$OUTPUT"
 
-        - task: CmdLine@2
-          displayName: Update cache in Database
-          env:
-            BRANCH: $(Build.SourceBranchName)
-          inputs:
-            workingDirectory: $(Pipeline.Workspace)/drop/
-            script: |
-              source ~/.bashrc
-              set -e
-              if [ ! -f config.yml ]; then
-                echo "config.yml file was not found !!"
-                exit 1
-              fi
+  if [[ $STATUS -ne 0 ]] || echo "$OUTPUT" | grep -qi "error\|sqlstate\|ORA-"; then
+    FAILED_ERROR=$(echo "$OUTPUT" | grep -i "ORA-\|ISQL.*ERROR\|S1000")
+    echo "------------------------------------"
+    echo "TRANSACTION FAILED"
+    echo "ERROR: $FAILED_ERROR"
+    echo "All $QUERY_NUM queries have been rolled back"
+    echo "------------------------------------"
+    isql -v "$BRANCH" "$DB_USER" "$DB_PASS" 2>&1 <<EOF
+\rollback
+\quit
+EOF
+    exit 1
+  fi
 
-              QUERIES=""
-              while IFS= read -r SQL; do
-                echo "Queued: $SQL"
-                QUERIES="${QUERIES}${SQL}"$'\n'
-              done < <(yq ".Cache[].Query" config.yml)
-
-              OUTPUT=$(isql -v "$BRANCH" "$DB_USER" "$DB_PASS" -b 2>&1 <<EOF
-              SET AUTOCOMMIT OFF;
-              ${QUERIES}
-              COMMIT;
-              EOF
-                )
-                STATUS=$?
-                echo "$OUTPUT"
-
-                if [[ $STATUS -ne 0 ]] || echo "$OUTPUT" | grep -qi "error\|sqlstate"; then
-                  echo "TRANSACTION FAILED — rolling back"
-                  isql -v "$BRANCH" "$DB_USER" "$DB_PASS" -b <<< "ROLLBACK;" 2>&1
-                  exit 1
-                fi
-
-                echo "SUCCESS: Transaction committed"
-                done
-
-        - task: CmdLine@2
-          displayName: Update Cache in Server
-          env:
-            BRANCH: $(Build.SourceBranchName)
-          inputs:
-            workingDirectory: $(Pipeline.Workspace)/drop/
-            script: |
-              set -e
-
-              IntegrationNode=($(yq e ".IntegrationNode" config.yml))
-              broker_files=()
-
-              for node in "${IntegrationNode[@]}"; do
-                for broker_file in /home/devops/broker/$BRANCH/${node}*; do
-                  fname=$(basename "$broker_file")
-                  if [[ $fname =~ ^${node}_([0-9]+)\.broker$ ]]; then
-                    broker_files+=("$broker_file")
-                  fi
-                done
-              done
-
-              if [ ${#broker_files[@]} -eq 0 ]; then
-                echo "Error: No Integration Node found for $IntegrationNode"
-                exit 1
-              fi
-
-              for broker_file in "${broker_files[@]}"; do
-                host=$(cat "$broker_file" | grep host | cut -d"\"" -f4)
-                if yq -e ".Cache" config.yml >/dev/null 2>&1; then
-                  response=$(curl --connect-timeout 3 --max-time 5 -s -k -X POST http://"$host":8002/cache/v1/loadCache \
-                  -H "Content-Type: application/json" \
-                  -d "$(yq -o=json ".Cache | map({\"FIELD_NAME\": .FIELD_NAME, \"FIELD_VALUE\": .FIELD_VALUE})" config.yml)")
-                  if [[ "$response" != *'"RESPONSE":"success"'* ]]; then
-                    echo "Cache load failed: $response"
-                    exit 1
-                  fi
-                  echo "Cache load successful on $host"
-                  echo "$(yq -o=json ".Cache | map({\"FIELD_NAME\": .FIELD_NAME, \"FIELD_VALUE\": .FIELD_VALUE})" config.yml)"
-                fi
-              done
+  echo "SUCCESS: All $QUERY_NUM queries committed"
