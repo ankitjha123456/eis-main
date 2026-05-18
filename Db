@@ -1,43 +1,43 @@
-script: |
-  source ~/.bashrc
-  set -e
-  if [ ! -f config.yml ]; then
-    echo "config.yml file was not found !!"
-    exit 1
-  fi
+            script: |
+                source ~/.bashrc
+                set -e
+                if [ ! -f config.yml ]; then
+                  echo "config.yml file was not found !!"
+                  exit 1
+                fi
 
-  QUERIES=""
-  QUERY_NUM=0
-  while IFS= read -r SQL; do
-    QUERY_NUM=$((QUERY_NUM + 1))
-    echo "Queued Query #${QUERY_NUM}: $SQL"
-    QUERIES="${QUERIES}${SQL}"$'\n'
-  done < <(yq ".Cache[].Query" config.yml)
+                QUERIES=""
+                QUERY_NUM=0
+                while IFS= read -r SQL; do
+                  QUERY_NUM=$((QUERY_NUM + 1))
+                  echo "Queued Query #${QUERY_NUM}: $SQL"
+                  QUERIES="${QUERIES}${SQL}"$'\n'
+                done < <(yq ".Cache[].Query" config.yml)
 
-  echo "Total queries to execute: $QUERY_NUM"
+                echo "Total queries to execute: $QUERY_NUM"
 
-  OUTPUT=$(isql -v "$BRANCH" "$DB_USER" "$DB_PASS" 2>&1 <<EOF
-\noac
-${QUERIES}
-\commit
-\quit
-EOF
-  )
-  STATUS=$?
-  echo "$OUTPUT"
+                OUTPUT=$(isql -v -n "$BRANCH" "$DB_USER" "$DB_PASS" 2>&1 <<EOF
+                \noac
+                ${QUERIES}
+                \commit
+                \quit
+                EOF
+                )
+                STATUS=$?
+                echo "$OUTPUT"
 
-  if [[ $STATUS -ne 0 ]] || echo "$OUTPUT" | grep -qi "error\|sqlstate\|ORA-"; then
-    FAILED_ERROR=$(echo "$OUTPUT" | grep -i "ORA-\|ISQL.*ERROR\|S1000")
-    echo "------------------------------------"
-    echo "TRANSACTION FAILED"
-    echo "ERROR: $FAILED_ERROR"
-    echo "All $QUERY_NUM queries have been rolled back"
-    echo "------------------------------------"
-    isql -v "$BRANCH" "$DB_USER" "$DB_PASS" 2>&1 <<EOF
-\rollback
-\quit
-EOF
-    exit 1
-  fi
+                if [[ $STATUS -ne 0 ]] || echo "$OUTPUT" | grep -qi "error\|sqlstate\|ORA-"; then
+                  FAILED_ERROR=$(echo "$OUTPUT" | grep -i "ORA-\|ISQL.*ERROR\|S1000")
+                  echo "------------------------------------"
+                  echo "TRANSACTION FAILED"
+                  echo "ERROR: $FAILED_ERROR"
+                  echo "All $QUERY_NUM queries have been rolled back"
+                  echo "------------------------------------"
+                  isql -v "$BRANCH" "$DB_USER" "$DB_PASS" 2>&1 <<EOF
+                \rollback
+                \quit
+                EOF
+                  exit 1
+                fi
 
-  echo "SUCCESS: All $QUERY_NUM queries committed"
+                echo "SUCCESS: All $QUERY_NUM queries committed"
