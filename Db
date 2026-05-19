@@ -50,12 +50,12 @@
                 echo "Queued: $SQL"
               done
 
-              OUTPUT=$(isql -v -b "$BRANCH" "$DB_USER" "$DB_PASS" 2>&1 <<EOF
-\noac
-$(for SQL in "${QUERY_LIST[@]}"; do echo "$SQL"; done)
-\commit
-\quit
-EOF
+              OUTPUT=$(isql -v -b "$BRANCH" "$DB_USER" "$DB_PASS" 2>&1 <<-EOF
+              \noac
+              $(for SQL in "${QUERY_LIST[@]}"; do echo "$SQL"; done)
+              \commit
+              \quit
+              EOF
               )
               echo "$OUTPUT"
 
@@ -67,10 +67,10 @@ EOF
                 echo "TRANSACTION FAILED — rolling back"
                 echo "Queries failed : $FAIL_COUNT"
                 echo "Errors found   : $ERROR_COUNT"
-                isql -v -b "$BRANCH" "$DB_USER" "$DB_PASS" 2>&1 <<EOF
-\rollback
-\quit
-EOF
+                isql -v -b "$BRANCH" "$DB_USER" "$DB_PASS" 2>&1 <<-EOF
+                \rollback
+                \quit
+                EOF
                 exit 1
               fi
 
