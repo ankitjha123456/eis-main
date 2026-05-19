@@ -1,20 +1,129 @@
+we are getting this 
 Total queries to execute: 3
 Queued: INSERT into EISSIT.cache_details (FIELD_NAME, FIELD_VALUE, REQUEST_ACTION, PROCESSING_ACTION, RESPONSE_ACTION, SOURCE_ID, BACKEND_TYPE, BACKEND_SUB_TYPE, TRAN_CODE, SERVICE_NAME,CREATION_TIME) VALUES('IT_JVP_THINK360_SA_DOWNLOAD_REPORT_CCSID_TEST09','ST|Y2_test9','SOURCE_ID','SOURCE ID CONFIGURATION','NULL','MULTIPLE','THINK360','SA_DOWNLOAD_REPORT','IT_JVP','thirdPartyAAMAZE_sys',TRUNC(SYSDATE))
 Queued: INSERT into EISSIT.cache_details (FIELD_NAME, FIELD_VALUE, REQUEST_ACTION, PROCESSING_ACTION, RESPONSE_ACTION, SOURCE_ID, BACKEND_TYPE, BACKEND_SUB_TYPE, TRAN_CODE, SERVICE_NAME,CREATION_TIME) VALUES('IT_JVP_THINK360_SA_DOWNLOAD_REPORT_CCSID_TEST10','ST|Y2_test9','SOURCE_ID','SOURCE ID CONFIGURATION','NULL','MULTIPLE','THINK360','SA_DOWNLOAD_REPORT','IT_JVP','thirdPartyAAMAZE_sys',TRUNC(SYSDATE))
 Queued: INSERT into EISSIT.cache_det (FIELD_NAME, FIELD_VALUE, REQUEST_ACTION, PROCESSING_ACTION, RESPONSE_ACTION, SOURCE_ID, BACKEND_TYPE, BACKEND_SUB_TYPE, TRAN_CODE, SERVICE_NAME,CREATION_TIME) VALUES('IT_JVP_THINK360_SA_DOWNLOAD_REPORT_CCSID_TEST11','ST|Y2_test9','SOURCE_ID','SOURCE ID CONFIGURATION','NULL','MULTIPLE','THINK360','SA_DOWNLOAD_REPORT','IT_JVP','thirdPartyAAMAZE_sys',TRUNC(SYSDATE))
-[ISQL]ERROR: Could not SQLPrepare
-[ISQL]ERROR: Could not SQLExecute
-[ISQL]ERROR: Could not SQLPrepare
-[ISQL]ERROR: Could not SQLPrepare
-[S1000][IBM][ODBC Oracle Wire Protocol driver]Access to file denied '/opt/IBM/Broker_Properties/ODBC/unixodbc/odbc.ini'.
-[S1000][IBM][ODBC Oracle Wire Protocol driver]The Progress Software Corporation product you are attempting to access has been provided to you by IBM for exclusive use with WMQI.  You are not licensed to use this product with any application other than WMQI.   If you would like to purchase this product for some other use, please visit Progress Software Corporation at https://www.progress.com/support 
-[S1000][IBM][ODBC Oracle Wire Protocol driver]General error. setStmtType failed
-[S1000][IBM][ODBC Oracle Wire Protocol driver]Error in SQL Parser.
-SQLRowCount returns 1
-SQLRowCount returns 1
-[S0002][IBM][ODBC Oracle Wire Protocol driver][Oracle]ORA-00942: table or view "EISSIT"."CACHE_DET" does not exist
 
-[S1000][IBM][ODBC Oracle Wire Protocol driver]General error. setStmtType failed
-[S1000][IBM][ODBC Oracle Wire Protocol driver]Error in SQL Parser.
-[S1000][IBM][ODBC Oracle Wire Protocol driver]General error. setStmtType failed
-[S1000][IBM][ODBC Oracle Wire Protocol driver]Error in SQL Parser.
+##[error]Bash exited with code '1'.
+Finishing: Update cache in Database
+
+for this logic:
+
+# ================= CACHE STAGE =================
+- stage: Cache
+  displayName: CACHE
+  pool:
+    name: TFS-RH-1
+  dependsOn:
+    - Validation_Stage
+    - Build
+  condition: |
+    and(
+      succeeded('Validation_Stage'),
+      eq(dependencies.Validation_Stage.outputs['Validation_Job.val_task.CacheFlag'], 'true'),
+      or(
+        eq(dependencies.Validation_Stage.outputs['Validation_Job.val_task.DeployFlag'], 'false'),
+        succeeded('Build')
+      ),
+      ne(variables['Build.SourceBranchName'], 'main')
+    )
+
+  jobs:
+    - job: Cache_Job
+      displayName: CACHE UPDATE
+      workspace:
+        clean: all
+
+      steps:
+
+        - download: current
+          artifact: drop
+
+        - task: CmdLine@2
+          displayName: Update cache in Database
+          env:
+            BRANCH: $(Build.SourceBranchName)
+          inputs:
+            workingDirectory: $(Pipeline.Workspace)/drop/
+            script: |
+              source ~/.bashrc
+              set -e
+              if [ ! -f config.yml ]; then
+                echo "config.yml file was not found !!"
+                exit 1
+              fi
+
+              mapfile -t QUERY_LIST < <(yq ".Cache[].Query" config.yml)
+              QUERY_NUM=${#QUERY_LIST[@]}
+              echo "Total queries to execute: $QUERY_NUM"
+
+              for SQL in "${QUERY_LIST[@]}"; do
+                echo "Queued: $SQL"
+              done
+
+              OUTPUT=$(isql -v -b "$BRANCH" "$DB_USER" "$DB_PASS" 2>&1 <<-EOF
+
+              $(for SQL in "${QUERY_LIST[@]}"; do echo "$SQL"; done)
+              \commit
+              \quit
+              EOF
+              )
+              echo "$OUTPUT"
+
+              FAIL_COUNT=$(echo "$OUTPUT" | grep -c "SQLRowCount returns 0")
+              ERROR_COUNT=$(echo "$OUTPUT" | grep -ci "error\|ORA-\|S1000")
+
+              if [[ $FAIL_COUNT -gt 0 ]] || [[ $ERROR_COUNT -gt 0 ]]; then
+                echo "------------------------------------"
+                echo "TRANSACTION FAILED — rolling back"
+                echo "Queries failed : $FAIL_COUNT"
+                echo "Errors found   : $ERROR_COUNT"
+                isql -v -b "$BRANCH" "$DB_USER" "$DB_PASS" 2>&1 <<-EOF
+                \rollback
+                \quit
+                EOF
+                exit 1
+              fi
+
+              echo "SUCCESS: All $QUERY_NUM queries committed"
+
+        - task: CmdLine@2
+          displayName: Update Cache in Server
+          env:
+            BRANCH: $(Build.SourceBranchName)
+          inputs:
+            workingDirectory: $(Pipeline.Workspace)/drop/
+            script: |
+              set -e
+
+              IntegrationNode=($(yq e ".IntegrationNode" config.yml))
+              broker_files=()
+
+              for node in "${IntegrationNode[@]}"; do
+                for broker_file in /home/devops/broker/$BRANCH/${node}*; do
+                  fname=$(basename "$broker_file")
+                  if [[ $fname =~ ^${node}_([0-9]+)\.broker$ ]]; then
+                    broker_files+=("$broker_file")
+                  fi
+                done
+              done
+
+              if [ ${#broker_files[@]} -eq 0 ]; then
+                echo "Error: No Integration Node found for $IntegrationNode"
+                exit 1
+              fi
+
+              for broker_file in "${broker_files[@]}"; do
+                host=$(cat "$broker_file" | grep host | cut -d"\"" -f4)
+                if yq -e ".Cache" config.yml >/dev/null 2>&1; then
+                  response=$(curl --connect-timeout 3 --max-time 5 -s -k -X POST http://"$host":8002/cache/v1/loadCache \
+                  -H "Content-Type: application/json" \
+                  -d "$(yq -o=json ".Cache | map({\"FIELD_NAME\": .FIELD_NAME, \"FIELD_VALUE\": .FIELD_VALUE})" config.yml)")
+                  if [[ "$response" != *'"RESPONSE":"success"'* ]]; then
+                    echo "Cache load failed: $response"
+                    exit 1
+                  fi
+                  echo "Cache load successful on $host"
+                  echo "$(yq -o=json ".Cache | map({\"FIELD_NAME\": .FIELD_NAME, \"FIELD_VALUE\": .FIELD_VALUE})" config.yml)"
+                fi
+              done
