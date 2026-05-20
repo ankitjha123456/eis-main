@@ -1,103 +1,186 @@
-stages:
-# ================= CACHE STAGE =================
-  - stage: Cache
-    displayName: CACHE
-    pool:
-      name: TFS-RH-1
+import React, { useState, useEffect } from 'react';
+import './CacheHit.css';
 
-    jobs:
-      - job: Cache_Job
-        displayName: CACHE UPDATE
-        workspace:
-          clean: all
+const CacheHitUAT = () => {
+  const [cacheData, setCacheData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [loadingServers, setLoadingServers] = useState(new Set());
 
-        steps:
+  const BASE_URL = 'http://10.177.44.180:8443/UAT/cachehit';
 
-          - checkout: self
-            path: s/shared
+  // Fetch all servers cache data
+  const fetchAllCacheData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(BASE_URL + '/');
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
 
-          - checkout: git://devops_testing/cache-pipeline@refs/heads/main
-            path: s/cache-pipeline
+      
+      setCacheData(data);
+    } catch (e) {
+      console.error("Error fetching cache data:", e);
+      setError('Someone already doing cache hit please wait and try Again!! ');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-          - task: CmdLine@2
-            displayName: Update cache in Database
-            env:
-              BRANCH: DEV
-            inputs:
-              workingDirectory: $(Agent.BuildDirectory)/s/cache-pipeline  
-              script: |
-                source ~/.bashrc
-                set -e
+  // Fetch cache for a specific server
+  const fetchSingleServerCache = async (serverIp) => {
+    const serverNumber = serverIp.split('.').pop(); 
+    setLoadingServers(prev => new Set([...prev, serverIp]));
+    
+    try {
+      const response = await fetch(`http://10.177.44.180:8443/UAT/cachehit1/${serverNumber}`);
+      console.log(response);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log(`Cache data for ${serverIp}:`, data);
+      
+      // Update the specific server in cacheData
+      setCacheData(prevData => 
+        prevData.map(server => 
+          server.server === serverIp 
+            ? { ...server, ...data }
+            : server
+        )
+      );
+      
+    } catch (e) {
+      console.error(`Error fetching cache for ${serverIp}:`, e);
+      
+    } finally {
+      setLoadingServers(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(serverIp);
+        return newSet;
+      });
+    }
+  };
 
-                if [ ! -f cache.yml ]; then
-                  echo "cache.yml file was not found !!"
-                  exit 1
-                fi
+  // Check if a server is currently being loaded
+  const isServerLoading = (serverIp) => {
+    return loadingServers.has(serverIp);
+  };
 
-                yq -r ".Cache[].Query" cache.yml | while IFS= read -r SQL; do
-                  echo "Executing SQL: $SQL"
-                  OUTPUT=$(echo "$SQL" | isql "$BRANCH" "$DB_USER" "$DB_PASS" 2>&1)
-                  STATUS=$?
-                  if [[ $STATUS -eq 0 ]] && echo "$OUTPUT" | grep -qi "SQLRowCount"; then
-                    echo "SUCCESS: Query executed"
-                  else
-                    echo "FAILED: Query did not execute"
-                    echo "Output: $OUTPUT"
-                    exit 1
-                  fi
-                done
+  useEffect(() => {
+    fetchAllCacheData();
+  }, []);
 
-          - task: CmdLine@2
-            displayName: Update Cache in Server
-            env:
-              BRANCH: DEV
-            inputs:
-              workingDirectory: $(Agent.BuildDirectory)/s/cache-pipeline   
-              script: |
-                set -e
+  const getStatusColor = (status) => {
+    return status === 'CACHE HIT SUCCESS' ? 'success' : 'error';
+  };
 
-                if [ ! -f cache.yml ]; then
-                  echo "cache.yml file was not found !!"
-                  exit 1
-                fi
+  const getStatusIcon = (status) => {
+    return status === 'CACHE HIT SUCCESS' ? '✓' : '✗';
+  };
 
-                IntegrationNode=($(yq e ".IntegrationNode" cache.yml))
-                broker_files=()
+  const handleServerClick = (serverIp) => {
+    if (!isServerLoading(serverIp)) {
+      fetchSingleServerCache(serverIp);
+    }
+  };
 
-                for node in "${IntegrationNode[@]}"; do
-                  for broker_file in /home/devops/broker/$BRANCH/${node}*; do
-                    fname=$(basename "$broker_file")
-                    if [[ $fname =~ ^${node}_([0-9]+)\.broker$ ]]; then
-                      broker_files+=("$broker_file")
-                    fi
-                  done
-                done
+  if (loading) {
+    return (
+      <div className="cache-hit-container">
+        <div className="cache-hit-header">
+          <h2>Cache Hit Status</h2>
+        </div>
+        <div className="loading-container">
+          <div className="loading-spinner"></div>
+          <p>Loading cache servers data...</p>
+        </div>
+      </div>
+    );
+  }
 
-                if [ ${#broker_files[@]} -eq 0 ]; then
-                  echo "Error: No Integration Node found for $IntegrationNode"
-                  exit 1
-                fi
+  if (error) {
+    return (
+      <div className="cache-hit-container">
+        <div className="cache-hit-header">
+          <h2>Cache Hit Status</h2>
+          <button className="btn-refresh" onClick={fetchAllCacheData}>
+            Retry
+          </button>
+        </div>
+        <div className="error-message">
+          <p>{error}</p>
+        </div>
+      </div>
+    );
+  }
 
-                for broker_file in "${broker_files[@]}"; do
-                  host=$(cat "$broker_file" | grep host | cut -d"\"" -f4)
-                  if yq -e ".Cache" cache.yml >/dev/null 2>&1; then
-                    response=$(curl --connect-timeout 3 --max-time 5 -s -k -X POST http://"$host":8002/cache/v1/loadCache \
-                      -H "Content-Type: application/json" \
-                      -d "$(yq -o=json ".Cache | map({\"FIELD_NAME\": .FIELD_NAME, \"FIELD_VALUE\": .FIELD_VALUE})" cache.yml)")
-                    if [[ "$response" != *'"RESPONSE":"success"'* ]]; then
-                      echo "Cache load failed: $response"
-                      exit 1
-                    fi
-                    echo "Cache load successful on $host"
-                    echo "$(yq -o=json ".Cache | map({\"FIELD_NAME\": .FIELD_NAME, \"FIELD_VALUE\": .FIELD_VALUE})" cache.yml)"
-                  fi
-                done
-this is my cache.yml in azure-pipeline
+  return (
+    <div className="cache-hit-container">
+      <div className="cache-hit-header">
+        <h2>Cache Hit Status</h2>
+        <button className="btn-refresh" onClick={fetchAllCacheData}>
+          Reload All Cache
+        </button>
+      </div>
 
-Env: UAT
-IntegrationNode: ACCOUNT_EXP
-Cache:
-  - Query: "INSERT into EISDEV.cache_details (FIELD_NAME, FIELD_VALUE, REQUEST_ACTION, PROCESSING_ACTION, RESPONSE_ACTION, SOURCE_ID, BACKEND_TYPE, BACKEND_SUB_TYPE, TRAN_CODE, SERVICE_NAME,CREATION_TIME) VALUES('IT_JVP_THINK361_SA_DOWNLOAD_REPORT_TEST18','ST|Y2','SOURCE_ID','SOURCE ID CONFIGURATION','NULL','MULTIPLE','THINK360','SA_DOWNLOAD_REPORT','IT_JVP','thirdPartyAAMAZE_sys',TRUNC(SYSDATE));"
-    FIELD_NAME: "IT_JVP_THINK361_SA_DOWNLOAD_REPORT_TEST18"
-    FIELD_VALUE: "ST|Y2"
-this 
+      <div className="servers-grid1">
+        {cacheData.map((server, index) => {
+          const isLoading = isServerLoading(server.server);
+          return (
+            <div 
+              key={index} 
+              className={`server-card1 ${getStatusColor(server.CACHE_RESPONSE)} ${isLoading ? 'loading' : ''}`}
+              onClick={() => handleServerClick(server.server)}
+            >
+              <div className="server-status">
+                {isLoading ? (
+                  <span className="status-icon loading">
+                    <div className="mini-spinner"></div>
+                  </span>
+                ) : (
+                  <span className={`status-icon ${getStatusColor(server.CACHE_RESPONSE)}`}>
+                    {getStatusIcon(server.CACHE_RESPONSE)}
+                  </span>
+                )}
+              </div>
+              <div className="server-content">
+                <div className="server-ip">{server.server}</div>
+                <div className="server-response">
+                  {isLoading ? 'Loading...' : server.CACHE_RESPONSE}
+                </div>
+                {server.lastUpdated && (
+                  <div className="server-updated">
+                    Updated: {new Date(server.lastUpdated).toLocaleTimeString()}
+                  </div>
+                )}
+              </div>
+              <div className="server-action">
+                <button 
+                  className="btn-single-refresh"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleServerClick(server.server);
+                  }}
+                  disabled={isLoading}
+                >
+                  {isLoading ? '...' : '↻'}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+export default CacheHitUAT;
