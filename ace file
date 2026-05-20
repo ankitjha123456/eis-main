@@ -10,10 +10,6 @@ SERVERS=(
 PORT="8002"
 ENDPOINT="/cacheOnDB"
 
-# Associative array to store responses
-declare -A RESULTS
-
-# Launch all in parallel using subshells with pipe trick
 for server in "${SERVERS[@]}"; do
     (
         response=$(su - eisuser -c \
@@ -25,23 +21,9 @@ for server in "${SERVERS[@]}"; do
                    -H 'Content-Type: application/json' \
                    -d '{\\\"UPDATE\\\":\\\"Y\\\"}' \"" 2>/dev/null)
 
-        cache_val=$(echo "$response" | sed 's/.*"CACHE RESPONSE":"\([^"]*\)".*/\1/')
-
-        echo "${server}|${cache_val}"
+        echo "=== SERVER: ${server} ==="
+        echo "RAW RESPONSE: [$response]"
     ) &
-done | while IFS='|' read -r server cache_val; do
-    RESULTS["$server"]="$cache_val"
 done
 
 wait
-
-# Print final JSON array
-echo "["
-total=${#SERVERS[@]}
-for i in "${!SERVERS[@]}"; do
-    server="${SERVERS[$i]}"
-    comma=","
-    [ $((i + 1)) -eq $total ] && comma=""
-    echo "  {\"server\":\"${server}\",\"CACHE RESPONSE\":\"${RESULTS[$server]}\"}${comma}"
-done
-echo "]"
