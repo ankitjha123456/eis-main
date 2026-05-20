@@ -10,21 +10,33 @@ SERVERS=(
 PORT="8002"
 ENDPOINT="/cacheOnDB"
 
-for server in "${SERVERS[@]}"; do
-    (
-        response=$(su - eisuser -c \
-            "ssh -o StrictHostKeyChecking=no \
-                 -o ConnectTimeout=10 \
-                 -o BatchMode=yes \
-                 ${server} \
-                 \"curl --silent --location 'http://localhost:${PORT}${ENDPOINT}' \
-                   -H 'Content-Type: application/json' \
-                   -d '{\\\"UPDATE\\\":\\\"Y\\\"}' \"" 2>/dev/null)
+# Collect all parallel outputs into array
+mapfile -t RESULTS < <(
+    for server in "${SERVERS[@]}"; do
+        (
+            response=$(su - eisuser -c \
+                "ssh -o StrictHostKeyChecking=no \
+                     -o ConnectTimeout=10 \
+                     -o BatchMode=yes \
+                     ${server} \
+                     \"curl --silent --location 'http://localhost:${PORT}${ENDPOINT}' \
+                       -H 'Content-Type: application/json' \
+                       -d '{\\\"UPDATE\\\":\\\"Y\\\"}' \"" 2>/dev/null)
 
-        cache_val=$(echo "$response" | sed 's/.*"CACHE_RESPONSE":"\([^"]*\)".*/\1/')
+            cache_val=$(echo "$response" | sed 's/.*"CACHE_RESPONSE":"\([^"]*\)".*/\1/')
 
-        echo "{\"server\":\"${server}\",\"CACHE_RESPONSE\":\"${cache_val}\"}"
-    ) &
+            echo "{\"server\":\"${server}\",\"CACHE_RESPONSE\":\"${cache_val}\"}"
+        ) &
+    done
+    wait
+)
+
+# Print as JSON array
+echo "["
+total=${#RESULTS[@]}
+for i in "${!RESULTS[@]}"; do
+    comma=","
+    [ $((i + 1)) -eq $total ] && comma=""
+    echo "  ${RESULTS[$i]}${comma}"
 done
-
-wait
+echo "]"
