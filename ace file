@@ -21,8 +21,9 @@ for server in "${SERVERS[@]}"; do
                    -H 'Content-Type: application/json' \
                    -d '{\\\"UPDATE\\\":\\\"Y\\\"}' \"" 2>/dev/null)
 
-        echo "=== SERVER: ${server} ==="
-        echo "RAW RESPONSE: [$response]"
+        cache_val=$(echo "$response" | sed 's/.*"CACHE_RESPONSE":"\([^"]*\)".*/\1/')
+
+        echo "{\"server\":\"${server}\",\"CACHE_RESPONSE\":\"${cache_val}\"}"
     ) &
 done
 
