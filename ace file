@@ -1,1 +1,43 @@
-delete FIELD_NAME, FIELD_VALUE, REQUEST_ACTION, PROCESSING_ACTION, RESPONSE_ACTION, SOURCE_ID, BACKEND_TYPE, BACKEND_SUB_TYPE, TRAN_CODE, SERVICE_NAME,CREATION_TIME, from EISAPP.cache_details where field_name='IT_JVP_THINK361_SA_DOWNLOAD_REPORT_TEST19';
+#!/bin/bash
+
+# Runs as root -> su eisuser -> ssh to each server -> curl localhost
+
+SERVERS=(
+    "10.177.44.71"
+    "10.177.44.72"
+    "10.177.44.73"
+    "10.177.44.74"
+)
+
+PORT="8002"
+ENDPOINT="/cacheOnDB"
+PAYLOAD='{"UPDATE":"Y"}'
+
+echo "["
+
+total=${#SERVERS[@]}
+for i in "${!SERVERS[@]}"; do
+    server="${SERVERS[$i]}"
+
+    response=$(su - eisuser -c \
+        "ssh -o StrictHostKeyChecking=no \
+             -o ConnectTimeout=10 \
+             -o BatchMode=yes \
+             ${server} \
+             \"curl --silent --location 'http://localhost:${PORT}${ENDPOINT}' \
+               -H 'Content-Type: application/json' \
+               -d '{\\\"UPDATE\\\":\\\"Y\\\"}' \"" 2>/dev/null)
+
+    escaped_response=$(echo "$response" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr -d '\n')
+
+    comma=","
+    [ $((i + 1)) -eq $total ] && comma=""
+
+    echo "  {"
+    echo "    \"server\": \"${server}\","
+    echo "    \"cache_response\": \"${escaped_response}\""
+    echo "  }${comma}"
+
+done
+
+echo "]"
