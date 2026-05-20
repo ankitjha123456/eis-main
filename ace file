@@ -1,7 +1,5 @@
 #!/bin/bash
 
-# Runs as root -> su eisuser -> ssh to each server -> curl localhost
-
 SERVERS=(
     "10.177.44.71"
     "10.177.44.72"
@@ -11,33 +9,39 @@ SERVERS=(
 
 PORT="8002"
 ENDPOINT="/cacheOnDB"
-PAYLOAD='{"UPDATE":"Y"}'
 
+# Associative array to store responses
+declare -A RESULTS
+
+# Launch all in parallel using subshells with pipe trick
+for server in "${SERVERS[@]}"; do
+    (
+        response=$(su - eisuser -c \
+            "ssh -o StrictHostKeyChecking=no \
+                 -o ConnectTimeout=10 \
+                 -o BatchMode=yes \
+                 ${server} \
+                 \"curl --silent --location 'http://localhost:${PORT}${ENDPOINT}' \
+                   -H 'Content-Type: application/json' \
+                   -d '{\\\"UPDATE\\\":\\\"Y\\\"}' \"" 2>/dev/null)
+
+        cache_val=$(echo "$response" | sed 's/.*"CACHE RESPONSE":"\([^"]*\)".*/\1/')
+
+        echo "${server}|${cache_val}"
+    ) &
+done | while IFS='|' read -r server cache_val; do
+    RESULTS["$server"]="$cache_val"
+done
+
+wait
+
+# Print final JSON array
 echo "["
-
 total=${#SERVERS[@]}
 for i in "${!SERVERS[@]}"; do
     server="${SERVERS[$i]}"
-
-    response=$(su - eisuser -c \
-        "ssh -o StrictHostKeyChecking=no \
-             -o ConnectTimeout=10 \
-             -o BatchMode=yes \
-             ${server} \
-             \"curl --silent --location 'http://localhost:${PORT}${ENDPOINT}' \
-               -H 'Content-Type: application/json' \
-               -d '{\\\"UPDATE\\\":\\\"Y\\\"}' \"" 2>/dev/null)
-
-    escaped_response=$(echo "$response" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr -d '\n')
-
     comma=","
     [ $((i + 1)) -eq $total ] && comma=""
-
-    echo "  {"
-    echo "    \"server\": \"${server}\","
-    echo "    \"cache_response\": \"${escaped_response}\""
-    echo "  }${comma}"
-
+    echo "  {\"server\":\"${server}\",\"CACHE RESPONSE\":\"${RESULTS[$server]}\"}${comma}"
 done
-
 echo "]"
