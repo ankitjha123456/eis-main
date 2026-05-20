@@ -1,17 +1,125 @@
-SELECT 
-    um.LB_URL,
-    um.ROUTE_URL,
-    al.SOURCE_ID,
-    COUNT(*) AS HIT_COUNT
-FROM 
-    EISAPP.URL_MAPPER um
-JOIN 
-    EISAPP.API_LOG al
-    ON al.URL = um.ROUTE_URL
-GROUP BY 
-    um.LB_URL,
-    um.ROUTE_URL,
-    al.SOURCE_ID
-ORDER BY 
-    um.LB_URL,
-    al.SOURCE_ID;
+Application name : EKYCGetDetails_orchDS
+branch: PRE-PROD
+Error: cannot get keys of !!null, keys only works for maps and arrays
+
+
+
+# ============== Validation and Initialization ============
+- stage: Validation_Stage
+  displayName: Validation and Intialization
+  pool:
+    name: TFS-RH-1
+
+  jobs:
+    - job: Validation_Job
+      displayName: Validation
+      workspace:
+        clean: all
+
+      steps:
+
+        - checkout: self
+          path: s/app
+
+        - checkout: git://EISGITREPO/eis-configuration@refs/heads/config
+          path: s/eis-configurations
+
+        - task: CmdLine@2
+          name: val_task
+          env:
+            BRANCH: $(Build.SourceBranchName)
+          displayName: Validating repository
+          inputs:
+            script: |
+              set -e
+
+              applicationName=$(ls -1 "$(Build.SourcesDirectory)/app" | grep -vE "Config|README.md|azure-pipelines.yml" | tail -n 1)
+              echo "Application name : $applicationName"
+              echo "branch: $BRANCH"
+
+              if [ "$BRANCH" = "main" ]; then
+                echo "Branch is 'main' — skipping config validation"
+                echo "##vso[task.setvariable variable=DeployFlag;isOutput=true]false"
+                echo "##vso[task.setvariable variable=CacheFlag;isOutput=true]false"
+                exit 0
+              fi
+
+              CONFIG_FILE="$(Build.SourcesDirectory)/eis-configurations/${BRANCH}_config.yml"
+              OVERRIDE_FILE="$(Build.SourcesDirectory)/eis-configurations/${BRANCH}_override.yml"
+
+              if [ -f "$CONFIG_FILE" ]; then
+                COUNT=$(yq e "keys | map(select(. == \"$applicationName\")) | length" "$CONFIG_FILE")
+                if [ "$COUNT" -gt 1 ]; then
+                    echo "ERROR: Config file '${BRANCH}_config.yml' has duplicate entries for key '$applicationName'."
+                    exit 1
+                fi
+              fi
+
+              if [ -f "$OVERRIDE_FILE" ]; then
+                COUNT=$(yq e "keys | map(select(. == \"$applicationName\")) | length" "$OVERRIDE_FILE")
+                if [ "$COUNT" -gt 1 ]; then
+                  echo "ERROR: Override file '${BRANCH}_override.yml' has duplicate entries for key '$applicationName'."
+                  exit 1
+                fi
+              fi
+
+
+
+              if [ ! -d "$(Build.SourcesDirectory)/app/Config" ]; then
+                mkdir -p "$(Build.SourcesDirectory)/app/Config"
+              fi
+
+              yq e ".$applicationName | select(. != null)" \
+                 "$(Build.SourcesDirectory)/eis-configurations/${BRANCH}_config.yml" \
+                 > "$(Build.SourcesDirectory)/app/Config/config_eis_configuration.yml"
+
+              if [ -s "$(Build.SourcesDirectory)/app/Config/config_eis_configuration.yml" ]; then
+                config_path="$(Build.SourcesDirectory)/app/Config/config_eis_configuration.yml"
+              elif [ -s "$(Build.SourcesDirectory)/app/Config/config.yml" ]; then
+                yq e ".$BRANCH" "$(Build.SourcesDirectory)/app/Config/config.yml" \
+                  > "$(Build.SourcesDirectory)/app/Config/temp.yml" &&
+                mv "$(Build.SourcesDirectory)/app/Config/temp.yml" "$(Build.SourcesDirectory)/app/Config/config.yml"
+                config_path="$(Build.SourcesDirectory)/app/Config/config.yml"
+              else
+                echo "ERROR: config.yml not found"
+                exit 1
+              fi
+
+              REQUIRED_FIELDS=(
+                IntegrationNode
+                IntegrationServer
+              )
+
+              for field in "${REQUIRED_FIELDS[@]}"; do
+                value=$(yq e ".$field // \"\"" "$config_path" | tr -d '[:space:]')
+                if [ -z "$value" ]; then
+                  echo "ERROR: $field is missing or empty"
+                  exit 1
+                fi
+              done
+
+              DEPLOY=$(yq e ".Deploy" "$config_path" | tr -d '[:space:]')
+              CACHE_PRESENT=$(yq e ".Cache // [] | length > 0" "$config_path" | tr -d '[:space:]')
+
+              if [[ "$DEPLOY" =~ ^(false|False)$ ]]; then
+                DEPLOY="false"
+              else
+                DEPLOY="true"
+              fi
+
+              if [[ "$CACHE_PRESENT" =~ ^(true|True)$ ]]; then
+                CACHE_PRESENT="true"
+              else
+                CACHE_PRESENT="false"
+              fi
+
+              if [[ "$DEPLOY" != "true" && "$DEPLOY" != "false" ]]; then
+                echo "Invalid Deploy flag in config.yml"
+                exit 1
+              fi
+
+              echo "##vso[task.setvariable variable=DeployFlag;isOutput=true]$DEPLOY"
+              echo "##vso[task.setvariable variable=CacheFlag;isOutput=true]$CACHE_PRESENT"
+
+
+for this
