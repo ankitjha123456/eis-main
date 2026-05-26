@@ -1,8 +1,3 @@
-`http://10.177.44.180:8443/${brokerPath}/servers/${integrationServer}?tab=contents&q=${apiName}`
-this is the url when i click on api its redirect on this url on another tab
-
-ApiSearch.jsx: 
-
 import React, { useState, useMemo, useEffect } from "react";
 import "./ApiSearch.css";
 
@@ -108,7 +103,6 @@ function ApiSearch() {
   const downloadBarFile = async (apiName, integrationServer, integrationNode, serverIP) => {
     const lastOctet = getLastOctet(serverIP);
     const brokerPath = `${integrationNode}${lastOctet}`;
-    
     const downloadUrl = `http://10.177.44.180:8443/${brokerPath}/apiv2/servers/${integrationServer}?application=${apiName}&referenced_app_domains=true&referenced_policy_projects=true&exclude_source=true&depth=4`;
 
     setDownloadingApis(prev => new Set(prev).add(`${apiName}-${integrationServer}`));
@@ -279,6 +273,7 @@ function ApiSearch() {
 
   useEffect(() => {
     fetchData(endpoints[activeEnv].search);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeEnv]);
 
   const handleRefresh = () => fetchData(endpoints[activeEnv].refresh);
@@ -676,10 +671,24 @@ function ApiSearch() {
                             const running = isApiRunning(item.ApiState);
                             const isActionInProgress = !!serviceAction;
 
+                            const lastOctet = getLastOctet(item.ServerIP);
+                            const brokerPath = `${item.IntegrationNode}${lastOctet}`;
+                            const apiUrl = `http://10.177.44.180:8443/${brokerPath}/servers/${item.IntegrationServer}?tab=contents&q=${item.ApiName}`;
+
                             return (
                               <tr key={index}>
                                 <td className="api-name">
-                                  <div className="name">{item.ApiName}</div>
+                                  <div className="name">
+                                    <a
+                                      href={apiUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      onClick={e => e.stopPropagation()}
+                                      className="api-link"
+                                    >
+                                      {item.ApiName}
+                                    </a>
+                                  </div>
                                 </td>
                                 <td>{item.IntegrationNode}</td>
                                 <td className="ip-address">{item.ServerIP}</td>
@@ -809,4 +818,3 @@ function ApiSearch() {
 }
 
 export default ApiSearch;
-
