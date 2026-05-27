@@ -37,44 +37,24 @@
             script: |
               source ~/.bashrc
               set -e
+
               if [ ! -f config.yml ]; then
                 echo "config.yml file was not found !!"
                 exit 1
               fi
 
-              mapfile -t QUERY_LIST < <(yq ".Cache[].Query" config.yml)
-              QUERY_NUM=${#QUERY_LIST[@]}
-              echo "Total queries to execute: $QUERY_NUM"
-
-              for SQL in "${QUERY_LIST[@]}"; do
-                echo "Queued: $SQL"
+              yq ".Cache[].Query" config.yml | while IFS= read -r SQL; do
+                echo "Executing SQL: $SQL"
+                OUTPUT=$(echo "$SQL" | isql -v "$BRANCH" "$DB_USER" "$DB_PASS" -b 2>&1)
+                STATUS=$?
+                echo "$OUTPUT"
+                if [[ $STATUS -eq 0 ]] && echo "$OUTPUT" | grep -qi "SQLRowCount"; then
+                  echo "SUCCESS: Query executed"
+                else
+                  echo "FAILED: Query did not execute"
+                  exit 1
+                fi
               done
-
-              OUTPUT=$(isql -v -b "$BRANCH" "$DB_USER" "$DB_PASS" 2>&1 <<-EOF
-              \noac
-              $(for SQL in "${QUERY_LIST[@]}"; do echo "$SQL"; done)
-              \commit
-              \quit
-              EOF
-              )
-              echo "$OUTPUT"
-
-              FAIL_COUNT=$(echo "$OUTPUT" | grep -c "SQLRowCount returns 0")
-              ERROR_COUNT=$(echo "$OUTPUT" | grep -ci "error\|ORA-\|S1000")
-
-              if [[ $FAIL_COUNT -gt 0 ]] || [[ $ERROR_COUNT -gt 0 ]]; then
-                echo "------------------------------------"
-                echo "TRANSACTION FAILED — rolling back"
-                echo "Queries failed : $FAIL_COUNT"
-                echo "Errors found   : $ERROR_COUNT"
-                isql -v -b "$BRANCH" "$DB_USER" "$DB_PASS" 2>&1 <<-EOF
-                \rollback
-                \quit
-                EOF
-                exit 1
-              fi
-
-              echo "SUCCESS: All $QUERY_NUM queries committed"
 
         - task: CmdLine@2
           displayName: Update Cache in Server
