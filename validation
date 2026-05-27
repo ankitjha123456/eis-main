@@ -1,47 +1,202 @@
-#!/bin/bash
+import React, { useState, useEffect } from 'react';
+import './CacheHit.css';
 
-if [ "$#" -ne 4 ]; then
-    echo "Usage: $0 <server> <broker> <eg_name> <service_name>"
-    exit 1
-fi
+const CacheHitUAT = () => {
+  const [cacheData, setCacheData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [loadingServers, setLoadingServers] = useState(new Set());
 
-server=$1
-broker=$2
-eg=$3
-service=$4
+  const BASE_URL_1 = 'http://10.177.44.180:8443/UAT/cachehit';
+  const BASE_URL_2 = 'http://10.177.44.58:4423/cache';
 
-REMOTE_PATH="/var/mqsi/components/${broker}/servers/${eg}/run/${service}"
+  // Fetch all servers cache data from both endpoints
+  const fetchAllCacheData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Call both endpoints simultaneously
+      const [res1, res2] = await Promise.allSettled([
+        fetch(BASE_URL_1 + '/'),
+        fetch(BASE_URL_2)
+      ]);
 
-su - eisuser -c "ssh -tq eisuser@$server '
-cd $REMOTE_PATH || { echo \"<error>Path not found</error>\"; exit 1; }
+      let data1 = [];
+      let data2 = [];
 
-echo \"<validationFiles>\"
+      if (res1.status === 'fulfilled' && res1.value.ok) {
+        data1 = await res1.value.json();
+      } else {
+        console.warn('Endpoint 1 failed:', res1);
+      }
 
-# Check for .xsd files in current directory first, then fall back to gen/
-shopt -s nullglob
-xsd_files=(*.xsd)
+      if (res2.status === 'fulfilled' && res2.value.ok) {
+        const raw2 = await res2.value.json();
+        // Handle if response is wrapped: { response: [...] } or plain array
+        data2 = Array.isArray(raw2) ? raw2 : (raw2.response || []);
+      } else {
+        console.warn('Endpoint 2 failed:', res2);
+      }
 
-if [ \${#xsd_files[@]} -eq 0 ]; then
-    if [ -d \"gen\" ]; then
-        cd gen || { echo \"<error>Cannot enter gen directory</error>\"; exit 1; }
-        xsd_files=(*.xsd)
-    fi
-fi
+      // Merge both arrays, avoid duplicate servers
+      const merged = [...data1];
+      data2.forEach(item => {
+        const exists = merged.find(s => s.server === item.server);
+        if (!exists) merged.push(item);
+      });
 
-if [ \${#xsd_files[@]} -eq 0 ]; then
-    echo \"<error>No validation files found</error>\"
-    echo \"</validationFiles>\"
-    exit 1
-fi
+      setCacheData(merged);
 
-for file in \"\${xsd_files[@]}\"; do
-    echo \"  <Validation>\"
-    echo \"    <fileName>\$file</fileName>\"
-    echo \"    <fileContent><![CDATA[\"
-    cat \"\$file\"
-    echo \"    ]]></fileContent>\"
-    echo \"  </Validation>\"
-done
+    } catch (e) {
+      console.error("Error fetching cache data:", e);
+      setError('Someone already doing cache hit please wait and try Again!! ');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-echo \"</validationFiles>\"
-'"
+  // Fetch cache for a specific server
+  const fetchSingleServerCache = async (serverIp) => {
+    const serverNumber = serverIp.split('.').pop();
+    setLoadingServers(prev => new Set([...prev, serverIp]));
+
+    try {
+      // Call both single-server endpoints simultaneously
+      const [res1, res2] = await Promise.allSettled([
+        fetch(`http://10.177.44.180:8443/UAT/cachehit1/${serverNumber}`),
+        fetch(`http://10.177.44.58:4423/cache?servers=${serverNumber}`)
+      ]);
+
+      let data = {};
+
+      if (res1.status === 'fulfilled' && res1.value.ok) {
+        const d = await res1.value.json();
+        data = { ...data, ...d };
+      }
+
+      if (res2.status === 'fulfilled' && res2.value.ok) {
+        const raw = await res2.value.json();
+        const arr = Array.isArray(raw) ? raw : (raw.response || []);
+        const match = arr.find(s => s.server === serverIp);
+        if (match) data = { ...data, ...match };
+      }
+
+      // Update the specific server in cacheData
+      setCacheData(prevData =>
+        prevData.map(server =>
+          server.server === serverIp
+            ? { ...server, ...data, lastUpdated: new Date().toISOString() }
+            : server
+        )
+      );
+
+    } catch (e) {
+      console.error(`Error fetching cache for ${serverIp}:`, e);
+    } finally {
+      setLoadingServers(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(serverIp);
+        return newSet;
+      });
+    }
+  };
+
+  const isServerLoading = (serverIp) => loadingServers.has(serverIp);
+
+  useEffect(() => {
+    fetchAllCacheData();
+  }, []);
+
+  const getStatusColor = (status) => status === 'CACHE HIT SUCCESS' ? 'success' : 'error';
+  const getStatusIcon  = (status) => status === 'CACHE HIT SUCCESS' ? '✓' : '✗';
+
+  const handleServerClick = (serverIp) => {
+    if (!isServerLoading(serverIp)) fetchSingleServerCache(serverIp);
+  };
+
+  if (loading) {
+    return (
+      <div className="cache-hit-container">
+        <div className="cache-hit-header">
+          <h2>Cache Hit Status</h2>
+        </div>
+        <div className="loading-container">
+          <div className="loading-spinner"></div>
+          <p>Loading cache servers data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="cache-hit-container">
+        <div className="cache-hit-header">
+          <h2>Cache Hit Status</h2>
+          <button className="btn-refresh" onClick={fetchAllCacheData}>Retry</button>
+        </div>
+        <div className="error-message">
+          <p>{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="cache-hit-container">
+      <div className="cache-hit-header">
+        <h2>Cache Hit Status</h2>
+        <button className="btn-refresh" onClick={fetchAllCacheData}>
+          Reload All Cache
+        </button>
+      </div>
+
+      <div className="servers-grid1">
+        {cacheData.map((server, index) => {
+          const isLoading = isServerLoading(server.server);
+          return (
+            <div
+              key={index}
+              className={`server-card1 ${getStatusColor(server.CACHE_RESPONSE)} ${isLoading ? 'loading' : ''}`}
+              onClick={() => handleServerClick(server.server)}
+            >
+              <div className="server-status">
+                {isLoading ? (
+                  <span className="status-icon loading">
+                    <div className="mini-spinner"></div>
+                  </span>
+                ) : (
+                  <span className={`status-icon ${getStatusColor(server.CACHE_RESPONSE)}`}>
+                    {getStatusIcon(server.CACHE_RESPONSE)}
+                  </span>
+                )}
+              </div>
+              <div className="server-content">
+                <div className="server-ip">{server.server}</div>
+                <div className="server-response">
+                  {isLoading ? 'Loading...' : server.CACHE_RESPONSE}
+                </div>
+                {server.lastUpdated && (
+                  <div className="server-updated">
+                    Updated: {new Date(server.lastUpdated).toLocaleTimeString()}
+                  </div>
+                )}
+              </div>
+              <div className="server-action">
+                <button
+                  className="btn-single-refresh"
+                  onClick={(e) => { e.stopPropagation(); handleServerClick(server.server); }}
+                  disabled={isLoading}
+                >
+                  {isLoading ? '...' : '↻'}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+export default CacheHitUAT;
