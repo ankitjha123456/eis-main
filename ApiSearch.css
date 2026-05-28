@@ -1,327 +1,3 @@
-.cache-hit-container {
-  padding: 24px;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.cache-hit-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 24px;
-  padding-bottom: 16px;
-  border-bottom: 2px solid #f0f0f0;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.cache-hit-header h2 {
-  color: #2c3e50;
-  margin: 0;
-  font-size: 28px;
-  font-weight: 600;
-}
-
-.header-title {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.header-sub {
-  font-size: 13px;
-  color: #7f8c8d;
-  font-weight: 500;
-}
-
-.header-stats {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-
-.stat {
-  font-size: 13px;
-  font-weight: 600;
-  padding: 4px 12px;
-  border-radius: 20px;
-}
-
-.stat--hit   { background: #d5f4e6; color: #27ae60; }
-.stat--miss  { background: #fadbd8; color: #e74c3c; }
-.stat--error { background: #fef3cd; color: #e67e22; }
-
-.btn-refresh-all {
-  background-color: #3498db;
-  color: white;
-  border: none;
-  padding: 10px 20px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-  transition: all 0.3s ease;
-}
-
-.btn-refresh-all:hover:not(:disabled) {
-  background-color: #2980b9;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-}
-
-.btn-refresh-all:disabled {
-  background-color: #bdc3c7;
-  cursor: not-allowed;
-  transform: none;
-}
-
-.loading-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 80px 20px;
-  text-align: center;
-}
-
-.loading-spinner {
-  width: 50px;
-  height: 50px;
-  border: 4px solid #ecf0f1;
-  border-top: 4px solid #3498db;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin-bottom: 20px;
-}
-
-.mini-spinner {
-  width: 16px;
-  height: 16px;
-  border: 2px solid #ecf0f1;
-  border-top: 2px solid #3498db;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  0%   { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-.error-message {
-  background-color: #f8d7da;
-  color: #721c24;
-  padding: 15px;
-  border-radius: 4px;
-  margin-bottom: 20px;
-  text-align: center;
-}
-
-/* ── Progress bar ────────────────────────────────────────────────────────── */
-.progress-bar-wrap {
-  height: 4px;
-  background: #ecf0f1;
-  border-radius: 2px;
-  margin-bottom: 20px;
-  overflow: hidden;
-}
-
-.progress-bar-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #3498db, #2ecc71);
-  border-radius: 2px;
-  transition: width 0.4s ease;
-}
-
-/* ── Section Label ───────────────────────────────────────────────────────── */
-.section-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: #7f8c8d;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-bottom: 12px;
-}
-
-/* ── Grid ────────────────────────────────────────────────────────────────── */
-.servers-grid1 {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 16px;
-}
-
-/* ── Server Card — exact original structure ──────────────────────────────── */
-.server-card1 {
-  background: white;
-  padding: 20px;
-  border-radius: 12px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  transition: all 0.3s ease;
-  border: 1px solid #e0e0e0;
-  cursor: pointer;
-  position: relative;
-}
-
-.server-card1:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 15px rgba(0, 0, 0, 0.15);
-}
-
-.server-card1.success {
-  border-left: 4px solid #27ae60;
-}
-
-.server-card1.error {
-  border-left: 4px solid #e74c3c;
-}
-
-.server-card1.loading {
-  background-color: #f8f9fa;
-  border-left: 4px solid #3498db;
-}
-
-.server-status {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.status-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  font-weight: bold;
-}
-
-.status-icon.success {
-  background-color: #d5f4e6;
-  color: #27ae60;
-}
-
-.status-icon.error {
-  background-color: #fadbd8;
-  color: #e74c3c;
-}
-
-.status-icon.loading {
-  background-color: #d6eaf8;
-  color: #3498db;
-}
-
-.server-content {
-  flex: 1;
-}
-
-.server-ip {
-  font-size: 16px;
-  font-weight: 600;
-  color: #2c3e50;
-  margin-bottom: 4px;
-}
-
-.server-response {
-  font-size: 14px;
-  color: #7f8c8d;
-  font-weight: 500;
-  margin-bottom: 4px;
-}
-
-.server-updated {
-  font-size: 12px;
-  color: #95a5a6;
-  font-style: italic;
-}
-
-.server-action {
-  margin-left: auto;
-}
-
-.btn-single-refresh {
-  background-color: #95a5a6;
-  color: white;
-  border: none;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  transition: all 0.3s ease;
-}
-
-.btn-single-refresh:hover:not(:disabled) {
-  background-color: #7f8c8d;
-  transform: rotate(90deg);
-}
-
-.btn-single-refresh:disabled {
-  background-color: #bdc3c7;
-  cursor: not-allowed;
-  transform: none;
-}
-
-.server-card1.loading .server-response {
-  color: #3498db;
-  font-weight: 600;
-}
-
-/* ── Shimmer (loading placeholder) ──────────────────────────────────────── */
-.card-shimmer {
-  height: 12px;
-  border-radius: 4px;
-  background: linear-gradient(90deg, #ecf0f1 25%, #d5dbdb 50%, #ecf0f1 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.4s infinite;
-  margin-top: 4px;
-  width: 70%;
-}
-
-@keyframes shimmer {
-  0%   { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
-
-/* ── Responsive ──────────────────────────────────────────────────────────── */
-@media (max-width: 768px) {
-  .cache-hit-container {
-    padding: 16px;
-  }
-
-  .cache-hit-header {
-    flex-direction: column;
-    gap: 16px;
-    align-items: flex-start;
-  }
-
-  .servers-grid1 {
-    grid-template-columns: 1fr;
-  }
-
-  .server-card1 {
-    padding: 16px;
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
 
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -329,18 +5,14 @@ import './CacheHit.css';
 
 // ── Config ───────────────────────────────────────────────────────────────────
 
-const OCTETS = [50,51,52,53,54,55,56,57,60,61,62,63,64,65,66,67];
+const OCTETS = [80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100.101,102,103,104];
 const BASE_IP = '10.177.44';
 
 const EP1_SINGLE = (octet) => `http://10.177.44.180:8443/UAT/cachehit1/${octet}`;
-const EP2_ALL    = 'http://10.177.44.58:4423/cache';
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-const makeCard = (id, ip, source) => ({
+const makeCard = (id, ip) => ({
   id,           // unique key
   ip,           // display IP
-  source,       // 'ep1' | 'ep2'
   status: 'loading',   // loading | success | error
   response: null,
   lastUpdated: null,
@@ -361,17 +33,17 @@ const Badge = ({ status, response }) => {
   const hit = response === 'CACHE HIT SUCCESS';
   return (
     <span className={`badge ${hit ? 'badge--success' : 'badge--miss'}`}>
-      {hit ? '✓ HIT' : '✗ MISS'}
+      {hit ? '✓ HIT' : '✗ FAILED'}
     </span>
   );
 };
 
 const ServerCard = ({ card, onRefresh }) => {
-  const { ip, status, response, lastUpdated, source } = card;
+  const { ip, status, response, lastUpdated } = card;
   const isLoading = status === 'loading';
 
   const cardClass = [
-    'server-card',
+    'server-card1',
     status === 'success' && response === 'CACHE HIT SUCCESS' ? 'card--hit'  : '',
     status === 'success' && response !== 'CACHE HIT SUCCESS' ? 'card--miss' : '',
     status === 'error'   ? 'card--error'   : '',
@@ -394,7 +66,7 @@ const ServerCard = ({ card, onRefresh }) => {
       )}
 
       <div className="card-footer">
-        <span className="card-source">{source === 'ep2' ? 'Cache Svc' : `octet .${ip.split('.').pop()}`}</span>
+        {/* <span className="card-source">{source === 'ep2' ? 'Cache ATM' : `octet .${ip.split('.').pop()}`}</span> */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {lastUpdated && (
             <span className="card-time">{new Date(lastUpdated).toLocaleTimeString()}</span>
@@ -415,10 +87,10 @@ const ServerCard = ({ card, onRefresh }) => {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-const CacheHitUAT = () => {
+const PreprodCache = () => {
   // cards keyed by id, stored as array for ordered rendering
   const [ep1Cards, setEp1Cards] = useState([]);
-  const [ep2Cards, setEp2Cards] = useState([]);
+  // const [ep2Cards, setEp2Cards] = useState([]);
 
   // Patch a single card inside ep1Cards
   const patchEp1 = useCallback((id, patch) => {
@@ -428,11 +100,11 @@ const CacheHitUAT = () => {
   }, []);
 
   // Patch a single card inside ep2Cards
-  const patchEp2 = useCallback((id, patch) => {
-    setEp2Cards(prev =>
-      prev.map(c => c.id === id ? { ...c, ...patch } : c)
-    );
-  }, []);
+  // const patchEp2 = useCallback((id, patch) => {
+  //   setEp2Cards(prev =>
+  //     prev.map(c => c.id === id ? { ...c, ...patch } : c)
+  //   );
+  // }, []);
 
   // Fetch one EP1 server
   const fetchEp1Server = useCallback(async (octet) => {
@@ -442,6 +114,7 @@ const CacheHitUAT = () => {
       const res = await fetch(EP1_SINGLE(octet));
       if (!res.ok) throw new Error('non-ok');
       const data = await res.json();
+      console.log(data);
       // endpoint may return object or array; pick the right item
       const item = Array.isArray(data)
         ? (data.find(s => s.server === ip) ?? data[0])
@@ -457,31 +130,31 @@ const CacheHitUAT = () => {
   }, [patchEp1]);
 
   // Fetch EP2 (returns 4 servers)
-  const fetchEp2 = useCallback(async () => {
-    try {
-      const res = await fetch(EP2_ALL);
-      if (!res.ok) throw new Error('non-ok');
-      const raw  = await res.json();
-      const arr  = Array.isArray(raw) ? raw : (raw.response ?? []);
+  // const fetchEp2 = useCallback(async () => {
+  //   try {
+  //     const res = await fetch(EP2_ALL);
+  //     if (!res.ok) throw new Error('non-ok');
+  //     const raw  = await res.json();
+  //     const arr  = Array.isArray(raw) ? raw : (raw.response ?? []);
 
-      // Replace ep2Cards with the resolved data
-      setEp2Cards(
-        arr.map((item, i) => ({
-          id:          `ep2-${i}`,
-          ip:          item.server ?? `ep2-server-${i}`,
-          source:      'ep2',
-          status:      'success',
-          response:    item.CACHE_RESPONSE ?? 'N/A',
-          lastUpdated: new Date().toISOString(),
-        }))
-      );
-    } catch {
-      // Mark all ep2 cards as error
-      setEp2Cards(prev =>
-        prev.map(c => ({ ...c, status: 'error', lastUpdated: new Date().toISOString() }))
-      );
-    }
-  }, []);
+  //     // Replace ep2Cards with the resolved data
+  //     setEp2Cards(
+  //       arr.map((item, i) => ({
+  //         id:          `ep2-${i}`,
+  //         ip:          item.server ?? `ep2-server-${i}`,
+  //         source:      'ep2',
+  //         status:      'success',
+  //         response:    item.CACHE_RESPONSE ?? 'N/A',
+  //         lastUpdated: new Date().toISOString(),
+  //       }))
+  //     );
+  //   } catch {
+  //     // Mark all ep2 cards as error
+  //     setEp2Cards(prev =>
+  //       prev.map(c => ({ ...c, status: 'error', lastUpdated: new Date().toISOString() }))
+  //     );
+  //   }
+  // }, []);
 
   // Refresh a single card
   const handleRefresh = useCallback((card) => {
@@ -491,10 +164,10 @@ const CacheHitUAT = () => {
       fetchEp1Server(octet);
     } else {
       // re-fetch all ep2 and mark ep2 cards loading
-      setEp2Cards(prev => prev.map(c => ({ ...c, status: 'loading' })));
-      fetchEp2();
+      // setEp2Cards(prev => prev.map(c => ({ ...c, status: 'loading' })));
+      // fetchEp2();
     }
-  }, [patchEp1, fetchEp1Server, fetchEp2]);
+  }, [patchEp1, fetchEp1Server]);
 
   // ── Bootstrap ─────────────────────────────────────────────────────────────
 
@@ -508,21 +181,21 @@ const CacheHitUAT = () => {
     setEp1Cards(initialEp1);
 
     // Seed 1 EP2 placeholder card while we wait
-    setEp2Cards([makeCard('ep2-placeholder', 'Cache Service', 'ep2')]);
+    // setEp2Cards([makeCard('ep2-placeholder', 'Cache Service', 'ep2')]);
 
     // Fire all EP1 requests in parallel
     OCTETS.forEach(octet => fetchEp1Server(octet));
 
     // Fire EP2 in parallel with EP1
-    fetchEp2();
-  }, [fetchEp1Server, fetchEp2]);
+    // fetchEp2();
+  }, [fetchEp1Server]);
 
   useEffect(() => {
     loadAll();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Stats ─────────────────────────────────────────────────────────────────
-  const allCards    = [...ep1Cards, ...ep2Cards];
+  const allCards    = [...ep1Cards];
   const totalDone   = allCards.filter(c => c.status !== 'loading').length;
   const totalCards  = allCards.length;
   const totalHits   = allCards.filter(c => c.response === 'CACHE HIT SUCCESS').length;
@@ -541,13 +214,13 @@ const CacheHitUAT = () => {
         </div>
 
         <div className="header-stats">
-          <span className="stat stat--hit">✓ {totalHits} Hit</span>
-          <span className="stat stat--miss">✗ {totalMisses} Miss</span>
-          {totalErrors > 0 && <span className="stat stat--error">⚠ {totalErrors} Err</span>}
+          <span className="stat stat--hit"> {totalHits} Success</span>
+          <span className="stat stat--miss"> {totalMisses} Failed</span>
+          {totalErrors > 0 && <span className="stat stat--error">⚠ {totalErrors} Failed</span>}
         </div>
 
         <button className="btn-refresh-all" onClick={loadAll}>
-          ↻ Reload All
+          ↻ Load all cache
         </button>
       </div>
 
@@ -562,20 +235,20 @@ const CacheHitUAT = () => {
       <div className="section-label">UAT Cache Servers</div>
       <div className="servers-grid1">
         {ep1Cards.map(card => (
-          <ServerCard key={card.id} card={card} onRefresh={handleRefresh} />
+          <ServerCard key={card.id} card={card}  />
         ))}
       </div>
 
       {/* EP2 Section */}
-      <div className="section-label" style={{ marginTop: 28 }}>Cache Service (10.177.44.58)</div>
+      {/* <div className="section-label" style={{ marginTop: 28 }}>cache load for ATM</div>
       <div className="servers-grid1">
         {ep2Cards.map(card => (
           <ServerCard key={card.id} card={card} onRefresh={handleRefresh} />
         ))}
-      </div>
+      </div> */}
 
     </div>
   );
 };
 
-export default CacheHitUAT;
+export default PreprodCache;
