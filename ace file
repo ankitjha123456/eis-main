@@ -1,42 +1,236 @@
-#!/bin/bash
 
-SERVERS=(
-    "10.177.44.71"
-    "10.177.44.72"
-    "10.177.44.73"
-    "10.177.44.74"
-)
 
-PORT="8002"
-ENDPOINT="/cacheOnDB"
 
-# Collect all parallel outputs into array
-mapfile -t RESULTS < <(
-    for server in "${SERVERS[@]}"; do
-        (
-            response=$(su - eisuser -c \
-                "ssh -o StrictHostKeyChecking=no \
-                     -o ConnectTimeout=10 \
-                     -o BatchMode=yes \
-                     ${server} \
-                     \"curl --silent --location 'http://localhost:${PORT}${ENDPOINT}' \
-                       -H 'Content-Type: application/json' \
-                       -d '{\\\"UPDATE\\\":\\\"Y\\\"}' \"" 2>/dev/null)
+.cache-hit-container {
+  padding: 24px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
 
-            cache_val=$(echo "$response" | sed 's/.*"CACHE_RESPONSE":"\([^"]*\)".*/\1/')
+.cache-hit-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid #f0f0f0;
+}
 
-            echo "{\"server\":\"${server}\",\"CACHE_RESPONSE\":\"${cache_val}\"}"
-        ) &
-    done
-    wait
-)
+.cache-hit-header h2 {
+  color: #2c3e50;
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+}
 
-# Print as JSON array
-echo "["
-total=${#RESULTS[@]}
-for i in "${!RESULTS[@]}"; do
-    comma=","
-    [ $((i + 1)) -eq $total ] && comma=""
-    echo "  ${RESULTS[$i]}${comma}"
-done
-echo "]"
+.btn-refresh {
+  background-color: #3498db;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.btn-refresh:hover {
+  background-color: #2980b9;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+  text-align: center;
+}
+
+.loading-spinner {
+  width: 50px;
+  height: 50px;
+  border: 4px solid #ecf0f1;
+  border-top: 4px solid #3498db;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 20px;
+}
+
+.mini-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #ecf0f1;
+  border-top: 2px solid #3498db;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.error-message {
+  background-color: #f8d7da;
+  color: #721c24;
+  padding: 15px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+/* Server Grid */
+.servers-grid1 {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.server-card1 {
+  background: white;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  transition: all 0.3s ease;
+  border: 1px solid #e0e0e0;
+  cursor: pointer;
+  position: relative;
+}
+
+.server-card1:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 15px rgba(0, 0, 0, 0.15);
+}
+
+.server-card1.success {
+  border-left: 4px solid #27ae60;
+}
+
+.server-card1.error {
+  border-left: 4px solid #e74c3c;
+}
+
+.server-card1.loading {
+  background-color: #f8f9fa;
+  border-left: 4px solid #3498db;
+}
+
+.server-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.status-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.status-icon.success {
+  background-color: #d5f4e6;
+  color: #27ae60;
+}
+
+.status-icon.error {
+  background-color: #fadbd8;
+  color: #e74c3c;
+}
+
+.status-icon.loading {
+  background-color: #d6eaf8;
+  color: #3498db;
+}
+
+.server-content {
+  flex: 1;
+}
+
+.server-ip {
+  font-size: 16px;
+  font-weight: 600;
+  color: #2c3e50;
+  margin-bottom: 4px;
+}
+
+.server-response {
+  font-size: 14px;
+  color: #7f8c8d;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.server-updated {
+  font-size: 12px;
+  color: #95a5a6;
+  font-style: italic;
+}
+
+.server-action {
+  margin-left: auto;
+}
+
+.btn-single-refresh {
+  background-color: #95a5a6;
+  color: white;
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: all 0.3s ease;
+}
+
+.btn-single-refresh:hover:not(:disabled) {
+  background-color: #7f8c8d;
+  transform: rotate(90deg);
+}
+
+.btn-single-refresh:disabled {
+  background-color: #bdc3c7;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Loading state for individual server */
+.server-card1.loading .server-response {
+  color: #3498db;
+  font-weight: 600;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .cache-hit-container {
+    padding: 16px;
+  }
+  
+  .cache-hit-header {
+    flex-direction: column;
+    gap: 16px;
+    align-items: flex-start;
+  }
+  
+  .servers-grid1 {
+    grid-template-columns: 1fr;
+  }
+  
+  .server-card1 {
+    padding: 16px;
+  }
+}
