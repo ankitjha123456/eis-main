@@ -1,202 +1,253 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import './CacheHit.css';
 
-const CacheHitUAT = () => {
-  const [cacheData, setCacheData] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [loadingServers, setLoadingServers] = useState(new Set());
+// ── Config ───────────────────────────────────────────────────────────────────
 
-  const BASE_URL_1 = 'http://10.177.44.180:8443/UAT/cachehit';
-  const BASE_URL_2 = 'http://10.177.44.58:4423/cache';
+const OCTETS = [50,51,52,53,54,55,56,57,60,61,62,63,64,65,66,67];
+const BASE_IP = '10.177.44';
 
-  // Fetch all servers cache data from both endpoints simultaneously
-  const fetchAllCacheData = async () => {
-    setLoading(true);
-    setError(null);
-    try {
+const EP1_SINGLE = (octet) => `http://10.177.44.180:8443/UAT/cachehit1/${octet}`;
+const EP2_ALL    = 'http://10.177.44.58:4423/cache';
 
-      // Both endpoints fire at exactly same time
-      const [res1, res2] = await Promise.all([
-        fetch(BASE_URL_1 + '/'),
-        fetch(BASE_URL_2)
-      ]);
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
-      if (!res1.ok) throw new Error(`Endpoint 1 failed: ${res1.status}`);
-      if (!res2.ok) throw new Error(`Endpoint 2 failed: ${res2.status}`);
+const makeCard = (id, ip, source) => ({
+  id,           // unique key
+  ip,           // display IP
+  source,       // 'ep1' | 'ep2'
+  status: 'loading',   // loading | success | error
+  response: null,
+  lastUpdated: null,
+});
 
-      // Parse both responses simultaneously
-      const [data1, raw2] = await Promise.all([
-        res1.json(),
-        res2.json()
-      ]);
+// ── Sub-components ───────────────────────────────────────────────────────────
 
-      const data2 = Array.isArray(raw2) ? raw2 : (raw2.response || []);
-
-      // Merge both — no duplicates by server IP
-      const merged = [...data1];
-      data2.forEach(item => {
-        const exists = merged.find(s => s.server === item.server);
-        if (!exists) merged.push(item);
-      });
-
-      setCacheData(merged);
-
-    } catch (e) {
-      console.error("Error fetching cache data:", e);
-      setError('Someone already doing cache hit please wait and try Again!! ');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Fetch cache for a specific server from both endpoints simultaneously
-  const fetchSingleServerCache = async (serverIp) => {
-    const serverNumber = serverIp.split('.').pop();
-    setLoadingServers(prev => new Set([...prev, serverIp]));
-
-    try {
-
-      // Both fire at exactly same time
-      const [res1, res2] = await Promise.all([
-        fetch(`http://10.177.44.180:8443/UAT/cachehit1/${serverNumber}`),
-        fetch(`http://10.177.44.58:4423/cache?servers=${serverNumber}`)
-      ]);
-
-      if (!res1.ok) throw new Error(`Endpoint 1 failed: ${res1.status}`);
-      if (!res2.ok) throw new Error(`Endpoint 2 failed: ${res2.status}`);
-
-      // Parse both simultaneously
-      const [d1, raw2] = await Promise.all([
-        res1.json(),
-        res2.json()
-      ]);
-
-      const arr  = Array.isArray(raw2) ? raw2 : (raw2.response || []);
-      const d2   = arr.find(s => s.server === serverIp) || {};
-      const data = { ...d1, ...d2 };
-
-      // Update only that server card
-      setCacheData(prevData =>
-        prevData.map(server =>
-          server.server === serverIp
-            ? { ...server, ...data, lastUpdated: new Date().toISOString() }
-            : server
-        )
-      );
-
-    } catch (e) {
-      console.error(`Error fetching cache for ${serverIp}:`, e);
-    } finally {
-      setLoadingServers(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(serverIp);
-        return newSet;
-      });
-    }
-  };
-
-  const isServerLoading = (serverIp) => loadingServers.has(serverIp);
-
-  useEffect(() => {
-    fetchAllCacheData();
-  }, []);
-
-  const getStatusColor = (status) => status === 'CACHE HIT SUCCESS' ? 'success' : 'error';
-  const getStatusIcon  = (status) => status === 'CACHE HIT SUCCESS' ? '✓' : '✗';
-
-  const handleServerClick = (serverIp) => {
-    if (!isServerLoading(serverIp)) fetchSingleServerCache(serverIp);
-  };
-
-  if (loading) {
+const Badge = ({ status, response }) => {
+  if (status === 'loading')
     return (
-      <div className="cache-hit-container">
-        <div className="cache-hit-header">
-          <h2>Cache Hit Status</h2>
-        </div>
-        <div className="loading-container">
-          <div className="loading-spinner"></div>
-          <p>Loading cache servers data...</p>
-        </div>
-      </div>
+      <span className="badge badge--loading">
+        <span className="spinner-dot" /> Fetching…
+      </span>
     );
-  }
+  if (status === 'error')
+    return <span className="badge badge--error">⚠ Error</span>;
 
-  if (error) {
-    return (
-      <div className="cache-hit-container">
-        <div className="cache-hit-header">
-          <h2>Cache Hit Status</h2>
-          <button className="btn-refresh" onClick={fetchAllCacheData}>
-            Retry
+  const hit = response === 'CACHE HIT SUCCESS';
+  return (
+    <span className={`badge ${hit ? 'badge--success' : 'badge--miss'}`}>
+      {hit ? '✓ HIT' : '✗ MISS'}
+    </span>
+  );
+};
+
+const ServerCard = ({ card, onRefresh }) => {
+  const { ip, status, response, lastUpdated, source } = card;
+  const isLoading = status === 'loading';
+
+  const cardClass = [
+    'server-card',
+    status === 'success' && response === 'CACHE HIT SUCCESS' ? 'card--hit'  : '',
+    status === 'success' && response !== 'CACHE HIT SUCCESS' ? 'card--miss' : '',
+    status === 'error'   ? 'card--error'   : '',
+    status === 'loading' ? 'card--loading' : '',
+  ].filter(Boolean).join(' ');
+
+  return (
+    <div className={cardClass}>
+      <div className="card-top">
+        <span className="card-ip">{ip}</span>
+        <Badge status={status} response={response} />
+      </div>
+
+      {status === 'loading' && <div className="card-shimmer" />}
+      {status === 'success' && (
+        <div className="card-response">{response ?? 'N/A'}</div>
+      )}
+      {status === 'error' && (
+        <div className="card-response card-response--error">Failed to fetch</div>
+      )}
+
+      <div className="card-footer">
+        <span className="card-source">{source === 'ep2' ? 'Cache Svc' : `octet .${ip.split('.').pop()}`}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {lastUpdated && (
+            <span className="card-time">{new Date(lastUpdated).toLocaleTimeString()}</span>
+          )}
+          <button
+            className="btn-refresh-single"
+            onClick={() => onRefresh(card)}
+            disabled={isLoading}
+            title="Refresh"
+          >
+            {isLoading ? '…' : '↻'}
           </button>
         </div>
-        <div className="error-message">
-          <p>{error}</p>
-        </div>
       </div>
+    </div>
+  );
+};
+
+// ── Main Component ────────────────────────────────────────────────────────────
+
+const CacheHitUAT = () => {
+  // cards keyed by id, stored as array for ordered rendering
+  const [ep1Cards, setEp1Cards] = useState([]);
+  const [ep2Cards, setEp2Cards] = useState([]);
+
+  // Patch a single card inside ep1Cards
+  const patchEp1 = useCallback((id, patch) => {
+    setEp1Cards(prev =>
+      prev.map(c => c.id === id ? { ...c, ...patch } : c)
     );
-  }
+  }, []);
+
+  // Patch a single card inside ep2Cards
+  const patchEp2 = useCallback((id, patch) => {
+    setEp2Cards(prev =>
+      prev.map(c => c.id === id ? { ...c, ...patch } : c)
+    );
+  }, []);
+
+  // Fetch one EP1 server
+  const fetchEp1Server = useCallback(async (octet) => {
+    const ip  = `${BASE_IP}.${octet}`;
+    const id  = `ep1-${octet}`;
+    try {
+      const res = await fetch(EP1_SINGLE(octet));
+      if (!res.ok) throw new Error('non-ok');
+      const data = await res.json();
+      // endpoint may return object or array; pick the right item
+      const item = Array.isArray(data)
+        ? (data.find(s => s.server === ip) ?? data[0])
+        : data;
+      patchEp1(id, {
+        status:      'success',
+        response:    item?.CACHE_RESPONSE ?? 'N/A',
+        lastUpdated: new Date().toISOString(),
+      });
+    } catch {
+      patchEp1(id, { status: 'error', lastUpdated: new Date().toISOString() });
+    }
+  }, [patchEp1]);
+
+  // Fetch EP2 (returns 4 servers)
+  const fetchEp2 = useCallback(async () => {
+    try {
+      const res = await fetch(EP2_ALL);
+      if (!res.ok) throw new Error('non-ok');
+      const raw  = await res.json();
+      const arr  = Array.isArray(raw) ? raw : (raw.response ?? []);
+
+      // Replace ep2Cards with the resolved data
+      setEp2Cards(
+        arr.map((item, i) => ({
+          id:          `ep2-${i}`,
+          ip:          item.server ?? `ep2-server-${i}`,
+          source:      'ep2',
+          status:      'success',
+          response:    item.CACHE_RESPONSE ?? 'N/A',
+          lastUpdated: new Date().toISOString(),
+        }))
+      );
+    } catch {
+      // Mark all ep2 cards as error
+      setEp2Cards(prev =>
+        prev.map(c => ({ ...c, status: 'error', lastUpdated: new Date().toISOString() }))
+      );
+    }
+  }, []);
+
+  // Refresh a single card
+  const handleRefresh = useCallback((card) => {
+    if (card.source === 'ep1') {
+      const octet = card.ip.split('.').pop();
+      patchEp1(card.id, { status: 'loading' });
+      fetchEp1Server(octet);
+    } else {
+      // re-fetch all ep2 and mark ep2 cards loading
+      setEp2Cards(prev => prev.map(c => ({ ...c, status: 'loading' })));
+      fetchEp2();
+    }
+  }, [patchEp1, fetchEp1Server, fetchEp2]);
+
+  // ── Bootstrap ─────────────────────────────────────────────────────────────
+
+  const loadAll = useCallback(() => {
+    // Seed EP1 cards immediately (all in loading state) so grid shows at once
+    const initialEp1 = OCTETS.map(octet => makeCard(
+      `ep1-${octet}`,
+      `${BASE_IP}.${octet}`,
+      'ep1'
+    ));
+    setEp1Cards(initialEp1);
+
+    // Seed 1 EP2 placeholder card while we wait
+    setEp2Cards([makeCard('ep2-placeholder', 'Cache Service', 'ep2')]);
+
+    // Fire all EP1 requests in parallel
+    OCTETS.forEach(octet => fetchEp1Server(octet));
+
+    // Fire EP2 in parallel with EP1
+    fetchEp2();
+  }, [fetchEp1Server, fetchEp2]);
+
+  useEffect(() => {
+    loadAll();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Stats ─────────────────────────────────────────────────────────────────
+  const allCards    = [...ep1Cards, ...ep2Cards];
+  const totalDone   = allCards.filter(c => c.status !== 'loading').length;
+  const totalCards  = allCards.length;
+  const totalHits   = allCards.filter(c => c.response === 'CACHE HIT SUCCESS').length;
+  const totalMisses = allCards.filter(c => c.status === 'success' && c.response !== 'CACHE HIT SUCCESS').length;
+  const totalErrors = allCards.filter(c => c.status === 'error').length;
+  const pct         = totalCards > 0 ? Math.round((totalDone / totalCards) * 100) : 0;
 
   return (
     <div className="cache-hit-container">
+
+      {/* Header */}
       <div className="cache-hit-header">
-        <h2>Cache Hit Status</h2>
-        <button className="btn-refresh" onClick={fetchAllCacheData}>
-          Reload All Cache
+        <div className="header-title">
+          <h2>Cache Hit Status</h2>
+          <span className="header-sub">{totalDone}/{totalCards} loaded ({pct}%)</span>
+        </div>
+
+        <div className="header-stats">
+          <span className="stat stat--hit">✓ {totalHits} Hit</span>
+          <span className="stat stat--miss">✗ {totalMisses} Miss</span>
+          {totalErrors > 0 && <span className="stat stat--error">⚠ {totalErrors} Err</span>}
+        </div>
+
+        <button className="btn-refresh-all" onClick={loadAll}>
+          ↻ Reload All
         </button>
       </div>
 
+      {/* Progress bar */}
+      {totalDone < totalCards && (
+        <div className="progress-bar-wrap">
+          <div className="progress-bar-fill" style={{ width: `${pct}%` }} />
+        </div>
+      )}
+
+      {/* EP1 Section */}
+      <div className="section-label">UAT Cache Servers</div>
       <div className="servers-grid1">
-        {cacheData.map((server, index) => {
-          const isLoading = isServerLoading(server.server);
-          return (
-            <div
-              key={index}
-              className={`server-card1 ${getStatusColor(server.CACHE_RESPONSE)} ${isLoading ? 'loading' : ''}`}
-              onClick={() => handleServerClick(server.server)}
-            >
-              <div className="server-status">
-                {isLoading ? (
-                  <span className="status-icon loading">
-                    <div className="mini-spinner"></div>
-                  </span>
-                ) : (
-                  <span className={`status-icon ${getStatusColor(server.CACHE_RESPONSE)}`}>
-                    {getStatusIcon(server.CACHE_RESPONSE)}
-                  </span>
-                )}
-              </div>
-
-              <div className="server-content">
-                <div className="server-ip">{server.server}</div>
-                <div className="server-response">
-                  {isLoading ? 'Loading...' : server.CACHE_RESPONSE}
-                </div>
-                {server.lastUpdated && (
-                  <div className="server-updated">
-                    Updated: {new Date(server.lastUpdated).toLocaleTimeString()}
-                  </div>
-                )}
-              </div>
-
-              <div className="server-action">
-                <button
-                  className="btn-single-refresh"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleServerClick(server.server);
-                  }}
-                  disabled={isLoading}
-                >
-                  {isLoading ? '...' : '↻'}
-                </button>
-              </div>
-            </div>
-          );
-        })}
+        {ep1Cards.map(card => (
+          <ServerCard key={card.id} card={card} onRefresh={handleRefresh} />
+        ))}
       </div>
+
+      {/* EP2 Section */}
+      <div className="section-label" style={{ marginTop: 28 }}>Cache Service (10.177.44.58)</div>
+      <div className="servers-grid1">
+        {ep2Cards.map(card => (
+          <ServerCard key={card.id} card={card} onRefresh={handleRefresh} />
+        ))}
+      </div>
+
     </div>
   );
 };
