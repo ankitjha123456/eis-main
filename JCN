@@ -1,4 +1,4 @@
-[eisuser@az-rh-uat-01 ~]$ cat /opt/IBM/Broker_Properties/ODBC/unixodbc/odbc.ini
+[eisuser@az-rh-uat-01 ~]$ cat /opt/IBM/ace/server/ODBC/unixodbc/odbc.ini
 ;##########################################################################
 ;# ODBC database driver manager initialisation file.                      #
 ;##########################################################################
@@ -19,6 +19,7 @@
 
 [ODBC Data Sources]
 DB2DB=IBM DB2 ODBC Driver
+DB2DSDB=IBM Data Server Driver included in ACE
 ORACLEDB=DataDirect ODBC Oracle Wire Protocol
 ORACLERACDB=DataDirect ODBC Oracle RAC Wire Protocol
 ORACLESSLDB=DataDirect ODBC Oracle SSL Wire Protocol
@@ -29,111 +30,35 @@ INFORMIXDB=IBM Informix ODBC Driver
 SOLIDDB_DB_6.5=IBM Solid DB V6.5 ODBC Driver
 SOLIDDB_DB_7=IBM Solid DB V7 ODBC Driver
 IDSDB=IBM Informix Data Server Driver for ODBC and CLI
+DB2ISERIES=IBM i Access for Linux 64-bit ODBC Driver
+POSTGRESQL=DataDirect ODBC PostgreSQL Wire Protocol
 
 ;###########################################
 ;###### Individual data source stanzas #####
 ;###########################################
 
-[UAT]
-Driver= /opt/IBM/ace/server/ODBC/drivers/lib/UKora95.so
+;# DB2 stanza
+[DB2DB]
+DRIVER=<Your DB2 install directory>/lib64/libdb2o.so
+Description=IBM DB2 ODBC Database
+Database=DB2DB
+
+;# IBM Data Server Driver included in ACE
+;# Use of this driver requires additional configuration of DB2 config files 'db2cli.ini'
+;# or 'db2dsdriver.cfg', and the setting of additional environment variables.
+;# Refer to the Knowledge Center for details of the required configuration.
+[DB2DSDB]
+DRIVER=<Your Broker install directory>/server/ODBC/dsdriver/odbc_cli/clidriver/lib/libdb2o.so
+Description=IBM DB2 ODBC Database accessed using IBM Data Server Driver included in ACE
+Database=<Your DB2 data source name>
+
+;# Oracle stanza
+[ORACLEDB]
+Driver=<Your Broker install directory>/server/ODBC/drivers/lib/UKora95.so
 Description=DataDirect ODBC Oracle Wire Protocol
-CatalogOptions=0
-EnableStaticCursorsForLongData=0
-ApplicationUsingThreads=1
-EnableDescribeParam=1
-OptimizePrepare=1
-WorkArounds=536870912
-ProcedureRetResults=1
-ColumnSizeAsCharacter=1
-LoginTimeout=1
-QueryTimeout=3
-################################################  TLSV1.2 ODBC CONFIGURATION ########################################
-HostName=eissiuat-scan1.sbi.co.in
-PortNumber=1786
-ServiceName=UATIIB_SRV
-#AuthenticationMethod=1
-#KeyPassword=password
-#KeyStore=/opt/IBM/Broker_Properties/TLS/ewallet.p12
-#KeyStorePassword=welcome1
-#TrustStore=/opt/IBM/Broker_Properties/TLS/ewallet.p12
-#TrustStorePassword=welcome1
-#EncryptionMethod=1
-#CryptoProtocolVersion=TLSv1.2
-#ValidateServerCertificate=1
-#EnableNcharSupport=0
-#####################################################################################################################
-
-[PRE-PROD]
-Driver= /opt/IBM/ace/server/ODBC/drivers/lib/UKora95.so
-Description=DataDirect ODBC Oracle Wire Protocol
-HostName=eissiuat-scan1.sbi.co.in
-PortNumber=1786
-ServiceName=PREPROD_SRV
-CatalogOptions=0
-EnableStaticCursorsForLongData=0
-ApplicationUsingThreads=1
-EnableDescribeParam=1
-OptimizePrepare=1
-WorkArounds=536870912
-ProcedureRetResults=1
-ColumnSizeAsCharacter=1
-LoginTimeout=1
-QueryTimeout=3
-
-
-
-
-
-
-[DEV]
-Driver= /opt/IBM/ace/server/ODBC/drivers/lib/UKora95.so
-Description=DataDirect ODBC Oracle Wire Protocol
-HostName=eissiuat-scan1.sbi.co.in
-PortNumber=1786
-ServiceName=UATIIB_SRV
-CatalogOptions=0
-EnableStaticCursorsForLongData=0
-ApplicationUsingThreads=1
-EnableDescribeParam=1
-OptimizePrepare=1
-WorkArounds=536870912
-ProcedureRetResults=1
-ColumnSizeAsCharacter=1
-
-
-
-[SIT]
-Driver= /opt/IBM/ace/server/ODBC/drivers/lib/UKora95.so
-Description=DataDirect ODBC Oracle Wire Protocol
-HostName=eissiuat-scan1.sbi.co.in
-PortNumber=1786
-ServiceName=UATIIB_SRV
-CatalogOptions=0
-EnableStaticCursorsForLongData=0
-ApplicationUsingThreads=1
-EnableDescribeParam=1
-OptimizePrepare=1
-WorkArounds=536870912
-ProcedureRetResults=1
-ColumnSizeAsCharacter=1
-AutoCommit=1
-
-;##########################################
-;###### Mandatory information stanza ######
-;##########################################
-
-[ODBC]
-InstallDir=/opt/IBM/ace/server/ODBC/drivers
-UseCursorLib=0
-IANAAppCodePage=4
-UNICODE=UTF-8
-
-[SIGNATUREZ]
-Driver= /opt/IBM/Broker_Properties/ODBC/drivers/lib/UKora95.so
-Description=DataDirect ODBC Oracle Wire Protocol
-HostName=10.189.15.239
-PortNumber=1558
-SID=f1db_n
+HostName=<Your Oracle Server Machine Name>
+PortNumber=<Port on which Oracle is listening on HostName>
+ServiceName=<Your Oracle Service Name>
 CatalogOptions=0
 EnableStaticCursorsForLongData=0
 ApplicationUsingThreads=1
@@ -143,64 +68,173 @@ WorkArounds=536870912
 ProcedureRetResults=1
 ColumnSizeAsCharacter=1
 LoginTimeout=0
-[eisuser@az-rh-uat-01 ~]$ cat /etc/odbcinst.ini
-# Example driver definitions
+EnableNcharSupport=0
+;# Uncomment the next setting if you wish to use Oracle TIMESTAMP WITH TIMEZONE columns
+;# EnableTimestampwithTimezone=1
 
-# Driver from the postgresql-odbc package
-# Setup from the unixODBC package
-[PostgreSQL]
-Description     = ODBC for PostgreSQL
-Driver          = /usr/lib/psqlodbcw.so
-Setup           = /usr/lib/libodbcpsqlS.so
-Driver64        = /usr/lib64/psqlodbcw.so
-Setup64         = /usr/lib64/libodbcpsqlS.so
-FileUsage       = 1
+;# Oracle Real Application Clusters stanza
+[ORACLERACDB]
+Driver=<Your Broker install directory>/server/ODBC/drivers/lib/UKora95.so
+Description=DataDirect ODBC Oracle RAC Wire Protocol
+HostName=<Your Oracle Server Machine Name>
+PortNumber=<Port on which Oracle is listening on HostName>
+ServiceName=<Your Oracle Real Application Cluster Service Name>
+;#This shows one alternate server definition. Add extra ones using a ',' to seperate each definition.
+AlternateServers=(HostName=<Your alternative hostname>:PortNumber=<Port number on which Oracle is listening on the alternative host>:ServiceName=<Your Oracle Real Application Cluster Service Name>)
+CatalogOptions=0
+EnableStaticCursorsForLongData=0
+ApplicationUsingThreads=1
+EnableDescribeParam=1
+OptimizePrepare=1
+WorkArounds=536870912
+ProcedureRetResults=1
+ColumnSizeAsCharacter=1
+LoginTimeout=0
+EnableNcharSupport=0
+;# Uncomment the next setting if you wish to use Oracle TIMESTAMP WITH TIMEZONE columns
+;# EnableTimestampwithTimezone=1
+
+;# Oracle using SSL stanza
+[ORACLESSLDB]
+Driver=<Your Broker install directory>/server/ODBC/drivers/lib/UKora95.so
+Description=DataDirect ODBC Oracle Wire Protocol
+HostName=<Your Oracle Server Machine Name>
+PortNumber=<Port on which Oracle is listening on HostName>
+ServiceName=<Your Oracle Service Name>
+CatalogOptions=0
+EnableStaticCursorsForLongData=0
+ApplicationUsingThreads=1
+EnableDescribeParam=1
+OptimizePrepare=1
+WorkArounds=536870912
+ProcedureRetResults=1
+ColumnSizeAsCharacter=1
+LoginTimeout=0
+EnableNcharSupport=0
+;# Uncomment the next setting if you wish to use Oracle TIMESTAMP WITH TIMEZONE columns
+;# EnableTimestampwithTimezone=1
+AuthenticationMethod=1
+EncryptionMethod=1
+KeyPassword=<Your SSL Key Password>
+KeyStore=<Your fully qualified key store file name>
+KeyStorePassword=<Your SSL Key Store Password>
+TrustStore=<Your fully qualified trust store file name>
+TrustStorePassword=<Your SSL Trust Store Password>
+ValidateServerCertificate=1
+
+;# Sybase Stanza
+[SYBASEDB]
+Driver=<Your Broker install directory>/server/ODBC/drivers/lib/UKase95.so
+Description=DataDirect ODBC Sybase Wire Protocol
+Database=<Your Database Name>
+ApplicationUsingThreads=1
+EnableDescribeParam=1
+OptimizePrepare=1
+SelectMethod=0
+NetworkAddress=<Your Sybase Server Name>,<Your Sybase Port Number>
+SelectUserName=1
+ColumnSizeAsCharacter=1
+EnableSPColumnTypes=2
+LoginTimeout=0
+TimestampTruncationBehavior=1
+XAConnOptBehavior=3
+
+;# Sybase Stanza for a UTF8 datasource
+[SYBASEDBUTF8]
+Driver=<Your Broker install directory>/server/ODBC/drivers/lib/UKase95.so
+Description=DataDirect ODBC Sybase UTF8 Wire Protocol
+Database=<Your Database Name>
+ApplicationUsingThreads=1
+EnableDescribeParam=1
+OptimizePrepare=1
+SelectMethod=0
+NetworkAddress=<Your Sybase Server Name>,<Your Sybase Port Number>
+SelectUserName=1
+ColumnSizeAsCharacter=1
+Charset=UTF8
+EnableSPColumnTypes=2
+LoginTimeout=0
+TimestampTruncationBehavior=1
+XAConnOptBehavior=3
 
 
-# Driver from the mysql-connector-odbc package in Fedora >=29
-# Setup from the unixODBC package
-[MySQL]
-Description     = ODBC for MySQL 8
-# mysql-connector-odbc package provides shared libraries with "w" or "a" suffix.
-# 'w' stands for 'wide' or 'unicode' character set, 'a' stands for 'ANSI'
-# Symlinks used in the configuration below lead to the 'w' variant by default
-Driver          = /usr/lib/libmyodbc8.so
-Driver64        = /usr/lib64/libmyodbc8.so
-FileUsage       = 1
+;# UNIX to SQLServer stanza
+[SQLSERVERDB]
+Driver=<Your Broker install directory>/server/ODBC/drivers/lib/UKsqls95.so
+Description=DataDirect SQL Server Wire Protocol
+AnsiNPW=1
+LoginTimeout=0
+QueryTimeout=0
+ValidateServerCertificate=0
+Database=<Your Database Name>
+HostName=<Your SQLServer Machine Name>
+PortNumber=<Your SQLServer Port Number>
+;# To specify a named instance of SQLServer replace the HostName and PortNumber lines with
+;#HostName=Your SQLServer Machine Name>\<Your SQLServer Instance Name>
+;# To use Integrated Windows Authentication uncomment the following lines.
+;#AuthenticationMethod=9
+;#Domain=<Your Windows Domain Name>
 
 
-# Driver from the mysql-connector-odbc package in Fedora <=28
-# Setup from the unixODBC package
-[MySQL-5]
-Description     = ODBC for MySQL 5
-# mysql-connector-odbc package provides shared libraries with "w" or "a" suffix.
-# 'w' stands for 'wide' or 'unicode' character set, 'a' stands for 'ANSI'
-# Symlinks used in the configuration below lead to the 'w' variant by default
-Driver          = /usr/lib/libmyodbc5.so
-Driver64        = /usr/lib64/libmyodbc5.so
-Setup           = /usr/lib/libodbcmyS.so
-Setup64         = /usr/lib64/libodbcmyS.so
-FileUsage       = 1
+;# Informix Stanza
+[INFORMIXDB]
+Driver=<Your Informix Client Package install directory>/lib/cli/iclit09b.so
+Description=IBM Informix ODBC Driver
+ServerName=<Your Informix Server Name>
+Database=<Your Database Name>
 
+;# Solid DB V6.5 Stanza
+[SOLIDDB_DB_6.5]
+Driver=<Your SolidDB V6.5 install Directory>/bin/socl2x6465.so
+Description=IBM Solid DB V6.5 ODBC database
+Database=SOLIDDB_DB_6.5
 
-# Driver from the freetds-libs package
-# Setup from the unixODBC package
-[FreeTDS]
-Description     = Free Sybase & MS SQL Driver
-Driver          = /usr/lib/libtdsodbc.so
-Setup           = /usr/lib/libtdsS.so
-Driver64        = /usr/lib64/libtdsodbc.so
-Setup64         = /usr/lib64/libtdsS.so
-Port            = 1433
+;# Solid DB V7 Stanza
+[SOLIDDB_DB_7]
+Driver=<Your SolidDB V7 install Directory>/bin/socl2x6470.so
+Description=IBM Solid DB V7 ODBC database
+Database=SOLIDDB_DB_7
 
+;# IDS stanza
+[IDSDB]
+DRIVER=<Your Data Server Driver Package install directory>/lib/libdb2o.so
+Description=IBM Informix DRDA Database
+Database=IDSDB
 
-# Driver from the mariadb-connector-odbc package
-# Setup from the unixODBC package
-[MariaDB]
-Description     = ODBC for MariaDB
-Driver          = /usr/lib/libmaodbc.so
-Driver64        = /usr/lib64/libmaodbc.so
-FileUsage       = 1
-[eisuser@az-rh-uat-01 ~]$ isql --version
-unixODBC 2.3.9
+;# PostgreSQL Stanza
+[POSTGRESQL]
+Driver=<Your Broker install directory>/server/ODBC/drivers/lib/UKpsql95.so
+Description=DataDirect ODBC PostgreSQL Wire Protocol
+Database=<Your Database Name>
+HostName=<Your PostgreSQL Host Name>
+PortNumber=<Port on which PostgreSQL is listening on HostName>
+
+;# DB2 on iSeries
+[DB2ISERIES]
+Driver=<Your i access client install directory>/lib64/libcwbodbc.so
+Description=IBM i Access for Linux 64-bit ODBC Driver
+System=<Your i Series system name>
+Naming=0
+DefaultLibraries=QGPL
+Database=<Your Database Name or leave blank to use the user-profile's default setting for database>
+ConnectionType=0
+CommitMode=2
+ExtendedDynamic=0
+DefaultPkgLibrary=QGPL
+DefaultPackage=A/DEFAULT(IBM),2,0,1,0,512
+AllowDataCompression=1
+LibraryView=0
+AllowUnsupportedChar=0
+ForceTranslation=0
+Trace=0
+
+;##########################################
+;###### Mandatory information stanza ######
+;##########################################
+
+[ODBC]
+InstallDir=<Your Broker install directory>/server/ODBC/drivers
+UseCursorLib=0
+IANAAppCodePage=4
+UNICODE=UTF-8
 [eisuser@az-rh-uat-01 ~]$
