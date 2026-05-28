@@ -1,4 +1,526 @@
-    sub_filter 'https://10.177.44.52:4419' 'https://10.177.44.180:8443/CUSTOMER_EXP52';
-    sub_filter 'http://10.177.44.52:4419'  'https://10.177.44.180:8443/CUSTOMER_EXP52';
-    sub_filter_once off;
-    sub_filter_types text/html text/css application/javascript application/json;
+import React, { useState, useEffect, useCallback } from 'react';
+import './CacheHit.css';
+
+// ── Config ───────────────────────────────────────────────────────────────────
+
+const OCTETS = [50,51,52,53,54,55,56,57,60,61,62,63,64,65,66,67];
+const BASE_IP = '10.177.44';
+
+const EP1_SINGLE = (octet) => `http://10.177.44.180:8443/UAT/cachehit1/${octet}`;
+const EP2_ALL    = 'http://10.177.44.58:4423/cache';
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+const makeCard = (id, ip, source) => ({
+  id,           // unique key
+  ip,           // display IP
+  source,       // 'ep1' | 'ep2'
+  status: 'loading',   // loading | success | error
+  response: null,
+  lastUpdated: null,
+});
+
+// ── Sub-components ───────────────────────────────────────────────────────────
+
+const Badge = ({ status, response }) => {
+  if (status === 'loading')
+    return (
+      <span className="badge badge--loading">
+        <span className="spinner-dot" /> Fetching…
+      </span>
+    );
+  if (status === 'error')
+    return <span className="badge badge--error">⚠ Error</span>;
+
+  const hit = response === 'CACHE HIT SUCCESS';
+  return (
+    <span className={`badge ${hit ? 'badge--success' : 'badge--miss'}`}>
+      {hit ? '✓ HIT' : '✗ MISS'}
+    </span>
+  );
+};
+
+const ServerCard = ({ card, onRefresh }) => {
+  const { ip, status, response, lastUpdated, source } = card;
+  const isLoading = status === 'loading';
+
+  const cardClass = [
+    'server-card',
+    status === 'success' && response === 'CACHE HIT SUCCESS' ? 'card--hit'  : '',
+    status === 'success' && response !== 'CACHE HIT SUCCESS' ? 'card--miss' : '',
+    status === 'error'   ? 'card--error'   : '',
+    status === 'loading' ? 'card--loading' : '',
+  ].filter(Boolean).join(' ');
+
+  return (
+    <div className={cardClass}>
+      <div className="card-top">
+        <span className="card-ip">{ip}</span>
+        <Badge status={status} response={response} />
+      </div>
+
+      {status === 'loading' && <div className="card-shimmer" />}
+      {status === 'success' && (
+        <div className="card-response">{response ?? 'N/A'}</div>
+      )}
+      {status === 'error' && (
+        <div className="card-response card-response--error">Failed to fetch</div>
+      )}
+
+      <div className="card-footer">
+        <span className="card-source">{source === 'ep2' ? 'Cache Svc' : `octet .${ip.split('.').pop()}`}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {lastUpdated && (
+            <span className="card-time">{new Date(lastUpdated).toLocaleTimeString()}</span>
+          )}
+          <button
+            className="btn-refresh-single"
+            onClick={() => onRefresh(card)}
+            disabled={isLoading}
+            title="Refresh"
+          >
+            {isLoading ? '…' : '↻'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Main Component ────────────────────────────────────────────────────────────
+
+const CacheHitUAT = () => {
+  // cards keyed by id, stored as array for ordered rendering
+  const [ep1Cards, setEp1Cards] = useState([]);
+  const [ep2Cards, setEp2Cards] = useState([]);
+
+  // Patch a single card inside ep1Cards
+  const patchEp1 = useCallback((id, patch) => {
+    setEp1Cards(prev =>
+      prev.map(c => c.id === id ? { ...c, ...patch } : c)
+    );
+  }, []);
+
+  // Patch a single card inside ep2Cards
+  const patchEp2 = useCallback((id, patch) => {
+    setEp2Cards(prev =>
+      prev.map(c => c.id === id ? { ...c, ...patch } : c)
+    );
+  }, []);
+
+  // Fetch one EP1 server
+  const fetchEp1Server = useCallback(async (octet) => {
+    const ip  = `${BASE_IP}.${octet}`;
+    const id  = `ep1-${octet}`;
+    try {
+      const res = await fetch(EP1_SINGLE(octet));
+      if (!res.ok) throw new Error('non-ok');
+      const data = await res.json();
+      // endpoint may return object or array; pick the right item
+      const item = Array.isArray(data)
+        ? (data.find(s => s.server === ip) ?? data[0])
+        : data;
+      patchEp1(id, {
+        status:      'success',
+        response:    item?.CACHE_RESPONSE ?? 'N/A',
+        lastUpdated: new Date().toISOString(),
+      });
+    } catch {
+      patchEp1(id, { status: 'error', lastUpdated: new Date().toISOString() });
+    }
+  }, [patchEp1]);
+
+  // Fetch EP2 (returns 4 servers)
+  const fetchEp2 = useCallback(async () => {
+    try {
+      const res = await fetch(EP2_ALL);
+      if (!res.ok) throw new Error('non-ok');
+      const raw  = await res.json();
+      const arr  = Array.isArray(raw) ? raw : (raw.response ?? []);
+
+      // Replace ep2Cards with the resolved data
+      setEp2Cards(
+        arr.map((item, i) => ({
+          id:          `ep2-${i}`,
+          ip:          item.server ?? `ep2-server-${i}`,
+          source:      'ep2',
+          status:      'success',
+          response:    item.CACHE_RESPONSE ?? 'N/A',
+          lastUpdated: new Date().toISOString(),
+        }))
+      );
+    } catch {
+      // Mark all ep2 cards as error
+      setEp2Cards(prev =>
+        prev.map(c => ({ ...c, status: 'error', lastUpdated: new Date().toISOString() }))
+      );
+    }
+  }, []);
+
+  // Refresh a single card
+  const handleRefresh = useCallback((card) => {
+    if (card.source === 'ep1') {
+      const octet = card.ip.split('.').pop();
+      patchEp1(card.id, { status: 'loading' });
+      fetchEp1Server(octet);
+    } else {
+      // re-fetch all ep2 and mark ep2 cards loading
+      setEp2Cards(prev => prev.map(c => ({ ...c, status: 'loading' })));
+      fetchEp2();
+    }
+  }, [patchEp1, fetchEp1Server, fetchEp2]);
+
+  // ── Bootstrap ─────────────────────────────────────────────────────────────
+
+  const loadAll = useCallback(() => {
+    // Seed EP1 cards immediately (all in loading state) so grid shows at once
+    const initialEp1 = OCTETS.map(octet => makeCard(
+      `ep1-${octet}`,
+      `${BASE_IP}.${octet}`,
+      'ep1'
+    ));
+    setEp1Cards(initialEp1);
+
+    // Seed 1 EP2 placeholder card while we wait
+    setEp2Cards([makeCard('ep2-placeholder', 'Cache Service', 'ep2')]);
+
+    // Fire all EP1 requests in parallel
+    OCTETS.forEach(octet => fetchEp1Server(octet));
+
+    // Fire EP2 in parallel with EP1
+    fetchEp2();
+  }, [fetchEp1Server, fetchEp2]);
+
+  useEffect(() => {
+    loadAll();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Stats ─────────────────────────────────────────────────────────────────
+  const allCards    = [...ep1Cards, ...ep2Cards];
+  const totalDone   = allCards.filter(c => c.status !== 'loading').length;
+  const totalCards  = allCards.length;
+  const totalHits   = allCards.filter(c => c.response === 'CACHE HIT SUCCESS').length;
+  const totalMisses = allCards.filter(c => c.status === 'success' && c.response !== 'CACHE HIT SUCCESS').length;
+  const totalErrors = allCards.filter(c => c.status === 'error').length;
+  const pct         = totalCards > 0 ? Math.round((totalDone / totalCards) * 100) : 0;
+
+  return (
+    <div className="cache-hit-container">
+
+      {/* Header */}
+      <div className="cache-hit-header">
+        <div className="header-title">
+          <h2>Cache Hit Status</h2>
+          <span className="header-sub">{totalDone}/{totalCards} loaded ({pct}%)</span>
+        </div>
+
+        <div className="header-stats">
+          <span className="stat stat--hit">✓ {totalHits} Hit</span>
+          <span className="stat stat--miss">✗ {totalMisses} Miss</span>
+          {totalErrors > 0 && <span className="stat stat--error">⚠ {totalErrors} Err</span>}
+        </div>
+
+        <button className="btn-refresh-all" onClick={loadAll}>
+          ↻ Reload All
+        </button>
+      </div>
+
+      {/* Progress bar */}
+      {totalDone < totalCards && (
+        <div className="progress-bar-wrap">
+          <div className="progress-bar-fill" style={{ width: `${pct}%` }} />
+        </div>
+      )}
+
+      {/* EP1 Section */}
+      <div className="section-label">UAT Cache Servers</div>
+      <div className="servers-grid1">
+        {ep1Cards.map(card => (
+          <ServerCard key={card.id} card={card} onRefresh={handleRefresh} />
+        ))}
+      </div>
+
+      {/* EP2 Section */}
+      <div className="section-label" style={{ marginTop: 28 }}>Cache Service (10.177.44.58)</div>
+      <div className="servers-grid1">
+        {ep2Cards.map(card => (
+          <ServerCard key={card.id} card={card} onRefresh={handleRefresh} />
+        ))}
+      </div>
+
+    </div>
+  );
+};
+
+export default CacheHitUAT;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* ── Layout ─────────────────────────────────────────────────────────────── */
+.cache-hit-container {
+  padding: 24px;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: #0f1117;
+  min-height: 100vh;
+  color: #e2e8f0;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+.cache-hit-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #1e2534;
+}
+
+.header-title h2 {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.header-sub {
+  display: block;
+  font-size: 0.78rem;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+/* Stats row */
+.header-stats {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.stat {
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 20px;
+}
+
+.stat--hit   { background: #064e3b; color: #34d399; }
+.stat--miss  { background: #3b1515; color: #f87171; }
+.stat--error { background: #3b2500; color: #fb923c; }
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+.btn-refresh-all {
+  background: #1e40af;
+  color: #fff;
+  border: none;
+  padding: 8px 18px;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.btn-refresh-all:hover:not(:disabled) { background: #1d4ed8; }
+.btn-refresh-all:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-refresh-single {
+  background: transparent;
+  border: 1px solid #334155;
+  color: #94a3b8;
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  line-height: 1.6;
+}
+.btn-refresh-single:hover:not(:disabled) {
+  border-color: #60a5fa;
+  color: #60a5fa;
+}
+.btn-refresh-single:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Progress bar ────────────────────────────────────────────────────────── */
+.progress-bar-wrap {
+  height: 3px;
+  background: #1e2534;
+  border-radius: 2px;
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #06b6d4);
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+
+/* ── Bootstrap warning ───────────────────────────────────────────────────── */
+.bootstrap-warn {
+  background: #1c1200;
+  border: 1px solid #78350f;
+  color: #fbbf24;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 0.84rem;
+  margin-bottom: 16px;
+}
+
+/* ── Grid ────────────────────────────────────────────────────────────────── */
+.servers-grid1 {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+/* ── Server Card ─────────────────────────────────────────────────────────── */
+.server-card {
+  background: #161b27;
+  border: 1px solid #1e2534;
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: transform 0.15s, box-shadow 0.15s;
+  cursor: default;
+}
+
+.server-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+}
+
+/* State-specific borders */
+.card--hit     { border-color: #065f46; }
+.card--miss    { border-color: #7f1d1d; }
+.card--error   { border-color: #78350f; }
+.card--loading { border-color: #1e3a5f; }
+.card--pending { border-color: #1e2534; opacity: 0.6; }
+
+/* Top row */
+.card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.card-ip {
+  font-size: 0.83rem;
+  font-family: 'Courier New', monospace;
+  color: #94a3b8;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Response text */
+.card-response {
+  font-size: 0.8rem;
+  color: #64748b;
+  word-break: break-word;
+}
+.card-response--error { color: #f87171; }
+
+/* Shimmer placeholder */
+.card-shimmer {
+  height: 14px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #1e2534 25%, #283046 50%, #1e2534 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+}
+
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Footer */
+.card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 4px;
+}
+
+.card-time {
+  font-size: 0.72rem;
+  color: #475569;
+}
+
+/* ── Badges ──────────────────────────────────────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 20px;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.badge--success { background: #064e3b; color: #34d399; }
+.badge--miss    { background: #450a0a; color: #f87171; }
+.badge--error   { background: #3b2500; color: #fb923c; }
+.badge--pending { background: #1e2534; color: #475569; }
+.badge--loading { background: #1e3a5f; color: #60a5fa; }
+
+/* Spinner dot inside badge */
+.spinner-dot {
+  width: 8px;
+  height: 8px;
+  border: 2px solid #60a5fa44;
+  border-top-color: #60a5fa;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  display: inline-block;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Global loading ──────────────────────────────────────────────────────── */
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 0;
+  gap: 16px;
+  color: #475569;
+}
+
+.loading-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid #1e2534;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/* ── Responsive ──────────────────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  .cache-hit-header { flex-direction: column; align-items: flex-start; }
+  .servers-grid1    { grid-template-columns: 1fr 1fr; }
+}
