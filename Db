@@ -42,18 +42,80 @@
                 exit 1
               fi
 
-              yq ".Cache[].Query" config.yml | while IFS= read -r SQL; do
-                echo "Executing SQL: $SQL"
-                OUTPUT=$(echo "$SQL" | isql -v "$BRANCH" "$DB_USER" "$DB_PASS" -b 2>&1)
-                STATUS=$?
-                echo "$OUTPUT"
-                if [[ $STATUS -eq 0 ]] && echo "$OUTPUT" | grep -qi "SQLRowCount"; then
-                  echo "SUCCESS: Query executed"
-                else
-                  echo "FAILED: Query did not execute"
-                  exit 1
-                fi
+              # Load all queries into array
+              mapfile -t QUERIES < <(yq ".Cache[].Query" config.yml)
+
+              if [ ${#QUERIES[@]} -eq 0 ]; then
+                echo "No queries found in config.yml"
+                exit 1
+              fi
+
+              echo "Found ${#QUERIES[@]} queries. Executing as a single transaction..."
+
+              # Build all queries into one batch ending with COMMIT WORK
+              TRANSACTION_SQL=""
+              for SQL in "${QUERIES[@]}"; do
+                TRANSACTION_SQL="${TRANSACTION_SQL}${SQL};"$'\n'
               done
+              TRANSACTION_SQL="${TRANSACTION_SQL}COMMIT WORK;"
+
+              # Execute all queries in single isql session
+              TRANSACTION_OUTPUT=$(isql -v "$BRANCH" "$DB_USER" "$DB_PASS" -b 2>&1 <<EOF
+              ${TRANSACTION_SQL}
+              EOF
+              )
+              ISQL_STATUS=$?
+
+              echo "$TRANSACTION_OUTPUT"
+
+              # Check for any Oracle or driver errors
+              if [ $ISQL_STATUS -ne 0 ] || echo "$TRANSACTION_OUTPUT" | grep -qiE "ORA-[0-9]+|\[ISQL\]ERROR|Could not SQLExecute"; then
+                echo ""
+                echo "ERROR DETECTED — Sending ROLLBACK WORK..."
+
+                # Send ROLLBACK WORK in new session
+                ROLLBACK_OUTPUT=$(isql -v "$BRANCH" "$DB_USER" "$DB_PASS" -b 2>&1 <<EOF
+              ROLLBACK WORK;
+              EOF
+                )
+                echo "$ROLLBACK_OUTPUT"
+
+                # Identify which query failed
+                SUCCESS_COUNT=$(echo "$TRANSACTION_OUTPUT" | grep -ci "SQLRowCount")
+                echo ""
+                echo "Queries confirmed before failure: $SUCCESS_COUNT / ${#QUERIES[@]}"
+
+                if [ "$SUCCESS_COUNT" -lt "${#QUERIES[@]}" ]; then
+                  FAILED_INDEX=$SUCCESS_COUNT
+                  echo "Failed query [index $FAILED_INDEX]: ${QUERIES[$FAILED_INDEX]}"
+                fi
+
+                # Extract Oracle error message
+                ORA_ERR=$(echo "$TRANSACTION_OUTPUT" | grep -oiE "ORA-[0-9]+[^]]*" | head -1)
+                [ -n "$ORA_ERR" ] && echo "Oracle error: $ORA_ERR"
+
+                echo ""
+                echo "All changes ROLLED BACK."
+                exit 1
+              fi
+
+              # Verify every query produced SQLRowCount confirmation
+              SUCCESS_COUNT=$(echo "$TRANSACTION_OUTPUT" | grep -ci "SQLRowCount")
+              if [ "$SUCCESS_COUNT" -ne "${#QUERIES[@]}" ]; then
+                echo ""
+                echo "WARNING: Expected ${#QUERIES[@]} confirmations, got $SUCCESS_COUNT"
+                echo "Sending ROLLBACK WORK..."
+
+                isql -v "$BRANCH" "$DB_USER" "$DB_PASS" -b <<EOF
+              ROLLBACK WORK;
+              EOF
+
+                echo "All changes ROLLED BACK."
+                exit 1
+              fi
+
+              echo ""
+              echo "All ${#QUERIES[@]} queries executed and COMMITTED successfully."
 
         - task: CmdLine@2
           displayName: Update Cache in Server
