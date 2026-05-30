@@ -1,159 +1,90 @@
-- stage: Cache
-  displayName: CACHE
-  pool:
-    name: TFS-RH-1
-  dependsOn:
-    - Validation_Stage
-    - Build
-  condition: |
-    and(
-      succeeded('Validation_Stage'),
-      eq(dependencies.Validation_Stage.outputs['Validation_Job.val_task.CacheFlag'], 'true'),
-      or(
-        eq(dependencies.Validation_Stage.outputs['Validation_Job.val_task.DeployFlag'], 'false'),
-        succeeded('Build')
-      ),
-      ne(variables['Build.SourceBranchName'], 'main')
-    )
+- task: CmdLine@2
+  displayName: Update cache in Database
+  env:
+    BRANCH: $(Build.SourceBranchName)
+  inputs:
+    workingDirectory: $(Pipeline.Workspace)/drop/
+    script: |
+      source ~/.bashrc
+      set -e
 
-  jobs:
-    - job: Cache_Job
-      displayName: CACHE UPDATE
-      workspace:
-        clean: all
+      if [ ! -f config.yml ]; then
+        echo "config.yml file was not found !!"
+        exit 1
+      fi
 
-      steps:
+      mapfile -t QUERIES < <(yq ".Cache[].Query" config.yml)
 
-        - download: current
-          artifact: drop
+      if [ ${#QUERIES[@]} -eq 0 ]; then
+        echo "No queries found in config.yml"
+        exit 1
+      fi
 
-        - task: CmdLine@2
-          displayName: Update cache in Database
-          env:
-            BRANCH: $(Build.SourceBranchName)
-          inputs:
-            workingDirectory: $(Pipeline.Workspace)/drop/
-            script: |
-              source ~/.bashrc
-              set -e
+      echo "Found ${#QUERIES[@]} queries. Executing as a single transaction..."
 
-              if [ ! -f config.yml ]; then
-                echo "config.yml file was not found !!"
-                exit 1
-              fi
+      # Build all queries into one batch ending with COMMIT WORK
+      TRANSACTION_SQL=""
+      for SQL in "${QUERIES[@]}"; do
+        TRANSACTION_SQL="${TRANSACTION_SQL}${SQL};"$'\n'
+      done
+      TRANSACTION_SQL="${TRANSACTION_SQL}COMMIT WORK;"
 
-              # Load all queries into array
-              mapfile -t QUERIES < <(yq ".Cache[].Query" config.yml)
+      # Write SQL to temp file to avoid heredoc indentation issues
+      TMPFILE=$(mktemp /tmp/cache_sql_XXXXXX.sql)
+      echo "${TRANSACTION_SQL}" > "$TMPFILE"
 
-              if [ ${#QUERIES[@]} -eq 0 ]; then
-                echo "No queries found in config.yml"
-                exit 1
-              fi
+      # Execute all queries in single isql session
+      TRANSACTION_OUTPUT=$(isql -v "$BRANCH" "$DB_USER" "$DB_PASS" -b < "$TMPFILE" 2>&1)
+      ISQL_STATUS=$?
+      rm -f "$TMPFILE"
 
-              echo "Found ${#QUERIES[@]} queries. Executing as a single transaction..."
+      echo "$TRANSACTION_OUTPUT"
 
-              # Build all queries into one batch ending with COMMIT WORK
-              TRANSACTION_SQL=""
-              for SQL in "${QUERIES[@]}"; do
-                TRANSACTION_SQL="${TRANSACTION_SQL}${SQL};"$'\n'
-              done
-              TRANSACTION_SQL="${TRANSACTION_SQL}COMMIT WORK;"
+      # Check for any Oracle or driver errors
+      if [ $ISQL_STATUS -ne 0 ] || echo "$TRANSACTION_OUTPUT" | grep -qiE "ORA-[0-9]+|\[ISQL\]ERROR|Could not SQLExecute"; then
+        echo ""
+        echo "ERROR DETECTED — Sending ROLLBACK WORK..."
 
-              # Execute all queries in single isql session
-              TRANSACTION_OUTPUT=$(isql -v "$BRANCH" "$DB_USER" "$DB_PASS" -b 2>&1 <<EOF
-              ${TRANSACTION_SQL}
-              EOF
-              )
-              ISQL_STATUS=$?
+        # Send ROLLBACK WORK via temp file
+        RBFILE=$(mktemp /tmp/cache_rb_XXXXXX.sql)
+        echo "ROLLBACK WORK;" > "$RBFILE"
+        ROLLBACK_OUTPUT=$(isql -v "$BRANCH" "$DB_USER" "$DB_PASS" -b < "$RBFILE" 2>&1)
+        rm -f "$RBFILE"
+        echo "$ROLLBACK_OUTPUT"
 
-              echo "$TRANSACTION_OUTPUT"
+        # Identify which query failed
+        SUCCESS_COUNT=$(echo "$TRANSACTION_OUTPUT" | grep -ci "SQLRowCount")
+        echo ""
+        echo "Queries confirmed before failure: $SUCCESS_COUNT / ${#QUERIES[@]}"
 
-              # Check for any Oracle or driver errors
-              if [ $ISQL_STATUS -ne 0 ] || echo "$TRANSACTION_OUTPUT" | grep -qiE "ORA-[0-9]+|\[ISQL\]ERROR|Could not SQLExecute"; then
-                echo ""
-                echo "ERROR DETECTED — Sending ROLLBACK WORK..."
+        if [ "$SUCCESS_COUNT" -lt "${#QUERIES[@]}" ]; then
+          FAILED_INDEX=$SUCCESS_COUNT
+          echo "Failed query [index $FAILED_INDEX]: ${QUERIES[$FAILED_INDEX]}"
+        fi
 
-                # Send ROLLBACK WORK in new session
-                ROLLBACK_OUTPUT=$(isql -v "$BRANCH" "$DB_USER" "$DB_PASS" -b 2>&1 <<EOF
-              ROLLBACK WORK;
-              EOF
-                )
-                echo "$ROLLBACK_OUTPUT"
+        ORA_ERR=$(echo "$TRANSACTION_OUTPUT" | grep -oiE "ORA-[0-9]+[^]]*" | head -1)
+        [ -n "$ORA_ERR" ] && echo "Oracle error: $ORA_ERR"
 
-                # Identify which query failed
-                SUCCESS_COUNT=$(echo "$TRANSACTION_OUTPUT" | grep -ci "SQLRowCount")
-                echo ""
-                echo "Queries confirmed before failure: $SUCCESS_COUNT / ${#QUERIES[@]}"
+        echo ""
+        echo "All changes ROLLED BACK."
+        exit 1
+      fi
 
-                if [ "$SUCCESS_COUNT" -lt "${#QUERIES[@]}" ]; then
-                  FAILED_INDEX=$SUCCESS_COUNT
-                  echo "Failed query [index $FAILED_INDEX]: ${QUERIES[$FAILED_INDEX]}"
-                fi
+      # Verify every query produced SQLRowCount confirmation
+      SUCCESS_COUNT=$(echo "$TRANSACTION_OUTPUT" | grep -ci "SQLRowCount")
+      if [ "$SUCCESS_COUNT" -ne "${#QUERIES[@]}" ]; then
+        echo ""
+        echo "WARNING: Expected ${#QUERIES[@]} confirmations, got $SUCCESS_COUNT"
+        echo "Sending ROLLBACK WORK..."
 
-                # Extract Oracle error message
-                ORA_ERR=$(echo "$TRANSACTION_OUTPUT" | grep -oiE "ORA-[0-9]+[^]]*" | head -1)
-                [ -n "$ORA_ERR" ] && echo "Oracle error: $ORA_ERR"
+        RBFILE=$(mktemp /tmp/cache_rb_XXXXXX.sql)
+        echo "ROLLBACK WORK;" > "$RBFILE"
+        isql -v "$BRANCH" "$DB_USER" "$DB_PASS" -b < "$RBFILE" 2>&1
+        rm -f "$RBFILE"
 
-                echo ""
-                echo "All changes ROLLED BACK."
-                exit 1
-              fi
+        echo "All changes ROLLED BACK."
+        exit 1
+      fi
 
-              # Verify every query produced SQLRowCount confirmation
-              SUCCESS_COUNT=$(echo "$TRANSACTION_OUTPUT" | grep -ci "SQLRowCount")
-              if [ "$SUCCESS_COUNT" -ne "${#QUERIES[@]}" ]; then
-                echo ""
-                echo "WARNING: Expected ${#QUERIES[@]} confirmations, got $SUCCESS_COUNT"
-                echo "Sending ROLLBACK WORK..."
-
-                isql -v "$BRANCH" "$DB_USER" "$DB_PASS" -b <<EOF
-              ROLLBACK WORK;
-              EOF
-
-                echo "All changes ROLLED BACK."
-                exit 1
-              fi
-
-              echo ""
-              echo "All ${#QUERIES[@]} queries executed and COMMITTED successfully."
-
-        - task: CmdLine@2
-          displayName: Update Cache in Server
-          env:
-            BRANCH: $(Build.SourceBranchName)
-          inputs:
-            workingDirectory: $(Pipeline.Workspace)/drop/
-            script: |
-              set -e
-
-              IntegrationNode=($(yq e ".IntegrationNode" config.yml))
-              broker_files=()
-
-              for node in "${IntegrationNode[@]}"; do
-                for broker_file in /home/devops/broker/$BRANCH/${node}*; do
-                  fname=$(basename "$broker_file")
-                  if [[ $fname =~ ^${node}_([0-9]+)\.broker$ ]]; then
-                    broker_files+=("$broker_file")
-                  fi
-                done
-              done
-
-              if [ ${#broker_files[@]} -eq 0 ]; then
-                echo "Error: No Integration Node found for $IntegrationNode"
-                exit 1
-              fi
-
-              for broker_file in "${broker_files[@]}"; do
-                host=$(cat "$broker_file" | grep host | cut -d"\"" -f4)
-                if yq -e ".Cache" config.yml >/dev/null 2>&1; then
-                  response=$(curl --connect-timeout 3 --max-time 5 -s -k -X POST http://"$host":8002/cache/v1/loadCache \
-                  -H "Content-Type: application/json" \
-                  -d "$(yq -o=json ".Cache | map({\"FIELD_NAME\": .FIELD_NAME, \"FIELD_VALUE\": .FIELD_VALUE})" config.yml)")
-                  if [[ "$response" != *'"RESPONSE":"success"'* ]]; then
-                    echo "Cache load failed: $response"
-                    exit 1
-                  fi
-                  echo "Cache load successful on $host"
-                  echo "$(yq -o=json ".Cache | map({\"FIELD_NAME\": .FIELD_NAME, \"FIELD_VALUE\": .FIELD_VALUE})" config.yml)"
-                fi
-              done
+      echo ""
+      echo "All ${#QUERIES[@]} queries executed and COMMITTED successfully."
