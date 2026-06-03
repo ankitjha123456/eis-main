@@ -64,7 +64,7 @@ done
 echo "]"
 
 # ─────────────────────────────────────────────
-# PHASE 2 — loadCache for .71 and .72 in FULL parallel (all 20 at once)
+# PHASE 2 — loadCache for .71 and .72 fully parallel
 # ─────────────────────────────────────────────
 echo ""
 echo ">>> Phase 2: Triggering loadCache on ${LOADCACHE_SERVERS[*]} (fully parallel)..."
@@ -78,6 +78,7 @@ for server in "${LOADCACHE_SERVERS[@]}"; do
                      -o BatchMode=yes \
                      ${server} \
                      \"curl -k --silent -X POST \
+                       -H 'Content-Type: application/json' \
                        'http://localhost:${PORT}${LOADCACHE_ENDPOINT}' \
                        -d '${payload}'\"" 2>/dev/null)
             field=$(echo "$payload" | grep -o '"FIELD_NAME":"[^"]*"' | cut -d: -f2 | tr -d '"')
@@ -86,7 +87,7 @@ for server in "${LOADCACHE_SERVERS[@]}"; do
     done
 done
 
-wait  # ← single wait here catches all 20 background jobs together
+wait
 
 echo ""
 echo ">>> Done."
