@@ -33,9 +33,7 @@ LOADCACHE_FIELDS=(
 # ─────────────────────────────────────────────
 # PHASE 1 — cacheOnDB for all 4 servers
 # ─────────────────────────────────────────────
-echo ">>> Phase 1: Triggering cacheOnDB on all servers..."
-
-mapfile -t RESULTS < <(
+mapfile -t PHASE1_RESULTS < <(
     for server in "${SERVERS[@]}"; do
         (
             response=$(su - eisuser -c \
@@ -48,48 +46,51 @@ mapfile -t RESULTS < <(
                        -d '{\\\"UPDATE\\\":\\\"Y\\\"}' \"" 2>/dev/null)
 
             cache_val=$(echo "$response" | sed 's/.*"CACHE_RESPONSE":"\([^"]*\)".*/\1/')
+            [ "$cache_val" = "$response" ] && cache_val="NO_RESPONSE"
             echo "{\"server\":\"${server}\",\"CACHE_RESPONSE\":\"${cache_val}\"}"
         ) &
     done
     wait
 )
 
-# Print Phase 1 result as JSON array
-echo "["
-total=${#RESULTS[@]}
-for i in "${!RESULTS[@]}"; do
-    comma=","
-    [ $((i + 1)) -eq $total ] && comma=""
-    echo "  ${RESULTS[$i]}${comma}"
-done
-echo "]"
-
 # ─────────────────────────────────────────────
-# PHASE 2 — loadCache via heredoc (no quote nesting)
+# PHASE 2 — loadCache for .71 and .72 fully parallel
 # ─────────────────────────────────────────────
-echo ""
-echo ">>> Phase 2: Triggering loadCache on ${LOADCACHE_SERVERS[*]} (fully parallel)..."
-
-for server in "${LOADCACHE_SERVERS[@]}"; do
-    for field in "${LOADCACHE_FIELDS[@]}"; do
-        (
-            response=$(su - eisuser -c \
-                "ssh -o StrictHostKeyChecking=no \
-                     -o ConnectTimeout=10 \
-                     -o BatchMode=yes \
-                     ${server} bash" << EOF 2>/dev/null
+mapfile -t PHASE2_RESULTS < <(
+    for server in "${LOADCACHE_SERVERS[@]}"; do
+        for field in "${LOADCACHE_FIELDS[@]}"; do
+            (
+                response=$(su - eisuser -c \
+                    "ssh -o StrictHostKeyChecking=no \
+                         -o ConnectTimeout=10 \
+                         -o BatchMode=yes \
+                         ${server} bash" << EOF 2>/dev/null
 curl -k --silent -X POST \
   -H "Content-Type: application/json" \
   "http://localhost:${PORT}${LOADCACHE_ENDPOINT}" \
   -d '[{"FIELD_VALUE":"${FIELD_VALUE}","FIELD_NAME":"${field}"}]'
 EOF
-            )
-            echo "  [${server}] ${field}: ${response}"
-        ) &
+                )
+                resp_val=$(echo "$response" | sed 's/.*"RESPONSE":"\([^"]*\)".*/\1/')
+                [ "$resp_val" = "$response" ] && resp_val="NO_RESPONSE"
+
+                echo "{\"server\":\"${server}\",\"FIELD_NAME\":\"${field}\",\"RESPONSE\":\"${resp_val}\"}"
+            ) &
+        done
     done
+    wait
+)
+
+# ─────────────────────────────────────────────
+# PRINT FINAL FLAT JSON ARRAY
+# ─────────────────────────────────────────────
+ALL_RESULTS=("${PHASE1_RESULTS[@]}" "${PHASE2_RESULTS[@]}")
+
+echo "["
+total=${#ALL_RESULTS[@]}
+for i in "${!ALL_RESULTS[@]}"; do
+    comma=","
+    [ $((i + 1)) -eq $total ] && comma=""
+    echo "  ${ALL_RESULTS[$i]}${comma}"
 done
-
-wait
-
-echo ""
-echo ">>> Done."
+echo "]"
