@@ -1,40 +1,56 @@
-const express = require('express');
-const { exec } = require('child_process');
-const path = require('path');
+#!/bin/bash
 
-const app = express();
-const PORT = 4423;
-const SCRIPT_PATH = path.join(__dirname, 'cache.sh');
+SERVERS=(
+    "10.177.44.71"
+    "10.177.44.72"
+    "10.177.44.73"
+    "10.177.44.74"
+)
 
-app.get('/cache', (req, res) => {
-    console.log(`[${new Date().toISOString()}] /cache called`);
+PORT="8002"
+ENDPOINT="/cacheOnDB"
 
-    exec(`bash ${SCRIPT_PATH}`, (error, stdout, stderr) => {
+# Collect all parallel outputs into array
+mapfile -t RESULTS < <(
+    for server in "${SERVERS[@]}"; do
+        (
+            response=$(su - eisuser -c \
+                "ssh -o StrictHostKeyChecking=no \
+                     -o ConnectTimeout=10 \
+                     -o BatchMode=yes \
+                     ${server} \
+                     \"curl --silent --location 'http://localhost:${PORT}${ENDPOINT}' \
+                       -H 'Content-Type: application/json' \
+                       -d '{\\\"UPDATE\\\":\\\"Y\\\"}' \"" 2>/dev/null)
 
-        if (error) {
-            console.error('Script error:', error.message);
-            return res.status(500).json({
-                status: 'ERROR',
-                message: error.message
-            });
-        }
+            cache_val=$(echo "$response" | sed 's/.*"CACHE_RESPONSE":"\([^"]*\)".*/\1/')
 
-        try {
-            const result = JSON.parse(stdout.trim());
-            console.log('Response sent:', result);
-            return res.status(200).json(result);
+            echo "{\"server\":\"${server}\",\"CACHE_RESPONSE\":\"${cache_val}\"}"
+        ) &
+    done
+    wait
+)
 
-        } catch (e) {
-            console.error('JSON parse error:', e.message);
-            return res.status(500).json({
-                status: 'ERROR',
-                message: 'Failed to parse script output',
-                raw: stdout
-            });
-        }
-    });
-});
+# Print as JSON array
+echo "["
+total=${#RESULTS[@]}
+for i in "${!RESULTS[@]}"; do
+    comma=","
+    [ $((i + 1)) -eq $total ] && comma=""
+    echo "  ${RESULTS[$i]}${comma}"
+done
+echo "]"
 
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running at http://10.177.44.58:${PORT}/cache`);
-});
+
+
+
+curl -k -X POST 'http://10.177.44.71:8002/cache/v1/loadCache' -d '[{"FIELD_VALUE":"http://system.api:9022/virtualCard/atm/misc", "FIELD_NAME":"IT_ATM_DAILY_LIMIT_UPDATE_Sys_URL"}]'&
+curl -k -X POST 'http://10.177.44.71:8002/cache/v1/loadCache' -d '[{"FIELD_VALUE":"http://system.api:9022/virtualCard/atm/misc", "FIELD_NAME":"IT_ATM_INTERNATIONAL_FLAG_Sys_URL"}]'&
+curl -k -X POST 'http://10.177.44.71:8002/cache/v1/loadCache' -d '[{"FIELD_VALUE":"http://system.api:9022/virtualCard/atm/misc", "FIELD_NAME":"IT_ATM_DAILY_LIMIT_ENQUIRY_Sys_URL"}]'&
+curl -k -X POST 'http://10.177.44.71:8002/cache/v1/loadCache' -d '[{"FIELD_VALUE":"http://system.api:9022/virtualCard/atm/misc", "FIELD_NAME":"IT_ATM_PIN_Sys_URL"}]'&
+curl -k -X POST 'http://10.177.44.71:8002/cache/v1/loadCache' -d '[{"FIELD_VALUE":"http://system.api:9022/virtualCard/atm/misc", "FIELD_NAME":"IT_ATM_PG_FLAG_Sys_URL"}]'&
+curl -k -X POST 'http://10.177.44.71:8002/cache/v1/loadCache' -d '[{"FIELD_VALUE":"http://system.api:9022/virtualCard/atm/misc", "FIELD_NAME":"IT_ATM_FLAG_ATM_Sys_URL"}]'&
+curl -k -X POST 'http://10.177.44.71:8002/cache/v1/loadCache' -d '[{"FIELD_VALUE":"http://system.api:9022/virtualCard/atm/misc", "FIELD_NAME":"IT_ATM_DOMESTIC_FLAG_Sys_URL"}]'&
+curl -k -X POST 'http://10.177.44.71:8002/cache/v1/loadCache' -d '[{"FIELD_VALUE":"http://system.api:9022/virtualCard/atm/misc", "FIELD_NAME":"IT_ATM_NFC_POS_FLAG_Sys_URL"}]'&
+curl -k -X POST 'http://10.177.44.71:8002/cache/v1/loadCache' -d '[{"FIELD_VALUE":"http://system.api:9022/virtualCard/atm/misc", "FIELD_NAME":"IT_ATM_CARD_Sys_URL"}]'&
+curl -k -X POST 'http://10.177.44.71:8002/cache/v1/loadCache' -d '[{"FIELD_VALUE":"http://system.api:9022/virtualCard/atm/misc", "FIELD_NAME":"IT_ATM_POS_FLAG_Sys_URL"}]'&
