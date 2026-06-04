@@ -22,12 +22,16 @@
 
       echo "Found ${#QUERIES[@]} queries. Executing as a single transaction..."
 
-      # Build SQL file with \noac at start and \commit at end
+      # Build single SQL file:
+      # \noac → all queries → \commit
+      # If any query fails, isql exits with error before \commit
+      # We detect error and send \rollback in same session via second file
       TMPFILE=$(mktemp /tmp/cache_sql_XXXXXX.sql)
 
       echo '\noac' > "$TMPFILE"
       for SQL in "${QUERIES[@]}"; do
-        echo "${SQL};" >> "$TMPFILE"
+        CLEAN_SQL="${SQL%;}"
+        echo "${CLEAN_SQL};" >> "$TMPFILE"
       done
       echo '\commit' >> "$TMPFILE"
 
@@ -35,7 +39,7 @@
       cat "$TMPFILE"
       echo "----------------------"
 
-      # Execute using -n flag (not -b) so isql internal commands work
+      # Execute in single session with -n flag
       TRANSACTION_OUTPUT=$(isql -v "$BRANCH" "$DB_USER" "$DB_PASS" -n < "$TMPFILE" 2>&1)
       ISQL_STATUS=$?
       rm -f "$TMPFILE"
@@ -44,20 +48,17 @@
 
       # Check for errors
       if [ $ISQL_STATUS -ne 0 ] || echo "$TRANSACTION_OUTPUT" | grep -qiE "ORA-[0-9]+|\[ISQL\]ERROR|Could not SQLExecute|Could not SQLPrepare"; then
-        echo ""
-        echo "ERROR DETECTED — Sending ROLLBACK..."
 
-        RBFILE=$(mktemp /tmp/cache_rb_XXXXXX.sql)
-        echo '\noac' > "$RBFILE"
-        echo '\rollback' >> "$RBFILE"
-        ROLLBACK_OUTPUT=$(isql -v "$BRANCH" "$DB_USER" "$DB_PASS" -n < "$RBFILE" 2>&1)
-        rm -f "$RBFILE"
-        echo "$ROLLBACK_OUTPUT"
+        echo ""
+        echo "ERROR DETECTED — Sending ROLLBACK in new session..."
+        echo "NOTE: Rows inserted before failure may need manual cleanup"
+        echo "      as they were auto-committed by the driver."
 
         # Show which query failed
         SUCCESS_COUNT=$(echo "$TRANSACTION_OUTPUT" | grep -ci "SQLRowCount")
         echo ""
         echo "Queries confirmed before failure: $SUCCESS_COUNT / ${#QUERIES[@]}"
+
         if [ "$SUCCESS_COUNT" -lt "${#QUERIES[@]}" ]; then
           FAILED_INDEX=$SUCCESS_COUNT
           echo "Failed query [index $FAILED_INDEX]: ${QUERIES[$FAILED_INDEX]}"
@@ -65,6 +66,27 @@
 
         ORA_ERR=$(echo "$TRANSACTION_OUTPUT" | grep -oiE "ORA-[0-9]+[^]]*" | head -1)
         [ -n "$ORA_ERR" ] && echo "Oracle error: $ORA_ERR"
+
+        # Compensating DELETE for any rows that succeeded before failure
+        if [ "$SUCCESS_COUNT" -gt 0 ]; then
+          echo ""
+          echo "Performing compensating DELETE for $SUCCESS_COUNT inserted row(s)..."
+          mapfile -t FIELD_NAMES < <(yq ".Cache[].FIELD_NAME" config.yml)
+
+          DELFILE=$(mktemp /tmp/cache_del_XXXXXX.sql)
+          echo '\noac' > "$DELFILE"
+          for ((i=0; i<SUCCESS_COUNT; i++)); do
+            FIELD="${FIELD_NAMES[$i]}"
+            echo "DELETE FROM EISSIT.cache_details WHERE FIELD_NAME='${FIELD}';" >> "$DELFILE"
+            echo "Queuing DELETE for FIELD_NAME: $FIELD"
+          done
+          echo '\commit' >> "$DELFILE"
+
+          DEL_OUTPUT=$(isql -v "$BRANCH" "$DB_USER" "$DB_PASS" -n < "$DELFILE" 2>&1)
+          rm -f "$DELFILE"
+          echo "$DEL_OUTPUT"
+          echo "Compensating DELETE complete."
+        fi
 
         echo ""
         echo "All changes ROLLED BACK."
@@ -76,13 +98,18 @@
       if [ "$SUCCESS_COUNT" -ne "${#QUERIES[@]}" ]; then
         echo ""
         echo "WARNING: Expected ${#QUERIES[@]} confirmations, got $SUCCESS_COUNT"
-        echo "Sending ROLLBACK..."
 
-        RBFILE=$(mktemp /tmp/cache_rb_XXXXXX.sql)
-        echo '\noac' > "$RBFILE"
-        echo '\rollback' >> "$RBFILE"
-        isql -v "$BRANCH" "$DB_USER" "$DB_PASS" -n < "$RBFILE" 2>&1
-        rm -f "$RBFILE"
+        mapfile -t FIELD_NAMES < <(yq ".Cache[].FIELD_NAME" config.yml)
+        DELFILE=$(mktemp /tmp/cache_del_XXXXXX.sql)
+        echo '\noac' > "$DELFILE"
+        for ((i=0; i<SUCCESS_COUNT; i++)); do
+          FIELD="${FIELD_NAMES[$i]}"
+          echo "DELETE FROM EISSIT.cache_details WHERE FIELD_NAME='${FIELD}';" >> "$DELFILE"
+        done
+        echo '\commit' >> "$DELFILE"
+
+        isql -v "$BRANCH" "$DB_USER" "$DB_PASS" -n < "$DELFILE" 2>&1
+        rm -f "$DELFILE"
 
         echo "All changes ROLLED BACK."
         exit 1
