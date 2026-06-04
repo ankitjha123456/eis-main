@@ -22,41 +22,42 @@
 
       echo "Found ${#QUERIES[@]} queries. Executing as a single transaction..."
 
-      # Build all queries into one batch ending with COMMIT WORK
-      TRANSACTION_SQL=""
-      for SQL in "${QUERIES[@]}"; do
-        TRANSACTION_SQL="${TRANSACTION_SQL}${SQL};"$'\n'
-      done
-      TRANSACTION_SQL="${TRANSACTION_SQL}COMMIT WORK;"
-
-      # Write SQL to temp file to avoid heredoc indentation issues
+      # Build SQL file with \noac at start and \commit at end
       TMPFILE=$(mktemp /tmp/cache_sql_XXXXXX.sql)
-      echo "${TRANSACTION_SQL}" > "$TMPFILE"
 
-      # Execute all queries in single isql session
-      TRANSACTION_OUTPUT=$(isql -v "$BRANCH" "$DB_USER" "$DB_PASS" -b < "$TMPFILE" 2>&1)
+      echo '\noac' > "$TMPFILE"
+      for SQL in "${QUERIES[@]}"; do
+        echo "${SQL};" >> "$TMPFILE"
+      done
+      echo '\commit' >> "$TMPFILE"
+
+      echo "--- SQL to execute ---"
+      cat "$TMPFILE"
+      echo "----------------------"
+
+      # Execute using -n flag (not -b) so isql internal commands work
+      TRANSACTION_OUTPUT=$(isql -v "$BRANCH" "$DB_USER" "$DB_PASS" -n < "$TMPFILE" 2>&1)
       ISQL_STATUS=$?
       rm -f "$TMPFILE"
 
       echo "$TRANSACTION_OUTPUT"
 
-      # Check for any Oracle or driver errors
-      if [ $ISQL_STATUS -ne 0 ] || echo "$TRANSACTION_OUTPUT" | grep -qiE "ORA-[0-9]+|\[ISQL\]ERROR|Could not SQLExecute"; then
+      # Check for errors
+      if [ $ISQL_STATUS -ne 0 ] || echo "$TRANSACTION_OUTPUT" | grep -qiE "ORA-[0-9]+|\[ISQL\]ERROR|Could not SQLExecute|Could not SQLPrepare"; then
         echo ""
-        echo "ERROR DETECTED — Sending ROLLBACK WORK..."
+        echo "ERROR DETECTED — Sending ROLLBACK..."
 
-        # Send ROLLBACK WORK via temp file
         RBFILE=$(mktemp /tmp/cache_rb_XXXXXX.sql)
-        echo "ROLLBACK WORK;" > "$RBFILE"
-        ROLLBACK_OUTPUT=$(isql -v "$BRANCH" "$DB_USER" "$DB_PASS" -b < "$RBFILE" 2>&1)
+        echo '\noac' > "$RBFILE"
+        echo '\rollback' >> "$RBFILE"
+        ROLLBACK_OUTPUT=$(isql -v "$BRANCH" "$DB_USER" "$DB_PASS" -n < "$RBFILE" 2>&1)
         rm -f "$RBFILE"
         echo "$ROLLBACK_OUTPUT"
 
-        # Identify which query failed
+        # Show which query failed
         SUCCESS_COUNT=$(echo "$TRANSACTION_OUTPUT" | grep -ci "SQLRowCount")
         echo ""
         echo "Queries confirmed before failure: $SUCCESS_COUNT / ${#QUERIES[@]}"
-
         if [ "$SUCCESS_COUNT" -lt "${#QUERIES[@]}" ]; then
           FAILED_INDEX=$SUCCESS_COUNT
           echo "Failed query [index $FAILED_INDEX]: ${QUERIES[$FAILED_INDEX]}"
@@ -70,16 +71,17 @@
         exit 1
       fi
 
-      # Verify every query produced SQLRowCount confirmation
+      # Verify all queries confirmed via SQLRowCount
       SUCCESS_COUNT=$(echo "$TRANSACTION_OUTPUT" | grep -ci "SQLRowCount")
       if [ "$SUCCESS_COUNT" -ne "${#QUERIES[@]}" ]; then
         echo ""
         echo "WARNING: Expected ${#QUERIES[@]} confirmations, got $SUCCESS_COUNT"
-        echo "Sending ROLLBACK WORK..."
+        echo "Sending ROLLBACK..."
 
         RBFILE=$(mktemp /tmp/cache_rb_XXXXXX.sql)
-        echo "ROLLBACK WORK;" > "$RBFILE"
-        isql -v "$BRANCH" "$DB_USER" "$DB_PASS" -b < "$RBFILE" 2>&1
+        echo '\noac' > "$RBFILE"
+        echo '\rollback' >> "$RBFILE"
+        isql -v "$BRANCH" "$DB_USER" "$DB_PASS" -n < "$RBFILE" 2>&1
         rm -f "$RBFILE"
 
         echo "All changes ROLLED BACK."
