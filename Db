@@ -22,9 +22,9 @@
 
       echo "Found ${#QUERIES[@]} queries. Executing as a single transaction..."
 
-      # Build single SQL file with \noac + all queries + \commit
-      # If any query fails → isql session closes → Oracle auto-rollbacks all
-      # If all succeed → \commit lands everything
+      # Build ONE sql file:
+      # \noac → query1 → query2 → ... → \commit
+      # If any query fails → isql stops → session closes → Oracle auto rollbacks
       TMPFILE=$(mktemp /tmp/cache_sql_XXXXXX.sql)
 
       echo '\noac' > "$TMPFILE"
@@ -38,41 +38,29 @@
       cat "$TMPFILE"
       echo "----------------------"
 
-      # Execute everything in ONE single isql session
+      # Run ONE single isql session
       TRANSACTION_OUTPUT=$(isql -v "$BRANCH" "$DB_USER" "$DB_PASS" -n < "$TMPFILE" 2>&1)
       ISQL_STATUS=$?
       rm -f "$TMPFILE"
 
       echo "$TRANSACTION_OUTPUT"
 
-      # Check for any errors
+      # If any error detected
       if [ $ISQL_STATUS -ne 0 ] || echo "$TRANSACTION_OUTPUT" | grep -qiE "ORA-[0-9]+|\[ISQL\]ERROR|Could not SQLExecute|Could not SQLPrepare"; then
-        echo ""
-        echo "TRANSACTION FAILED — session closed, Oracle auto-rolled back all changes."
 
-        # Show which query failed
         SUCCESS_COUNT=$(echo "$TRANSACTION_OUTPUT" | grep -ci "SQLRowCount")
-        echo "Queries confirmed before failure: $SUCCESS_COUNT / ${#QUERIES[@]}"
+        FAILED_INDEX=$SUCCESS_COUNT
 
-        if [ "$SUCCESS_COUNT" -lt "${#QUERIES[@]}" ]; then
-          FAILED_INDEX=$SUCCESS_COUNT
-          echo "Failed query [index $FAILED_INDEX]: ${QUERIES[$FAILED_INDEX]}"
-        fi
+        echo ""
+        echo "TRANSACTION FAILED."
+        echo "Queries succeeded before failure : $SUCCESS_COUNT / ${#QUERIES[@]}"
+        echo "Failed query [index $((FAILED_INDEX+1))]: ${QUERIES[$FAILED_INDEX]}"
 
         ORA_ERR=$(echo "$TRANSACTION_OUTPUT" | grep -oiE "ORA-[0-9]+[^]]*" | head -1)
         [ -n "$ORA_ERR" ] && echo "Oracle error: $ORA_ERR"
 
         echo ""
-        echo "All changes ROLLED BACK automatically."
-        exit 1
-      fi
-
-      # Verify all queries confirmed via SQLRowCount
-      SUCCESS_COUNT=$(echo "$TRANSACTION_OUTPUT" | grep -ci "SQLRowCount")
-      if [ "$SUCCESS_COUNT" -ne "${#QUERIES[@]}" ]; then
-        echo ""
-        echo "WARNING: Expected ${#QUERIES[@]} confirmations, got $SUCCESS_COUNT"
-        echo "Session closed — Oracle auto-rolled back all changes."
+        echo "Session closed — Oracle ROLLED BACK all changes automatically."
         exit 1
       fi
 
