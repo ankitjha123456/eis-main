@@ -1,107 +1,112 @@
 #!/bin/bash
-# curl.sh - SSH via eisuser then run curl on remote server
-# Usage: ./curl.sh <method> <url> <insecure> <verbose> <headers_json> <body> <ssh_host>
+# curl.sh - Become eisuser first, then SSH to remote IP, then run curl
 #
-# Flow: local → ssh eisuser@<ssh_host> → curl <url>
+# Flow: current user → su eisuser → ssh eisuser@<IP> → curl -k
+#
+# Usage:
+#   bash curl.sh <METHOD> <URL> <SSH_IP> <BODY> [header1] [header2] ...
+#
+# Mandatory: METHOD, URL, SSH_IP
+# Optional:  BODY (pass '' if none), then any number of headers as "Key: Value"
+#
+# Examples:
+#   bash curl.sh GET  http://10.177.44.71:3001/api  10.177.44.71
+#   bash curl.sh POST http://10.177.44.71:3001/api  10.177.44.71  '{"key":"val"}'
+#   bash curl.sh POST http://10.177.44.71:3001/api  10.177.44.71  '{"key":"val"}'  'Content-Type: application/json'
+#   bash curl.sh POST http://10.177.44.71:3001/api  10.177.44.71  '{"key":"val"}'  'Content-Type: application/json'  'Authorization: Bearer token'
 
 METHOD="$1"
 URL="$2"
-INSECURE="$3"        # "true" or "false"
-VERBOSE="$4"         # "true" or "false"
-HEADERS_JSON="$5"    # JSON: [{"key":"Content-Type","value":"application/json"}]
-BODY="$6"
-SSH_HOST="$7"        # e.g. 10.177.44.71 or EISUATEXP02
+SSH_IP="$3"
+BODY="$4"
+# $5, $6, $7 ... → optional headers, each as "Key: Value"
+
+SSH_USER="eisuser"
 
 # ─── Validation ───────────────────────────────────────────────────────────────
+if [ -z "$METHOD" ]; then
+  echo "ERROR: METHOD is required (GET, POST, PUT, PATCH, DELETE)"
+  exit 1
+fi
+
 if [ -z "$URL" ]; then
   echo "ERROR: URL is required"
   exit 1
 fi
 
-if [ -z "$SSH_HOST" ]; then
-  echo "ERROR: SSH host is required"
+if [ -z "$SSH_IP" ]; then
+  echo "ERROR: SSH_IP is required (e.g. 10.177.44.71)"
   exit 1
 fi
 
-SSH_USER="eisuser"
+# ─── Build the curl command (will run on the remote server) ───────────────────
+# -k always present — skip TLS certificate verification
+CURL_CMD="curl -k -X $METHOD"
 
-# ─── Build the curl command string (will run REMOTELY via SSH) ────────────────
-# -k is always added (certificate skip required on every curl)
-REMOTE_CMD="curl -k"
+# Always show response headers in output
+CURL_CMD="$CURL_CMD -i"
 
-# Method
-REMOTE_CMD="$REMOTE_CMD -X $METHOD"
+# HTTP status code marker appended at end of response
+CURL_CMD="$CURL_CMD -w $'\n\n---CURL_EXIT_CODE:%{http_code}---\n'"
 
-# Verbose flag
-if [ "$VERBOSE" = "true" ]; then
-  REMOTE_CMD="$REMOTE_CMD -v"
-fi
-
-# Always include response headers for status code extraction
-REMOTE_CMD="$REMOTE_CMD -i"
-
-# Status code marker at end
-REMOTE_CMD="$REMOTE_CMD -w '\n\n---CURL_EXIT_CODE:%{http_code}---\n'"
-
-# Parse headers from JSON and append -H flags
-if [ -n "$HEADERS_JSON" ] && [ "$HEADERS_JSON" != "[]" ] && [ "$HEADERS_JSON" != "null" ]; then
-  PARSED_HEADERS=$(node -e "
-    try {
-      const h = JSON.parse(process.argv[1]);
-      h.forEach(({key, value}) => {
-        if (key && value) {
-          // Escape single quotes inside header values
-          const safe = (key + ': ' + value).replace(/'/g, \"'\\\\''\"  );
-          console.log(safe);
-        }
-      });
-    } catch(e) {}
-  " "$HEADERS_JSON" 2>/dev/null)
-
-  while IFS= read -r header; do
-    if [ -n "$header" ]; then
-      REMOTE_CMD="$REMOTE_CMD -H '$header'"
-    fi
-  done <<< "$PARSED_HEADERS"
-fi
-
-# Body for POST/PUT/PATCH — escape single quotes for remote shell
-if [ -n "$BODY" ] && [ "$METHOD" != "GET" ] && [ "$METHOD" != "DELETE" ]; then
-  # Replace ' with '"'"' for safe single-quote escaping inside the remote command
-  ESCAPED_BODY="${BODY//"'"/"'\"'\"'"}"
-  REMOTE_CMD="$REMOTE_CMD -d '$ESCAPED_BODY'"
-fi
-
-# Append URL
-REMOTE_CMD="$REMOTE_CMD '$URL'"
-
-# ─── Print what we're about to do ─────────────────────────────────────────────
-echo "=== SSH CONNECTION ==="
-echo "User  : $SSH_USER"
-echo "Host  : $SSH_HOST"
-echo ""
-echo "=== CURL COMMAND (running on $SSH_HOST) ==="
-echo "$REMOTE_CMD"
-echo ""
-echo "=== RESPONSE ==="
-
-# ─── Execute via SSH ──────────────────────────────────────────────────────────
-# -o StrictHostKeyChecking=no  → skip host key prompt (same as -k for SSH)
-# -o ConnectTimeout=15         → fail fast if host unreachable
-# -o BatchMode=yes             → no password prompts (use SSH key auth)
-ssh \
-  -o StrictHostKeyChecking=no \
-  -o ConnectTimeout=15 \
-  -o BatchMode=yes \
-  "$SSH_USER@$SSH_HOST" \
-  "$REMOTE_CMD" 2>&1
-
-SSH_EXIT=$?
-
-if [ $SSH_EXIT -ne 0 ]; then
-  echo ""
-  echo "---CURL_PROCESS_EXIT:$SSH_EXIT---"
-  if [ $SSH_EXIT -eq 255 ]; then
-    echo "SSH connection failed — check host '$SSH_HOST' is reachable and SSH key is set up for $SSH_USER"
+# Headers — $5 onwards after shift
+shift 4
+for header in "$@"; do
+  if [ -n "$header" ]; then
+    SAFE_HDR="${header//"'"/"'\"'\"'"}"
+    CURL_CMD="$CURL_CMD -H '$SAFE_HDR'"
   fi
+done
+
+# Body — only for POST / PUT / PATCH
+if [ -n "$BODY" ] && [ "$METHOD" != "GET" ] && [ "$METHOD" != "DELETE" ]; then
+  ESCAPED_BODY="${BODY//"'"/"'\"'\"'"}"
+  CURL_CMD="$CURL_CMD -d '$ESCAPED_BODY'"
+fi
+
+CURL_CMD="$CURL_CMD '$URL'"
+
+# ─── Print what we are doing ──────────────────────────────────────────────────
+echo "======================================="
+echo " Step 1 : become $SSH_USER"
+echo " Step 2 : ssh $SSH_USER@$SSH_IP"
+echo " Step 3 : $CURL_CMD"
+echo " Method : $METHOD"
+echo " URL    : $URL"
+echo "======================================="
+echo ""
+
+# ─── Step 1: become eisuser, Step 2: SSH, Step 3: curl ───────────────────────
+#
+# su -s /bin/bash eisuser -c "..."
+#   -s /bin/bash  → use bash as the shell for eisuser
+#   -c "..."      → run this command as eisuser
+#
+# Inside that command we run ssh which then runs curl remotely.
+# SSH options:
+#   -o StrictHostKeyChecking=no  → skip known_hosts prompt
+#   -o ConnectTimeout=15         → fail fast if unreachable
+#   -o BatchMode=yes             → no password prompt (needs SSH key)
+
+su -s /bin/bash "$SSH_USER" -c \
+  "ssh \
+    -o StrictHostKeyChecking=no \
+    -o ConnectTimeout=15 \
+    -o BatchMode=yes \
+    ${SSH_USER}@${SSH_IP} \
+    \"$CURL_CMD\"" 2>&1
+
+EXIT_CODE=$?
+
+echo ""
+if [ $EXIT_CODE -eq 0 ]; then
+  echo "======================================="
+  echo " Done."
+  echo "======================================="
+elif [ $EXIT_CODE -eq 255 ]; then
+  echo "---CURL_PROCESS_EXIT:255---"
+  echo "ERROR: SSH failed — check IP '$SSH_IP' is reachable and SSH key is set for $SSH_USER"
+else
+  echo "---CURL_PROCESS_EXIT:$EXIT_CODE---"
+  echo "ERROR: Exited with code $EXIT_CODE"
 fi
