@@ -1,19 +1,5 @@
-this is the URL:http://10.177.44.58:4423/curl
-
-this is the data
-{
-  "method": "POST",
-  "url": "http://eissiuat.sbi.co.in:3001/cheque_bth/enquiry/accounts",
-  "sshIp": "10.177.44.52",
-  "body": {"SOURCE_ID":"CI","ACCOUNT_NUMBER":"00000030095812248","START_NUMBER":"040201","END_NUMBER":"040201","INSTRUMENT_TYPE":"31","REQUEST_REFERENCE_NUMBER":"SBICI261600930052087test1"},
-  "headers": [
-    "Content-Type: application/json"
-  ]
-}
-
-this is server.js:
 const express  = require("express");
-const { exec } = require("child_process");
+const { exec,spawn } = require("child_process");
 const cors     = require("cors");
 const path     = require("path");
 
@@ -198,7 +184,7 @@ app.post("/curl", (req, res) => {
     ...headers.filter(h => h && h.trim()),
   ];
 
-  const proc = exec("bash", args);
+  const proc = spawn("bash", args);
 
   let output = "";
 
@@ -237,6 +223,3 @@ app.listen(PORT, "0.0.0.0", () => {
   console.log(`  Script    : ${SCRIPT_PATH}`);
   console.log("================================================");
 });
-
-when i hit this script its running:
-./curl.sh POST http://eissiuat.sbi.co.in:3001/cheque_bth/enquiry/accounts 10.177.44.52 '{"SOURCE_ID":"CI","ACCOUNT_NUMBER":"00000030095812248","START_NUMBER":"040201","END_NUMBER":"040201","INSTRUMENT_TYPE":"31","REQUEST_REFERENCE_NUMBER":"SBICI261600930q120814teat"}' 'Content-Type: application/json'
