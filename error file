@@ -1,30 +1,13 @@
-Found 4 queries. Executing as a single transaction...
---- SQL to execute ---
-\noac
-INSERT into EISSIT.cache_details (FIELD_NAME, FIELD_VALUE, REQUEST_ACTION, PROCESSING_ACTION, RESPONSE_ACTION, SOURCE_ID, BACKEND_TYPE, BACKEND_SUB_TYPE, TRAN_CODE, SERVICE_NAME,CREATION_TIME) VALUES('IT_JVP_THINK360_SA_DOWNLOAD_REPORT_CCSID_TEST88','ST|Y2_test9','SOURCE_ID','SOURCE ID CONFIGURATION','NULL','MULTIPLE','THINK360','SA_DOWNLOAD_REPORT','IT_JVP','thirdPartyAAMAZE_sys',TRUNC(SYSDATE));
-INSERT into EISSIT.cache_details (FIELD_NAME, FIELD_VALUE, REQUEST_ACTION, PROCESSING_ACTION, RESPONSE_ACTION, SOURCE_ID, BACKEND_TYPE, BACKEND_SUB_TYPE, TRAN_CODE, SERVICE_NAME,CREATION_TIME) VALUES('IT_JVP_THINK360_SA_DOWNLOAD_REPORT_CCSID_TEST77','ST|Y2_test9','SOURCE_ID','SOURCE ID CONFIGURATION','NULL','MULTIPLE','THINK360','SA_DOWNLOAD_REPORT','IT_JVP','thirdPartyAAMAZE_sys',TRUNC(SYSDATE));
-INSERT into EISSIT.cache_details (FIELD_NAME, FIELD_VALUE, REQUEST_ACTION, PROCESSING_ACTION, RESPONSE_ACTION, SOURCE_ID, BACKEND_TYPE, BACKEND_SUB_TYPE, TRAN_CODE, SERVICE_NAME,CREATION_TIME) VALUES('IT_JVP_THINK360_SA_DOWNLOAD_REPORT_CCSID_TEST66','ST|Y2_test9','SOURCE_ID','SOURCE ID CONFIGURATION','NULL','MULTIPLE','THINK360','SA_DOWNLOAD_REPORT','IT_JVP','thirdPartyAAMAZE_sys',TRUNC(SYSDATE));
-INSERT into EISSIT.cae_details (FIELD_NAME, FIELD_VALUE, REQUEST_ACTION, PROCESSING_ACTION, RESPONSE_ACTION, SOURCE_ID, BACKEND_TYPE, BACKEND_SUB_TYPE, TRAN_CODE, SERVICE_NAME,CREATION_TIME) VALUES('IT_JVP_THINK360_SA_DOWNLOAD_REPORT_CCSID_TEST12','ST|Y2_test9','SOURCE_ID','SOURCE ID CONFIGURATION','NULL','MULTIPLE','THINK360','SA_DOWNLOAD_REPORT','IT_JVP','thirdPartyAAMAZE_sys',TRUNC(SYSDATE));
-\commit
-----------------------
-+---------------------------------------+
-| Connected!                            |
-|                                       |
-| sql-statement(s)[;]                   |
-| go                                    |
-| \noac                                 |
-| \ac                                   |
-| \commit                               |
-| \rollback                             |
-| \tables                               |
-| \columns <table-name>                 |
-| \quit                                 |
-|                                       |
-+---------------------------------------+
-1 SQL> \noac
-AUTOCOMMIT OFF (return status = 0)
-*1 SQL> 
-<T','IT_JVP','thirdPartyAAMAZE_sys',TRUNC(SYSDATE));
-SQLRowCount returns 1
-*1 SQL> 
-<T','IT_JVP','thirdPartyAAMAZE_sys',TRUNC(SYSDATE));
+ ./curl.sh POST \ http://eissiuat.sbi.co.in:3001/cheque_bth/enquiry/accounts \ 10.177.44.51 \ '{"SOURCE_ID":"CI","ACCOUNT_NUMBER":"00000030095812248","START_NUMBER":"040201","END_NUMBER":"040201","INSTRUMENT_TYPE":"31","REQUEST_REFERENCE_NUMBER":"SBICI2616009300520824test"}'
+=======================================
+ Step 1 : become eisuser
+ Step 2 : ssh eisuser@ 10.177.44.51
+ Step 3 : curl -k -X POST -i -w $'\n\n---CURL_EXIT_CODE:%{http_code}---\n' -d ' {"SOURCE_ID":"CI","ACCOUNT_NUMBER":"00000030095812248","START_NUMBER":"040201","END_NUMBER":"040201","INSTRUMENT_TYPE":"31","REQUEST_REFERENCE_NUMBER":"SBICI2616009300520824test"}' ' http://eissiuat.sbi.co.in:3001/cheque_bth/enquiry/accounts'
+ Method : POST
+ URL    :  http://eissiuat.sbi.co.in:3001/cheque_bth/enquiry/accounts
+=======================================
+
+ssh: Could not resolve hostname : Name or service not known
+
+---CURL_PROCESS_EXIT:255---
+ERROR: SSH failed — check IP ' 10.177.44.51' is reachable and SSH key is set for eisuser
