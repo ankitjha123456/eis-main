@@ -1,108 +1,80 @@
-const express  = require("express");
-const { exec } = require("child_process");
-const cors     = require("cors");
-const path     = require("path");
+const express = require("express");
+const cors = require("cors");
+const { spawn } = require("child_process");
+const path = require("path");
 
-const app  = express();
-const PORT = 4423;
-
-// Path to check.sh — same folder as server.js
-const SCRIPT_PATH = path.join(__dirname, "check.sh");
+const app = express();
+const PORT = 3002;
 
 app.use(cors());
 app.use(express.json());
 
-// ── GET /health ───────────────────────────────────────────
+// Health check
 app.get("/health", (req, res) => {
-  res.json({
-    status: "ok",
-    main_server: "10.177.44.58",
-    script: SCRIPT_PATH,
-    time:   new Date().toISOString(),
+  res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+// Execute curl via shell script
+// Body: { method, url, sshIp, body, headers: ["Key: Val", "Key2: Val2"] }
+app.post("/execute", (req, res) => {
+  const {
+    method = "GET",
+    url,
+    sshIp,
+    body = "",
+    headers = [],   // array of strings: ["Content-Type: application/json", "Authorization: Bearer x"]
+  } = req.body;
+
+  // Validate mandatory fields
+  if (!url)    return res.status(400).json({ error: "url is required" });
+  if (!sshIp)  return res.status(400).json({ error: "sshIp is required" });
+
+  const scriptPath = path.join(__dirname, "curl.sh");
+
+  // Build args: METHOD URL SSH_IP BODY header1 header2 ...
+  const args = [
+    scriptPath,
+    method.toUpperCase(),
+    url,
+    sshIp,
+    body,
+    ...headers.filter(h => h && h.trim()),  // spread each header as separate arg
+  ];
+
+  // Spawn: bash curl.sh METHOD URL SSH_IP BODY [header1] [header2] ...
+  const proc = spawn("bash", args);
+
+  let output = "";
+
+  proc.stdout.on("data", (chunk) => {
+    output += chunk.toString();
+  });
+
+  proc.stderr.on("data", (chunk) => {
+    output += chunk.toString();
+  });
+
+  proc.on("close", (code) => {
+    // Try to parse output as JSON
+    try {
+      const json = JSON.parse(output.trim());
+      return res.json(json);
+    } catch {
+      // Return raw output if not JSON
+      return res.status(200).send(output.trim());
+    }
+  });
+
+  proc.on("error", (err) => {
+    return res.status(500).json({ error: `Failed to run script: ${err.message}` });
+  });
+
+  // Kill process if client disconnects
+  req.on("close", () => {
+    if (!proc.killed) proc.kill();
   });
 });
 
-// ── POST /check ───────────────────────────────────────────
-// Body: { source_ip, target_ip, port }
-// source_ip → any IP — check.sh will SSH into it and run nc
-// target_ip → the server to check connectivity to
-// port      → port to test
-app.post("/check", (req, res) => {
-  const { source_ip, target_ip, port } = req.body;
-
-  // 1. Validate all three fields are present
-  if (!source_ip || !target_ip || !port) {
-    return res.status(400).json({
-      error: "source_ip, target_ip and port are all required"
-    });
-  }
-
-  // 2. Validate IP/hostname format — prevent command injection
-  const ipRegex = /^[a-zA-Z0-9.\-]+$/;
-  if (!ipRegex.test(source_ip)) {
-    return res.status(400).json({ error: "Invalid source_ip format" });
-  }
-  if (!ipRegex.test(target_ip)) {
-    return res.status(400).json({ error: "Invalid target_ip format" });
-  }
-
-  // 3. Validate port
-  const portNum = parseInt(port, 10);
-  if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
-    return res.status(400).json({ error: "Port must be between 1 and 65535" });
-  }
-
-  // 4. Build shell command
-  // check.sh <source_ip> <target_ip> <port>
-  const shellCommand = `bash ${SCRIPT_PATH} ${source_ip} ${target_ip} ${portNum}`;
-
-  console.log(`\n[${new Date().toISOString()}]`);
-  console.log(`  Source  : ${source_ip}`);
-  console.log(`  Target  : ${target_ip}:${portNum}`);
-  console.log(`  Running : ${shellCommand}`);
-
-  // 5. Execute — 15s timeout (8s SSH + 5s nc + buffer)
-  exec(shellCommand, { timeout: 15000 }, (error, stdout, stderr) => {
-
-    const rawOutput   = (stdout || "") + (stderr || "");
-    const outputLower = rawOutput.toLowerCase();
-
-    // Determine open/closed
-    const isOpen =
-      (error === null) ||
-      outputLower.includes("succeeded") ||
-      outputLower.includes(" open")     ||
-      outputLower.includes("connected");
-
-    const timedOut = error && error.killed;
-
-    // Strip ANSI color codes from check.sh output
-    const cleanOutput = rawOutput
-      .replace(/\x1b\[[0-9;]*m/g, "")
-      .trim();
-
-    console.log(`  Result  : ${isOpen ? "✅ OPEN" : "❌ CLOSED"}`);
-
-    res.json({
-      source_ip,
-      target_ip,
-      port:      portNum,
-      command:   `nc -vz -w 5 ${target_ip} ${portNum}`,
-      output:    timedOut
-                   ? "Check timed out after 15 seconds"
-                   : cleanOutput || (error ? error.message : "No output received"),
-      success:   isOpen,
-      timestamp: new Date().toISOString(),
-    });
-  });
-});
-
-// ── Start ─────────────────────────────────────────────────
-app.listen(PORT, "0.0.0.0", () => {
-  console.log("================================================");
-  console.log("  NC Checker Backend");
-  console.log(`  Listening : http://0.0.0.0:${PORT}`);
-  console.log(`  Health    : http://10.177.44.58:${PORT}/health`);
-  console.log(`  Script    : ${SCRIPT_PATH}`);
-  console.log("================================================");
+app.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
 });
