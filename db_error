@@ -7,7 +7,30 @@ SSH_IP="$3"
 BODY="$4"
 shift 4
 
+SSH_USER="eisuser"cat > /opt/node/eisuat/backend/curl.sh << 'SCRIPT'
+#!/bin/bash
+METHOD="$1"
+URL="$2"
+SSH_IP="$3"
+BODY="$4"
+shift 4
+
 SSH_USER="eisuser"
+
+HEADERS=""
+for h in "$@"; do
+  [ -n "$h" ] && HEADERS="$HEADERS -H '$h'"
+done
+
+echo "$BODY" | su -s /bin/bash "$SSH_USER" -c \
+  "ssh -q \
+  -o StrictHostKeyChecking=no \
+  -o ConnectTimeout=15 \
+  ${SSH_USER}@${SSH_IP} \
+  'curl -ks -X $METHOD $HEADERS -d @- \"$URL\"'"
+SCRIPT
+
+chmod +x /opt/node/eisuat/backend/curl.sh
 
 # Build header args
 HEADERS=""
