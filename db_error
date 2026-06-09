@@ -1,180 +1,23 @@
-const express  = require("express");
-const { exec,spawn } = require("child_process");
-const cors     = require("cors");
-const path     = require("path");
-
-const app  = express();
-const PORT = 4423;
-
-// Path to check.sh — same folder as server.js
-const SCRIPT_PATH = path.join(__dirname, "check.sh");
-const SCRIPT_PATH1 = path.join(__dirname, "cache.sh");
-
-app.use(cors());
-app.use(express.json());
-
-// ── GET /health ───────────────────────────────────────────
-app.get("/health", (req, res) => {
-  res.json({
-    status: "ok",
-    main_server: "10.177.44.58",
-    script: SCRIPT_PATH,
-    time:   new Date().toISOString(),
-  });
-});
-
-app.get('/cache', (req, res) => {
-    console.log(`[${new Date().toISOString()}] /cache called`);
-
-    exec(`bash ${SCRIPT_PATH1}`, (error, stdout, stderr) => {
-
-        if (error) {
-            console.error('Script error:', error.message);
-            return res.status(500).json({
-                status: 'ERROR',
-                message: error.message
-            });
-        }
-
-        try {
-            const result = JSON.parse(stdout.trim());
-            console.log('Response sent:', result);
-            return res.status(200).json(result);
-
-        } catch (e) {
-            console.error('JSON parse error:', e.message);
-            return res.status(500).json({
-                status: 'ERROR',
-                message: 'Failed to parse script output',
-                raw: stdout
-            });
-        }
-    });
-});
-
-
-app.post("/api/validate", (req, res) => {
-    const { ip, brokerName, egName, apiName } = req.body;
-
-    // Validate all fields are present
-    if (!ip || !brokerName || !egName || !apiName) {
-        return res.status(400).json({
-            error: "Missing required fields: ip, brokerName, egName, apiName"
-        });
-    }
-
-    // Sanitize inputs to prevent shell injection
-    const sanitize = (str) => str.replace(/[^a-zA-Z0-9._-]/g, "");
-
-    const safeIp         = sanitize(ip);
-    const safeBroker     = sanitize(brokerName);
-    const safeEg         = sanitize(egName);
-    const safeApi        = sanitize(apiName);
-
-    const scriptPath = path.join(__dirname, "valid.sh");
-    const command = `bash ${scriptPath} ${safeIp} ${safeBroker} ${safeEg} ${safeApi}`;
-
-    exec(command, { timeout: 30000 }, (error, stdout, stderr) => {
-           console.log("STDOUT:", stdout);
-           console.log("STDERR:", stderr);
-        if (error) console.log("ERROR:", error.message);
-        if (error) {
-            res.setHeader("Content-Type", "application/xml");
-            return res.status(500).send(`<error>${stderr || error.message}</error>`);
-        }
-
-        // Return XML output
-        res.setHeader("Content-Type", "application/xml");
-        res.send(stdout);
-    });
-});
-
-app.post("/check", (req, res) => {
-  const { source_ip, target_ip, port } = req.body;
-
-  // 1. Validate all three fields are present
-  if (!source_ip || !target_ip || !port) {
-    return res.status(400).json({
-      error: "source_ip, target_ip and port are all required"
-    });
-  }
-
-  // 2. Validate IP/hostname format — prevent command injection
-  const ipRegex = /^[a-zA-Z0-9.\-]+$/;
-  if (!ipRegex.test(source_ip)) {
-    return res.status(400).json({ error: "Invalid source_ip format" });
-  }
-  if (!ipRegex.test(target_ip)) {
-    return res.status(400).json({ error: "Invalid target_ip format" });
-  }
-
-  // 3. Validate port
-  const portNum = parseInt(port, 10);
-  if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
-    return res.status(400).json({ error: "Port must be between 1 and 65535" });
-  }
-
-  // 4. Build shell command
-  // check.sh <source_ip> <target_ip> <port>
-  const shellCommand = `bash ${SCRIPT_PATH} ${source_ip} ${target_ip} ${portNum}`;
-
-  console.log(`\n[${new Date().toISOString()}]`);
-  console.log(`  Source  : ${source_ip}`);
-  console.log(`  Target  : ${target_ip}:${portNum}`);
-  console.log(`  Running : ${shellCommand}`);
-
-  // 5. Execute — 15s timeout (8s SSH + 5s nc + buffer)
-  exec(shellCommand, { timeout: 15000 }, (error, stdout, stderr) => {
-
-    const rawOutput   = (stdout || "") + (stderr || "");
-    const outputLower = rawOutput.toLowerCase();
-
-    // Determine open/closed
-    const isOpen =
-      (error === null) ||
-      outputLower.includes("succeeded") ||
-      outputLower.includes(" open")     ||
-      outputLower.includes("connected");
-
-    const timedOut = error && error.killed;
-
-    // Strip ANSI color codes from check.sh output
-    const cleanOutput = rawOutput
-      .replace(/\x1b\[[0-9;]*m/g, "")
-      .trim();
-
-    console.log(`  Result  : ${isOpen ? "✅ OPEN" : "❌ CLOSED"}`);
-
-    res.json({
-      source_ip,
-      target_ip,
-      port:      portNum,
-      command:   `nc -vz -w 5 ${target_ip} ${portNum}`,
-      output:    timedOut
-                   ? "Check timed out after 15 seconds"
-                   : cleanOutput || (error ? error.message : "No output received"),
-      success:   isOpen,
-      timestamp: new Date().toISOString(),
-    });
-  });
-});
-
-
-
 app.post("/curl", (req, res) => {
   const { method = "GET", url, sshIp, body, headers = [] } = req.body;
+
+  console.log("=== /curl HIT ===");
+  console.log("method:", method);
+  console.log("url:", url);
+  console.log("sshIp:", sshIp);
+  console.log("body:", body);
+  console.log("headers:", headers);
 
   if (!url)   return res.status(400).json({ error: "url is required" });
   if (!sshIp) return res.status(400).json({ error: "sshIp is required" });
 
-  // Accept body as JSON object OR plain string
   const bodyStr = typeof body === "object" && body !== null
     ? JSON.stringify(body)
     : (body || "");
 
-  const scriptPath = path.join(__dirname, "curl.sh");
+  console.log("bodyStr:", bodyStr);
 
-  // args: METHOD URL SSH_IP BODY header1 header2 ...
+  const scriptPath = path.join(__dirname, "curl.sh");
   const args = [
     scriptPath,
     method.toUpperCase(),
@@ -184,42 +27,36 @@ app.post("/curl", (req, res) => {
     ...headers.filter(h => h && h.trim()),
   ];
 
+  console.log("args:", args);
+
   const proc = spawn("bash", args);
 
   let output = "";
-
   proc.stdout.on("data", (chunk) => {
+    console.log("STDOUT:", chunk.toString());
     output += chunk.toString();
   });
 
   proc.stderr.on("data", (chunk) => {
+    console.log("STDERR:", chunk.toString());
     output += chunk.toString();
   });
 
-  proc.on("close", () => {
+  proc.on("close", (code) => {
+    console.log("EXIT CODE:", code);
+    console.log("FINAL OUTPUT:", output);
     const result = output.trim();
     try {
-      // Return as JSON if parseable
       return res.json(JSON.parse(result));
     } catch {
-      // Otherwise return as plain text
       return res.send(result);
     }
   });
 
   proc.on("error", (err) => {
+    console.log("PROC ERROR:", err.message);
     return res.status(500).json({ error: err.message });
   });
 
   req.on("close", () => { if (!proc.killed) proc.kill(); });
-});
-
-// ── Start ─────────────────────────────────────────────────
-app.listen(PORT, "0.0.0.0", () => {
-  console.log("================================================");
-  console.log("  NC Checker Backend");
-  console.log(`  Listening : http://0.0.0.0:${PORT}`);
-  console.log(`  Health    : http://10.177.44.58:${PORT}/health`);
-  console.log(`  Script    : ${SCRIPT_PATH}`);
-  console.log("================================================");
 });
