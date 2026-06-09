@@ -19,4 +19,4 @@ done
 echo "$BODY" | su -s /bin/bash "$SSH_USER" -c \
   "ssh -q -o StrictHostKeyChecking=no -o ConnectTimeout=15 \
   ${SSH_USER}@${SSH_IP} \
-  'curl -ks -X $METHOD $HEADERS -d @- \"$URL\"'"
+  'curl -ks -X $METHOD $HEADERS -d @- \"$URL\"'" 2>/dev/null
