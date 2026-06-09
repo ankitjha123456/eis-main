@@ -14,34 +14,30 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-// Execute curl via shell script
-// Body: { method, url, sshIp, body, headers: ["Key: Val", "Key2: Val2"] }
+// Execute curl via shell script — returns plain JSON response
 app.post("/execute", (req, res) => {
-  const {
-    method = "GET",
-    url,
-    sshIp,
-    body = "",
-    headers = [],   // array of strings: ["Content-Type: application/json", "Authorization: Bearer x"]
-  } = req.body;
+  const { method = "GET", url, sshIp, body, headers = [] } = req.body;
 
-  // Validate mandatory fields
-  if (!url)    return res.status(400).json({ error: "url is required" });
-  if (!sshIp)  return res.status(400).json({ error: "sshIp is required" });
+  if (!url)   return res.status(400).json({ error: "url is required" });
+  if (!sshIp) return res.status(400).json({ error: "sshIp is required" });
+
+  // Accept body as JSON object OR plain string
+  const bodyStr = typeof body === "object" && body !== null
+    ? JSON.stringify(body)
+    : (body || "");
 
   const scriptPath = path.join(__dirname, "curl.sh");
 
-  // Build args: METHOD URL SSH_IP BODY header1 header2 ...
+  // args: METHOD URL SSH_IP BODY header1 header2 ...
   const args = [
     scriptPath,
     method.toUpperCase(),
     url,
     sshIp,
-    body,
-    ...headers.filter(h => h && h.trim()),  // spread each header as separate arg
+    bodyStr,
+    ...headers.filter(h => h && h.trim()),
   ];
 
-  // Spawn: bash curl.sh METHOD URL SSH_IP BODY [header1] [header2] ...
   const proc = spawn("bash", args);
 
   let output = "";
@@ -54,25 +50,22 @@ app.post("/execute", (req, res) => {
     output += chunk.toString();
   });
 
-  proc.on("close", (code) => {
-    // Try to parse output as JSON
+  proc.on("close", () => {
+    const result = output.trim();
     try {
-      const json = JSON.parse(output.trim());
-      return res.json(json);
+      // Return as JSON if parseable
+      return res.json(JSON.parse(result));
     } catch {
-      // Return raw output if not JSON
-      return res.status(200).send(output.trim());
+      // Otherwise return as plain text
+      return res.send(result);
     }
   });
 
   proc.on("error", (err) => {
-    return res.status(500).json({ error: `Failed to run script: ${err.message}` });
+    return res.status(500).json({ error: err.message });
   });
 
-  // Kill process if client disconnects
-  req.on("close", () => {
-    if (!proc.killed) proc.kill();
-  });
+  req.on("close", () => { if (!proc.killed) proc.kill(); });
 });
 
 app.listen(PORT, () => {
