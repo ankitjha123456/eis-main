@@ -1,24 +1,37 @@
-cat > /opt/node/eisuat/backend/curl.sh << 'SCRIPT'
-#!/bin/bash
-METHOD="$1"
-URL="$2"
-SSH_IP="$3"
-BODY="$4"
-shift 4
+app.post("/curl", (req, res) => {
+  const { method = "GET", url, sshIp, body, headers = [] } = req.body;
 
-SSH_USER="eisuser"
+  if (!url)   return res.status(400).json({ error: "url is required" });
+  if (!sshIp) return res.status(400).json({ error: "sshIp is required" });
 
-HEADERS=""
-for h in "$@"; do
-  [ -n "$h" ] && HEADERS="$HEADERS -H '$h'"
-done
+  const bodyStr = typeof body === "object" && body !== null
+    ? JSON.stringify(body)
+    : (body || "");
 
-echo "$BODY" | su -s /bin/bash "$SSH_USER" -c \
-  "ssh -q \
-  -o StrictHostKeyChecking=no \
-  -o ConnectTimeout=15 \
-  ${SSH_USER}@${SSH_IP} \
-  'curl -ks -X $METHOD $HEADERS -d @- \"$URL\"'"
-SCRIPT
+  const scriptPath = path.join(__dirname, "curl.sh");
 
-chmod +x /opt/node/eisuat/backend/curl.sh
+  // Build header args
+  const headerArgs = headers
+    .filter(h => h && h.trim())
+    .map(h => `'${h}'`)
+    .join(" ");
+
+  // Escape single quotes in body
+  const escapedBody = bodyStr.replace(/'/g, `'\\''`);
+
+  // Full command string passed to exec
+  const command = `bash ${scriptPath} ${method.toUpperCase()} '${url}' '${sshIp}' '${escapedBody}' ${headerArgs}`;
+
+  console.log("Running:", command);
+
+  exec(command, { timeout: 30000 }, (error, stdout, stderr) => {
+    console.log("stdout:", stdout);
+    console.log("stderr:", stderr);
+    const result = stdout.trim();
+    try {
+      return res.json(JSON.parse(result));
+    } catch {
+      return res.send(result || stderr);
+    }
+  });
+});
