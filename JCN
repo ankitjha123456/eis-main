@@ -1,4 +1,107 @@
-curl -kX POST http://eissiuat.sbi.co.in:3001/cheque_bth/enquiry/accounts -d'{"SOURCE_ID":"CI","ACCOUNT_NUMBER":"00000030095812248","START_NUMBER":"040201","END_NUMBER":"040201","INSTRUMENT_TYPE":"31","REQUEST_REFERENCE_NUMBER":"SBICI2616009300520874test"}'
+#!/bin/bash
+# curl.sh - SSH via eisuser then run curl on remote server
+# Usage: ./curl.sh <method> <url> <insecure> <verbose> <headers_json> <body> <ssh_host>
+#
+# Flow: local → ssh eisuser@<ssh_host> → curl <url>
 
-i want to make a UI for curl where we take input data,URL,HEADER by user and for -k, -v we take tick option and the option type in POST and GET and display the output 
-first make a shell-script, node.js and reactjs from where node run that shell script and that shellscript make a curl to that perticular server and display output 
+METHOD="$1"
+URL="$2"
+INSECURE="$3"        # "true" or "false"
+VERBOSE="$4"         # "true" or "false"
+HEADERS_JSON="$5"    # JSON: [{"key":"Content-Type","value":"application/json"}]
+BODY="$6"
+SSH_HOST="$7"        # e.g. 10.177.44.71 or EISUATEXP02
+
+# ─── Validation ───────────────────────────────────────────────────────────────
+if [ -z "$URL" ]; then
+  echo "ERROR: URL is required"
+  exit 1
+fi
+
+if [ -z "$SSH_HOST" ]; then
+  echo "ERROR: SSH host is required"
+  exit 1
+fi
+
+SSH_USER="eisuser"
+
+# ─── Build the curl command string (will run REMOTELY via SSH) ────────────────
+# -k is always added (certificate skip required on every curl)
+REMOTE_CMD="curl -k"
+
+# Method
+REMOTE_CMD="$REMOTE_CMD -X $METHOD"
+
+# Verbose flag
+if [ "$VERBOSE" = "true" ]; then
+  REMOTE_CMD="$REMOTE_CMD -v"
+fi
+
+# Always include response headers for status code extraction
+REMOTE_CMD="$REMOTE_CMD -i"
+
+# Status code marker at end
+REMOTE_CMD="$REMOTE_CMD -w '\n\n---CURL_EXIT_CODE:%{http_code}---\n'"
+
+# Parse headers from JSON and append -H flags
+if [ -n "$HEADERS_JSON" ] && [ "$HEADERS_JSON" != "[]" ] && [ "$HEADERS_JSON" != "null" ]; then
+  PARSED_HEADERS=$(node -e "
+    try {
+      const h = JSON.parse(process.argv[1]);
+      h.forEach(({key, value}) => {
+        if (key && value) {
+          // Escape single quotes inside header values
+          const safe = (key + ': ' + value).replace(/'/g, \"'\\\\''\"  );
+          console.log(safe);
+        }
+      });
+    } catch(e) {}
+  " "$HEADERS_JSON" 2>/dev/null)
+
+  while IFS= read -r header; do
+    if [ -n "$header" ]; then
+      REMOTE_CMD="$REMOTE_CMD -H '$header'"
+    fi
+  done <<< "$PARSED_HEADERS"
+fi
+
+# Body for POST/PUT/PATCH — escape single quotes for remote shell
+if [ -n "$BODY" ] && [ "$METHOD" != "GET" ] && [ "$METHOD" != "DELETE" ]; then
+  # Replace ' with '"'"' for safe single-quote escaping inside the remote command
+  ESCAPED_BODY="${BODY//"'"/"'\"'\"'"}"
+  REMOTE_CMD="$REMOTE_CMD -d '$ESCAPED_BODY'"
+fi
+
+# Append URL
+REMOTE_CMD="$REMOTE_CMD '$URL'"
+
+# ─── Print what we're about to do ─────────────────────────────────────────────
+echo "=== SSH CONNECTION ==="
+echo "User  : $SSH_USER"
+echo "Host  : $SSH_HOST"
+echo ""
+echo "=== CURL COMMAND (running on $SSH_HOST) ==="
+echo "$REMOTE_CMD"
+echo ""
+echo "=== RESPONSE ==="
+
+# ─── Execute via SSH ──────────────────────────────────────────────────────────
+# -o StrictHostKeyChecking=no  → skip host key prompt (same as -k for SSH)
+# -o ConnectTimeout=15         → fail fast if host unreachable
+# -o BatchMode=yes             → no password prompts (use SSH key auth)
+ssh \
+  -o StrictHostKeyChecking=no \
+  -o ConnectTimeout=15 \
+  -o BatchMode=yes \
+  "$SSH_USER@$SSH_HOST" \
+  "$REMOTE_CMD" 2>&1
+
+SSH_EXIT=$?
+
+if [ $SSH_EXIT -ne 0 ]; then
+  echo ""
+  echo "---CURL_PROCESS_EXIT:$SSH_EXIT---"
+  if [ $SSH_EXIT -eq 255 ]; then
+    echo "SSH connection failed — check host '$SSH_HOST' is reachable and SSH key is set up for $SSH_USER"
+  fi
+fi
