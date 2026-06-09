@@ -1,62 +1,30 @@
-app.post("/curl", (req, res) => {
-  const { method = "GET", url, sshIp, body, headers = [] } = req.body;
+cat > /opt/node/eisuat/backend/curl.sh << 'SCRIPT'
+#!/bin/bash
+METHOD="$1"
+URL="$2"
+SSH_IP="$3"
+BODY="$4"
+shift 4
 
-  console.log("=== /curl HIT ===");
-  console.log("method:", method);
-  console.log("url:", url);
-  console.log("sshIp:", sshIp);
-  console.log("body:", body);
-  console.log("headers:", headers);
+SSH_USER="eisuser"
 
-  if (!url)   return res.status(400).json({ error: "url is required" });
-  if (!sshIp) return res.status(400).json({ error: "sshIp is required" });
+HEADERS=""
+for h in "$@"; do
+  [ -n "$h" ] && HEADERS="$HEADERS -H '$h'"
+done
 
-  const bodyStr = typeof body === "object" && body !== null
-    ? JSON.stringify(body)
-    : (body || "");
+echo "$BODY" | su -s /bin/bash "$SSH_USER" -c \
+  "ssh -q -o StrictHostKeyChecking=no -o ConnectTimeout=15 \
+  ${SSH_USER}@${SSH_IP} \
+  'curl -ks -X $METHOD $HEADERS -d @- \"$URL\"'" 2>/dev/null | grep "^{"
+SCRIPT
 
-  console.log("bodyStr:", bodyStr);
+chmod +x /opt/node/eisuat/backend/curl.sh
 
-  const scriptPath = path.join(__dirname, "curl.sh");
-  const args = [
-    scriptPath,
-    method.toUpperCase(),
-    url,
-    sshIp,
-    bodyStr,
-    ...headers.filter(h => h && h.trim()),
-  ];
 
-  console.log("args:", args);
 
-  const proc = spawn("bash", args);
-
-  let output = "";
-  proc.stdout.on("data", (chunk) => {
-    console.log("STDOUT:", chunk.toString());
-    output += chunk.toString();
-  });
-
-  proc.stderr.on("data", (chunk) => {
-    console.log("STDERR:", chunk.toString());
-    output += chunk.toString();
-  });
-
-  proc.on("close", (code) => {
-    console.log("EXIT CODE:", code);
-    console.log("FINAL OUTPUT:", output);
-    const result = output.trim();
-    try {
-      return res.json(JSON.parse(result));
-    } catch {
-      return res.send(result);
-    }
-  });
-
-  proc.on("error", (err) => {
-    console.log("PROC ERROR:", err.message);
-    return res.status(500).json({ error: err.message });
-  });
-
-  req.on("close", () => { if (!proc.killed) proc.kill(); });
-});
+bash /opt/node/eisuat/backend/curl.sh POST \
+  'http://10.177.44.51:3001/cheque_bth/enquiry/accounts' \
+  '10.177.44.51' \
+  '{"SOURCE_ID":"CI","ACCOUNT_NUMBER":"00000030095812248","START_NUMBER":"040201","END_NUMBER":"040201","INSTRUMENT_TYPE":"31","REQUEST_REFERENCE_NUMBER":"SBICI26160aa30052087test1"}' \
+  'Content-Type: application/json'
