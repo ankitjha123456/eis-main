@@ -1,32 +1,6 @@
-#!/bin/bash
-# Usage: ./curl.sh <METHOD> <URL> <SSH_IP> <BODY> [header1] [header2] ...
-
-METHOD="$1"
-URL="$2"
-SSH_IP="$3"
-BODY="$4"
-shift 4
-
-SSH_USER="eisuser"
-
-# Build curl command
-CURL_CMD="curl -ks -X $METHOD"
-
-# Add headers if provided
-for header in "$@"; do
-  [ -n "$header" ] && CURL_CMD="$CURL_CMD -H '$header'"
-done
-
-# Add body if provided
-[ -n "$BODY" ] && CURL_CMD="$CURL_CMD -d '$BODY'"
-
-# Add URL
-CURL_CMD="$CURL_CMD '$URL'"
-
-# Execute: become eisuser → ssh -tq (suppress banner) → curl
-su -s /bin/bash "$SSH_USER" -c \
-  "ssh -tq \
-  -o StrictHostKeyChecking=no \
+ su -s /bin/bash "eisuser" -c   "ssh -tq \                                                                                                                                                                             -o StrictHostKeyChecking=no \
   -o ConnectTimeout=15 \
   -o BatchMode=no \
-  ${SSH_USER}@${SSH_IP} \"$CURL_CMD\""
+  eisuser@10.177.44.52 "curl -ks -X POST -H 'Content-Type: application/json' -d '{"SOURCE_ID":"CI","ACCOUNT_NUMBER":"00000030095812248","START_NUMBER":"040201","END_NUMBER":"040201","INSTRUMENT_TYPE":"31","REQUEST_REFERENCE_NUMBER":"SBICI2616009300120814test"}' 'http://eissiuat.sbi.co.in:3001/cheque_bth/enquiry/accounts'""
+su: invalid option -- 'k'
+Try 'su --help' for more information.
