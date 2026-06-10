@@ -1,5 +1,5 @@
 app.post("/curl", (req, res) => {
-  const { method = "GET", url, sshIp, body, headers = [] } = req.body;
+  const { method , url, sshIp, body, headers = [] } = req.body;
 
   if (!url)   return res.status(400).json({ error: "url is required" });
   if (!sshIp) return res.status(400).json({ error: "sshIp is required" });
@@ -21,7 +21,7 @@ app.post("/curl", (req, res) => {
   ];
 
   // Use shell:true so the pipe inside curl.sh works correctly
-  const proc = spawn("bash", args, { shell: false });
+  const proc = exec("bash", args, { shell: false });
 
   // Write body to stdin — script does echo "$BODY" internally but
   // we also write here in case stdin is needed by su pipe
@@ -57,17 +57,27 @@ app.post("/curl", (req, res) => {
 
 
 
-{
-  "method": "POST",
-  "url": "http://eissiuat.sbi.co.in:3001/cheque_bth/enquiry/accounts",
-  "sshIp": "10.177.44.52",
-  "body": {
-    "SOURCE_ID": "CI",
-    "ACCOUNT_NUMBER": "00000030095812248",
-    "START_NUMBER": "040201",
-    "END_NUMBER": "040201",
-    "INSTRUMENT_TYPE": "31",
-    "REQUEST_REFERENCE_NUMBER": "SBICI261600930q12a814teat"
-  },
-  "headers": ["Content-Type: application/json"]
-}
+
+
+
+
+
+
+for this server.js 
+postman giving this error
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="utf-8">
+	<title>Error</title>
+</head>
+
+<body>
+	<pre>TypeError [ERR_INVALID_ARG_VALUE]: The argument &#39;callback&#39; is invalid. Received { shell: false }<br> &nbsp; &nbsp;at new NodeError (node:internal/errors:387:5)<br> &nbsp; &nbsp;at Object.execFile (node:child_process:309:11)<br> &nbsp; &nbsp;at exec (node:child_process:228:25)<br> &nbsp; &nbsp;at /opt/node/eisuat/backend/server.js:186:16<br> &nbsp; &nbsp;at Layer.handle (/opt/node/eisuat/backend/node_modules/express/lib/router/layer.js:95:5)<br> &nbsp; &nbsp;at b.runFunctionInContext (/opt/dynatrace/oneagent/agent/bin/1.337.51.20260520-164208/any/nodejs/nodejsagent.js:1:24276)<br> &nbsp; &nbsp;at b.runFunction (/opt/dynatrace/oneagent/agent/bin/1.337.51.20260520-164208/any/nodejs/nodejsagent.js:1:23683)<br> &nbsp; &nbsp;at Layer.handle [as handle_request] (/opt/dynatrace/oneagent/agent/bin/1.337.51.20260520-164208/any/nodejs/nodejsagent.js:1:699708)<br> &nbsp; &nbsp;at next (/opt/node/eisuat/backend/node_modules/express/lib/router/route.js:149:13)<br> &nbsp; &nbsp;at Route.dispatch (/opt/node/eisuat/backend/node_modules/express/lib/router/route.js:119:3)</pre>
+</body>
+
+</html>
