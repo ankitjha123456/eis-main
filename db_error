@@ -5,7 +5,7 @@ const BACKEND = "http://10.177.44.58:4423";
 export default function CurlUI() {
   const [method, setMethod]     = useState("POST");
   const [url, setUrl]           = useState("http://eissiuat.sbi.co.in:3001/cheque_bth/enquiry/accounts");
-  const [sshIp, setSshIp]       = useState("10.177.44.52");
+  const [sshIp, setSshIp]       = useState("10.177.44.50");
   const [body, setBody]         = useState(`{\n  "SOURCE_ID": "CI",\n  "ACCOUNT_NUMBER": "00000030095812248",\n  "START_NUMBER": "040201",\n  "END_NUMBER": "040201",\n  "INSTRUMENT_TYPE": "31",\n  "REQUEST_REFERENCE_NUMBER": "SBICI261600930q12a814teat"\n}`);
   const [headers, setHeaders]   = useState([{ id: 1, value: "Content-Type: application/json" }]);
   const [response, setResponse] = useState(null);
@@ -147,12 +147,16 @@ export default function CurlUI() {
           {/* SSH IP */}
           <div className="ssh-row">
             <div className="ssh-badge">eisuser@</div>
-            <input
+            <select
               className="input input-grow"
-              placeholder="SSH IP — e.g. 10.177.44.52"
               value={sshIp}
               onChange={e => setSshIp(e.target.value)}
-            />
+              style={{ cursor: "pointer" }}
+            >
+              {[50,52,54,56,60,62,64,66].map(oct => (
+                <option key={oct} value={`10.177.44.${oct}`}>10.177.44.{oct}</option>
+              ))}
+            </select>
             <div style={{ fontSize: 11, color: "#2e3550", fontFamily: "'JetBrains Mono',monospace", whiteSpace: "nowrap" }}>
               → curl
             </div>
