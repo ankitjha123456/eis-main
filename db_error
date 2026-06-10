@@ -1,14 +1,11 @@
-echo "hello" | su -s /bin/bash eisuser -c "cat"
-
-
-su -s /bin/bash eisuser -c "ssh -q -o StrictHostKeyChecking=no -o BatchMode=yes eisuser@10.177.44.52 'whoami'"
-
-
-
-su -s /bin/bash eisuser -c "ssh -q -o StrictHostKeyChecking=no eisuser@10.177.44.52 'curl -ks http://eissiuat.sbi.co.in:3001/health'"
-
-
-
-echo '{"SOURCE_ID":"CI"}' | su -s /bin/bash eisuser -c \
+[root@EISUATEXP09 backend]# echo "hello" | su -s /bin/bash eisuser -c "cat"
+hello
+[root@EISUATEXP09 backend]# su -s /bin/bash eisuser -c "ssh -q -o StrictHostKeyChecking=no -o BatchMode=yes eisuser@10.177.44.52 'whoami'"
+eisuser
+[root@EISUATEXP09 backend]# su -s /bin/bash eisuser -c "ssh -q -o StrictHostKeyChecking=no eisuser@10.177.44.52 'curl -ks http://10.177.44.58:4423/health'"
+{"status":"ok","main_server":"10.177.44.58","script":"/opt/node/eisuat/backend/check.sh","time":"2026-06-10T04:12:43.969Z"}[root@EISUATEXP09 backend]#
+[root@EISUATEXP09 backend]# echo '{"SOURCE_ID":"CI"}' | su -s /bin/bash eisuser -c \
   "ssh -q -o StrictHostKeyChecking=no eisuser@10.177.44.52 \
   'curl -ks -X POST -H '\''Content-Type: application/json'\'' -d @- http://eissiuat.sbi.co.in:3001/cheque_bth/enquiry/accounts'"
+{"ERROR_CODE":"SI011","ERROR_DESCRIPTION":"SI520|MISSING FIELD REQUEST_REFERENCE_NUMBER","RESPONSE_STATUS":"1","RESPONSE_DATE":"10-06-2026 09:42:54"}[root@EISUATEXP09 backend]#
+[root@EISUATEXP09 backend]#
