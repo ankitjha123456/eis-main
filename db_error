@@ -19,15 +19,17 @@ app.post("/curl", (req, res) => {
     ...headers.filter(h => h && h.trim()),
   ];
 
-  const proc = spawn("bash", args);
-
-  proc.stdin.end();
-
   let output = "";
+  let done = false;
+
+  const proc = spawn("bash", args, { detached: false });
+
   proc.stdout.on("data", (chunk) => { output += chunk.toString(); });
   proc.stderr.on("data", (chunk) => { output += chunk.toString(); });
 
   proc.on("close", (code) => {
+    if (done) return;
+    done = true;
     console.log("EXIT:", code);
     console.log("OUTPUT:", output);
     const result = output.trim();
@@ -38,6 +40,11 @@ app.post("/curl", (req, res) => {
     }
   });
 
-  proc.on("error", (err) => res.status(500).json({ error: err.message }));
-  req.on("close", () => { if (!proc.killed) proc.kill(); });
+  proc.on("error", (err) => {
+    if (done) return;
+    done = true;
+    res.status(500).json({ error: err.message });
+  });
+
+  // Do NOT kill on req close — let script finish
 });
