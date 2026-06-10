@@ -1,5 +1,13 @@
-cat > /opt/node/eisuat/backend/curl.sh << 'SCRIPT'
+  this curl is gicing response:
+  
+./curl.sh POST http://eissiuat.sbi.co.in:3001/cheque_bth/enquiry/accounts 10.177.44.52 '{"SOURCE_ID":"CI","ACCOUNT_NUMBER":"00000030095812248","START_NUMBER":"040201","END_NUMBER":"040201","INSTRUMENT_TYPE":"31","REQUEST_REFERENCE_NUMBER":"SBICI261600930q12a814teat"}' 'Content-Type: application/json'
+{"RESPONSE_STATUS":"1","ERROR_CODE":"SI094","ERROR_DESCRIPTION":"REFERENCE NUMBER NOT UNIQUE","REQUEST_REFERENCE_NUMBER":"SBICI261600930q12a814teat","RESPONSE_DATE":"10-06-2026 09:22:39"}
+
+
+this is curl.sh:
 #!/bin/bash
+# Usage: ./curl.sh <METHOD> <URL> <SSH_IP> <BODY> [header1] [header2] ...
+
 METHOD="$1"
 URL="$2"
 SSH_IP="$3"
@@ -8,20 +16,16 @@ shift 4
 
 SSH_USER="eisuser"
 
+# Build header args
 HEADERS=""
 for h in "$@"; do
   [ -n "$h" ] && HEADERS="$HEADERS -H '$h'"
 done
 
-# Escape double quotes in body for remote shell
-ESCAPED_BODY=$(echo "$BODY" | sed 's/"/\\"/g')
+# Pipe body via stdin → curl reads with -d @-
+echo "$BODY" | su -s /bin/bash "$SSH_USER" -c \
+  "ssh -q -o StrictHostKeyChecking=no -o ConnectTimeout=15 \
+  ${SSH_USER}@${SSH_IP} \
+  'curl -ks -X $METHOD $HEADERS -d @- \"$URL\"'" 2>/dev/null | grep "^{"
 
-su - "$SSH_USER" -c \
-  "ssh -o StrictHostKeyChecking=no \
-  -o ConnectTimeout=10 \
-  -o BatchMode=yes \
-  $SSH_IP \
-  \"curl --silent -k -X $METHOD $HEADERS -d '$ESCAPED_BODY' '$URL'\"" 2>/dev/null
-SCRIPT
-
-chmod +x /opt/node/eisuat/backend/curl.sh
+now pass make a server.js so i pass this input and run this script and return the output.
