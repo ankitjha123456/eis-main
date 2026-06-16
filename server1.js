@@ -21,16 +21,13 @@ http.createServer((req, res) => {
     req.on("data", chunk => body = Buffer.concat([body, chunk]));
 
     req.on("end", () => {
-      // Extract filename
       const nameMatch = body.toString().match(/filename="(.+?)"/);
       const fileName = nameMatch ? nameMatch[1] : "cert.crt";
 
-      // Extract file bytes
       const start = body.indexOf("\r\n\r\n", body.indexOf("filename=")) + 4;
       const end   = body.lastIndexOf(`\r\n--${boundary}`);
       const fileBuffer = body.slice(start, end);
 
-      // Save to local /tmp first
       const localPath  = `/tmp/${fileName}`;
       const remotePath = `${SFTP_USER}@${SFTP_HOST}:${REMOTE_DIR}`;
 
@@ -40,14 +37,13 @@ http.createServer((req, res) => {
           return res.end(JSON.stringify({ error: "Failed to save file locally" }));
         }
 
-        // SCP to remote server
         execFile("scp", [
           "-i", SSH_KEY,
           "-o", "StrictHostKeyChecking=no",
           localPath,
           remotePath
         ], (err, stdout, stderr) => {
-          fs.unlinkSync(localPath); // cleanup local
+          fs.unlinkSync(localPath);
 
           if (err) {
             res.writeHead(500);
@@ -67,4 +63,4 @@ http.createServer((req, res) => {
     res.end("Not found");
   }
 
-}).listen(PORT, () => console.log(`✅ Running on port ${PORT}`));
+}).listen(PORT, () => console.log(`Running on port ${PORT}`));
