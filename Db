@@ -1,404 +1,110 @@
-stages:
-
-# ============== Validation and Initialization ============
-- stage: Validation_Stage
-  displayName: Validation and Intialization
-  pool:
-    name: TFS-RH-1
-
-  jobs:
-    - job: Validation_Job
-      displayName: Validation
-      workspace:
-        clean: all
-
-      steps:
-
-        - checkout: self
-          path: s/app
-
-        - checkout: git://EISGITREPO/eis-configuration@refs/heads/config
-          path: s/eis-configurations
-
-        - task: CmdLine@2
-          name: val_task
-          env:
-            BRANCH: $(Build.SourceBranchName)
-          displayName: Validating repository
-          inputs:
-            script: |
-              set -e
-
-              applicationName=$(ls -1 "$(Build.SourcesDirectory)/app" | grep -vE "Config|README.md|azure-pipelines.yml" | tail -n 1)
-              echo "Application name : $applicationName"
-              echo "branch: $BRANCH"
-
-              if [ "$BRANCH" = "main" ]; then
-                echo "Branch is 'main' — skipping config validation"
-                echo "##vso[task.setvariable variable=DeployFlag;isOutput=true]false"
-                echo "##vso[task.setvariable variable=CacheFlag;isOutput=true]false"
-                exit 0
-              fi
-
-              CONFIG_FILE="$(Build.SourcesDirectory)/eis-configurations/${BRANCH}_config.yml"
-              OVERRIDE_FILE="$(Build.SourcesDirectory)/eis-configurations/${BRANCH}_override.yml"
-
-              if [ -f "$CONFIG_FILE" ]; then
-                COUNT=$(yq e "keys | map(select(. == \"$applicationName\")) | length" "$CONFIG_FILE")
-                if [ "$COUNT" -gt 1 ]; then
-                    echo "ERROR: Config file '${BRANCH}_config.yml' has duplicate entries for key '$applicationName'."
-                    exit 1
-                fi
-              fi
-
-              if [ -f "$OVERRIDE_FILE" ]; then
-                COUNT=$(yq e "keys | map(select(. == \"$applicationName\")) | length" "$OVERRIDE_FILE")
-                if [ "$COUNT" -gt 1 ]; then
-                  echo "ERROR: Override file '${BRANCH}_override.yml' has duplicate entries for key '$applicationName'."
-                  exit 1
-                fi
-              fi
-
-
-
-              if [ ! -d "$(Build.SourcesDirectory)/app/Config" ]; then
-                mkdir -p "$(Build.SourcesDirectory)/app/Config"
-              fi
-
-              yq e ".$applicationName | select(. != null)" \
-                 "$(Build.SourcesDirectory)/eis-configurations/${BRANCH}_config.yml" \
-                 > "$(Build.SourcesDirectory)/app/Config/config_eis_configuration.yml"
-
-              if [ -s "$(Build.SourcesDirectory)/app/Config/config_eis_configuration.yml" ]; then
-                config_path="$(Build.SourcesDirectory)/app/Config/config_eis_configuration.yml"
-              elif [ -s "$(Build.SourcesDirectory)/app/Config/config.yml" ]; then
-                yq e ".$BRANCH" "$(Build.SourcesDirectory)/app/Config/config.yml" \
-                  > "$(Build.SourcesDirectory)/app/Config/temp.yml" &&
-                mv "$(Build.SourcesDirectory)/app/Config/temp.yml" "$(Build.SourcesDirectory)/app/Config/config.yml"
-                config_path="$(Build.SourcesDirectory)/app/Config/config.yml"
-              else
-                echo "ERROR: config.yml not found"
-                exit 1
-              fi
-
-              REQUIRED_FIELDS=(
-                IntegrationNode
-                IntegrationServer
-              )
-
-              for field in "${REQUIRED_FIELDS[@]}"; do
-                value=$(yq e ".$field // \"\"" "$config_path" | tr -d '[:space:]')
-                if [ -z "$value" ]; then
-                  echo "ERROR: $field is missing or empty"
-                  exit 1
-                fi
-              done
-
-              DEPLOY=$(yq e ".Deploy" "$config_path" | tr -d '[:space:]')
-              CACHE_PRESENT=$(yq e ".Cache // [] | length > 0" "$config_path" | tr -d '[:space:]')
-
-              if [[ "$DEPLOY" =~ ^(false|False)$ ]]; then
-                DEPLOY="false"
-              else
-                DEPLOY="true"
-              fi
-
-              if [[ "$CACHE_PRESENT" =~ ^(true|True)$ ]]; then
-                CACHE_PRESENT="true"
-              else
-                CACHE_PRESENT="false"
-              fi
-
-              if [[ "$DEPLOY" != "true" && "$DEPLOY" != "false" ]]; then
-                echo "Invalid Deploy flag in config.yml"
-                exit 1
-              fi
-
-              echo "##vso[task.setvariable variable=DeployFlag;isOutput=true]$DEPLOY"
-              echo "##vso[task.setvariable variable=CacheFlag;isOutput=true]$CACHE_PRESENT"
-
-
-# ================= BUILD STAGE =================
-- stage: Build
-  displayName: Build Stage
-  dependsOn: Validation_Stage
-  pool:
-    name: TFS-RH-1
-  condition: succeeded('Validation_Stage')
-
-  jobs:
-    - job: Build_Job
-      displayName: Agent Build job
-      workspace:
-        clean: all
-
-      steps:
-
-        - checkout: self
-          path: s/app
-
-        - checkout: git://EISGITREPO/eis-configuration@refs/heads/config
-          path: s/eis-configurations
-
-        - task: CmdLine@2
-          displayName: Building Bar file
-          env:
-            BRANCH: $(Build.SourceBranchName)
-          inputs:
-            script: |
-              set -e
-              . /opt/IBM/ace/server/bin/mqsiprofile
-
-              applicationName=$(ls -1 "$(Build.SourcesDirectory)/app" | grep -vE "Config|README.md|azure-pipelines.yml" | tail -n 1)
-
-              mkdir -p "$(Build.SourcesDirectory)/app/Config"
-
-              yq e ".$applicationName | select(. !=null)" \
-                "$(Build.SourcesDirectory)/eis-configurations/${BRANCH}_config.yml" \
-                > "$(Build.SourcesDirectory)/app/Config/config_eis_configuration.yml"
-
-              if [ -s "$(Build.SourcesDirectory)/app/Config/config_eis_configuration.yml" ]; then
-                config_path="$(Build.SourcesDirectory)/app/Config/config_eis_configuration.yml"
-                yq -i ".ApplicationName = \"$applicationName\"" "$config_path"
-                cp "$config_path" "$(Build.BinariesDirectory)/config.yml"
-              else
-                yq e ".$BRANCH" "$(Build.SourcesDirectory)/app/Config/config.yml" \
-                  > "$(Build.SourcesDirectory)/app/Config/temp.yml" &&
-                mv "$(Build.SourcesDirectory)/app/Config/temp.yml" "$(Build.SourcesDirectory)/app/Config/config.yml"
-                config_path="$(Build.SourcesDirectory)/app/Config/config.yml"
-                yq -i ".ApplicationName = \"$applicationName\"" "$config_path"
-                cp "$config_path" "$(Build.BinariesDirectory)/config.yml"
-              fi
-
-              override_path=""
-              if [ -f "$(Build.SourcesDirectory)/eis-configurations/${BRANCH}_override.yml" ]; then
-                yq ".$applicationName | to_entries[] | .key + \" = \" + .value" \
-                  "$(Build.SourcesDirectory)/eis-configurations/${BRANCH}_override.yml" \
-                  > "$(Build.SourcesDirectory)/app/Config/override.properties"
-                override_path="$(Build.SourcesDirectory)/app/Config/override.properties"
-              fi
-
-              if [ -s "$override_path" ]; then
-                ibmint package \
-                  --input-path "$(Build.SourcesDirectory)/app" \
-                  --output-bar-file "$(Build.BinariesDirectory)/$applicationName.bar" \
-                  --java-version 8 \
-                  --overrides-file "$override_path"
-              else
-                ibmint package \
-                  --input-path "$(Build.SourcesDirectory)/app" \
-                  --output-bar-file "$(Build.BinariesDirectory)/$applicationName.bar" \
-                  --java-version 8
-              fi
-
-              mqsireadbar -b "$(Build.BinariesDirectory)/$applicationName.bar" -r \
-                | grep "=" | sed -e 's/^[[:space:]]*//' \
-                > "$(Build.BinariesDirectory)/override.properties"
-
-
-        - task: CopyFiles@2
-          inputs:
-            SourceFolder: $(Build.BinariesDirectory)
-            TargetFolder: $(Build.ArtifactStagingDirectory)
-            OverWrite: true
-
-        - task: PublishBuildArtifacts@1
-          inputs:
-            PathtoPublish: $(Build.ArtifactStagingDirectory)
-            ArtifactName: drop
-
-        - task: CmdLine@2
-          displayName: Display override.properties
-          condition: always()
-          inputs:
-            script: |
-              OVERRIDE_FILE="$(Build.BinariesDirectory)/override.properties"
-              if [ -f "$OVERRIDE_FILE" ]; then
-                echo "=========override.properties contents ========="
-                cat "$OVERRIDE_FILE"
-                echo "==============================================="
-              else
-                echo "ERROR : override.properties not found at $OVERRIDE_FILE" 
-              fi
-
-# ================= RELEASE STAGE =================
-- stage: Release
-  displayName: Deploy Stage
-  pool:
-    name: TFS-RH-1
-  dependsOn:
-    - Validation_Stage
-    - Build
-  condition: |
-    and(
-      succeeded('Build'),
-      eq(dependencies.Validation_Stage.outputs['Validation_Job.val_task.DeployFlag'], 'true'),
-      ne(variables['Build.SourceBranchName'], 'main')
-    )
-  jobs:
-    
-    - deployment: DeployApp
-      displayName: Deployment Job
-      environment: $(Build.SourceBranchName)
-      workspace:
-        clean: all
-
-      strategy:
-        runOnce:
-          deploy:
-            steps:
-
-              - download: current
-                artifact: drop
-
-              - task: CmdLine@2
-                displayName: Deploying Bar File
-                env:
-                  BRANCH: $(Build.SourceBranchName)
-                inputs:
-                  workingDirectory: $(Pipeline.Workspace)/drop
-                  script: |
-                    set -e
-                    . /opt/IBM/ace/server/bin/mqsiprofile
-
-                    IntegrationNode=($(yq e ".IntegrationNode" config.yml))
-                    ApplicationName=$(yq e ".ApplicationName" config.yml)
-                    IntegrationServer=($(yq e ".IntegrationServer" config.yml))
-
-                    broker_files=()
-
-                    for node in "${IntegrationNode[@]}"; do
-                      for broker_file in /home/devops/broker/$BRANCH/${node}*; do
-                        fname=$(basename "$broker_file")
-                        if [[ $fname =~ ^${node}_([0-9]+)\.broker$ ]]; then
-                          broker_files+=("$broker_file")
-                        fi
-                      done
-                    done
-
-                    if [ ${#broker_files[@]} -eq 0 ]; then
-                      echo "Error: No Integration Node found for $IntegrationNode"
-                      exit 1
-                    fi
-
-                    for broker_file in "${broker_files[@]}"; do
-                      servers=($(mqsilist -n "$broker_file" -w 5 | grep "running" | grep "Integration" | cut -d"'" -f2))
-
-                      if [ ${#servers[@]} -eq 0 ]; then
-                        echo "Error: Not able to access $broker_file or no Integration Server is running"
-                        exit 1
-                      fi
-
-                      for server in "${IntegrationServer[@]}"; do
-                        if printf '%s\n' "${servers[@]}" | grep -qx "$server"; then
-                          host=$(grep host "$broker_file" | awk -F'"' '{print $4}')
-                          echo "HOST: $host , IntegrationNode: $fname , IntegrationServer: $server"
-                          ibmint deploy \
-                            --input-bar-file "$ApplicationName.bar" \
-                            --integration-node-file "$broker_file" \
-                            --output-server "$server"
-                        else
-                            echo " Integration server $server name is incorrect or not running"
-                            exit 1  
-                        fi
-                      done
-                    done
-
-
-# ================= CACHE STAGE =================
-- stage: Cache
-  displayName: CACHE
-  pool:
-    name: TFS-RH-1
-  dependsOn:
-    - Validation_Stage
-    - Build
-  condition: |
-    and(
-      succeeded('Validation_Stage'),
-      eq(dependencies.Validation_Stage.outputs['Validation_Job.val_task.CacheFlag'], 'true'),
-      or(
-        eq(dependencies.Validation_Stage.outputs['Validation_Job.val_task.DeployFlag'], 'false'),
-        succeeded('Build')
-      ),
-      ne(variables['Build.SourceBranchName'], 'main')
-    )
-
-  jobs:
-    - job: Cache_Job
-      displayName: CACHE UPDATE
-      workspace:
-        clean: all
-
-      steps:
-
-        - download: current
-          artifact: drop
-
-        - task: CmdLine@2
-          displayName: Update cache in Database
-          env:
-            BRANCH: $(Build.SourceBranchName)
-          inputs:
-            workingDirectory: $(Pipeline.Workspace)/drop/
-            script: |
-              source ~/.bashrc
-              set -e
-              if [ ! -f config.yml ]; then
-                echo "config.yml file was not found !!"
-                exit 1
-              fi
-
-              yq ".Cache[].Query" config.yml | while IFS= read -r SQL; do
-                echo "Executing SQL: $SQL"
-                OUTPUT=$(echo "$SQL" | isql -v "$BRANCH" "$DB_USER" "$DB_PASS" -b 2>&1)
-                STATUS=$?
-                echo "$OUTPUT"
-                if [[ $STATUS -eq 0 ]] && echo "$OUTPUT" | grep -qi "SQLRowCount"; then
-                  echo "SUCCESS: Query executed"
-                else
-                  echo "FAILED: Query did not execute"
-                  exit 1
-                fi
-              done
-
-        - task: CmdLine@2
-          displayName: Update Cache in Server
-          env:
-            BRANCH: $(Build.SourceBranchName)
-          inputs:
-            workingDirectory: $(Pipeline.Workspace)/drop/
-            script: |
-              set -e
-
-              IntegrationNode=($(yq e ".IntegrationNode" config.yml))
-              broker_files=()
-
-              for node in "${IntegrationNode[@]}"; do
-                for broker_file in /home/devops/broker/$BRANCH/${node}*; do
-                  fname=$(basename "$broker_file")
-                  if [[ $fname =~ ^${node}_([0-9]+)\.broker$ ]]; then
-                    broker_files+=("$broker_file")
-                  fi
-                done
-              done
-
-              if [ ${#broker_files[@]} -eq 0 ]; then
-                echo "Error: No Integration Node found for $IntegrationNode"
-                exit 1
-              fi
-
-              for broker_file in "${broker_files[@]}"; do
-                host=$(cat "$broker_file" | grep host | cut -d"\"" -f4)
-                if yq -e ".Cache" config.yml >/dev/null 2>&1; then
-                  response=$(curl --connect-timeout 3 --max-time 5 -s -k -X POST http://"$host":8002/cache/v1/loadCache \
-                  -H "Content-Type: application/json" \
-                  -d "$(yq -o=json ".Cache | map({\"FIELD_NAME\": .FIELD_NAME, \"FIELD_VALUE\": .FIELD_VALUE})" config.yml)")
-                  if [[ "$response" != *'"RESPONSE":"success"'* ]]; then
-                    echo "Cache load failed: $response"
-                    exit 1
-                  fi
-                  echo "Cache load successful on $host"
-                  echo "$(yq -o=json ".Cache | map({\"FIELD_NAME\": .FIELD_NAME, \"FIELD_VALUE\": .FIELD_VALUE})" config.yml)"
-                fi
-              done
+const http = require("http");
+const fs = require("fs");
+const { execFile } = require("child_process");
+
+const PORT = 4418;
+const SAVE_DIR = "/tmp/cert_uploads"; // local temp folder on .58
+
+// SSH key for THIS process's user (must be eisuser when you run `node app.js` as eisuser)
+const SSH_KEY = "/home/eisuser/.ssh/id_rsa";
+const SCP_USER = "eisuser";
+const REMOTE_DIR = "/tmp/"; // change to your real target dir later
+
+if (!fs.existsSync(SAVE_DIR)) {
+  fs.mkdirSync(SAVE_DIR, { recursive: true });
+}
+
+http.createServer((req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Headers", "*");
+
+  if (req.method === "OPTIONS") return res.end();
+
+  if (req.method === "POST" && req.url === "/upload") {
+    const contentType = req.headers["content-type"] || "";
+    const boundary = contentType.split("boundary=")[1];
+
+    if (!boundary) {
+      res.writeHead(400);
+      return res.end(JSON.stringify({ error: "No boundary found in content-type" }));
+    }
+
+    let body = Buffer.alloc(0);
+
+    req.on("data", chunk => {
+      body = Buffer.concat([body, chunk]);
+    });
+
+    req.on("end", () => {
+      try {
+        const bodyStr = body.toString("binary");
+
+        // ── Extract file part ──
+        const nameMatch = bodyStr.match(/filename="(.+?)"/);
+        if (!nameMatch) {
+          res.writeHead(400);
+          return res.end(JSON.stringify({ error: "No file found in upload" }));
+        }
+        const fileName = nameMatch[1];
+
+        const headerEnd = bodyStr.indexOf("\r\n\r\n", bodyStr.indexOf("filename=")) + 4;
+        const footerStart = bodyStr.lastIndexOf(`\r\n--${boundary}`);
+        const fileBuffer = body.slice(headerEnd, footerStart);
+
+        // ── Extract targetServer field (sent from React UI as a separate form field) ──
+        const targetMatch = bodyStr.match(/name="targetServer"\r\n\r\n(.+?)\r\n--/);
+        const targetServer = targetMatch ? targetMatch[1].trim() : null;
+
+        if (!targetServer) {
+          res.writeHead(400);
+          return res.end(JSON.stringify({ error: "targetServer not provided" }));
+        }
+
+        const localPath = `${SAVE_DIR}/${fileName}`;
+
+        fs.writeFile(localPath, fileBuffer, (err) => {
+          if (err) {
+            res.writeHead(500);
+            return res.end(JSON.stringify({ error: "Failed to save file locally: " + err.message }));
+          }
+
+          console.log(`Saved locally: ${localPath} (${fileBuffer.length} bytes)`);
+          console.log(`Running as user: ${process.env.USER || process.getuid?.()}`);
+
+          const remotePath = `${SCP_USER}@${targetServer}:${REMOTE_DIR}`;
+
+          execFile("scp", [
+            "-i", SSH_KEY,
+            "-o", "StrictHostKeyChecking=no",
+            localPath,
+            remotePath
+          ], (scpErr, stdout, stderr) => {
+            fs.unlink(localPath, () => {}); // cleanup local temp regardless
+
+            if (scpErr) {
+              console.error("SCP failed:", stderr || scpErr.message);
+              res.writeHead(500);
+              return res.end(JSON.stringify({ error: stderr || scpErr.message }));
+            }
+
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({
+              success: true,
+              message: `${fileName} sent to ${targetServer}:${REMOTE_DIR}`,
+              size: fileBuffer.length
+            }));
+          });
+        });
+      } catch (err) {
+        res.writeHead(500);
+        res.end(JSON.stringify({ error: "Parse error: " + err.message }));
+      }
+    });
+  } else {
+    res.writeHead(404);
+    res.end("Not found");
+  }
+
+}).listen(PORT, () => {
+  console.log(`Running on port ${PORT} as user: ${process.env.USER}`);
+});
