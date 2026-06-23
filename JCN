@@ -1,17 +1,235 @@
-const http = require("http");
-const fs = require("fs");
-const { execFile } = require("child_process");
-
-const PORT = 4418;
-const SAVE_DIR = "/tmp/cert_uploads"; 
-
+const express  = require("express");
+const { exec, spawn, execFile } = require("child_process");
+const cors     = require("cors");
+const path     = require("path");
+const fs = require('fs');
+const { randomUUID } = require('crypto');
+const app  = express();
+const PORT = 4423;
 const SSH_KEY = "/home/eisuser/.ssh/id_rsa";
 const SCP_USER = "eisuser";
-const REMOTE_DIR = "/tmp/"; // change to your real target dir later
+const REMOTE_DIR = "/tmp/";
+
+
+
+// Path to check.sh — same folder as server.js
+const SCRIPT_PATH = path.join(__dirname, "check.sh");
+const SCRIPT_PATH1 = path.join(__dirname, "cache.sh");
+
+const DATA_FILE = path.join(__dirname, 'data.txt');
+
+
+app.use(cors());
+app.use(express.json());
+
+// ── GET /health ───────────────────────────────────────────
+app.get("/health", (req, res) => {
+  res.json({
+    status: "ok",
+    main_server: "10.177.44.58",
+    script: SCRIPT_PATH,
+    time:   new Date().toISOString(),
+  });
+});
+
+app.get('/cache', (req, res) => {
+    console.log(`[${new Date().toISOString()}] /cache called`);
+
+    exec(`bash ${SCRIPT_PATH1}`, (error, stdout, stderr) => {
+
+        if (error) {
+            console.error('Script error:', error.message);
+            return res.status(500).json({
+                status: 'ERROR',
+                message: error.message
+            });
+        }
+
+        try {
+            const result = JSON.parse(stdout.trim());
+            console.log('Response sent:', result);
+            return res.status(200).json(result);
+
+        } catch (e) {
+            console.error('JSON parse error:', e.message);
+            return res.status(500).json({
+                status: 'ERROR',
+                message: 'Failed to parse script output',
+                raw: stdout
+            });
+        }
+    });
+});
+
+
+app.post("/api/validate", (req, res) => {
+    const { ip, brokerName, egName, apiName } = req.body;
+
+    // Validate all fields are present
+    if (!ip || !brokerName || !egName || !apiName) {
+        return res.status(400).json({
+            error: "Missing required fields: ip, brokerName, egName, apiName"
+        });
+    }
+
+    // Sanitize inputs to prevent shell injection
+    const sanitize = (str) => str.replace(/[^a-zA-Z0-9._-]/g, "");
+
+    const safeIp         = sanitize(ip);
+    const safeBroker     = sanitize(brokerName);
+    const safeEg         = sanitize(egName);
+    const safeApi        = sanitize(apiName);
+
+    const scriptPath = path.join(__dirname, "valid.sh");
+    const command = `bash ${scriptPath} ${safeIp} ${safeBroker} ${safeEg} ${safeApi}`;
+
+    exec(command, { timeout: 30000 }, (error, stdout, stderr) => {
+           console.log("STDOUT:", stdout);
+           console.log("STDERR:", stderr);
+        if (error) console.log("ERROR:", error.message);
+        if (error) {
+            res.setHeader("Content-Type", "application/xml");
+            return res.status(500).send(`<error>${stderr || error.message}</error>`);
+        }
+
+        // Return XML output
+        res.setHeader("Content-Type", "application/xml");
+        res.send(stdout);
+    });
+});
+
+app.post("/check", (req, res) => {
+  const { source_ip, target_ip, port } = req.body;
+
+  // 1. Validate all three fields are present
+  if (!source_ip || !target_ip || !port) {
+    return res.status(400).json({
+      error: "source_ip, target_ip and port are all required"
+    });
+  }
+
+  // 2. Validate IP/hostname format — prevent command injection
+  const ipRegex = /^[a-zA-Z0-9.\-]+$/;
+  if (!ipRegex.test(source_ip)) {
+    return res.status(400).json({ error: "Invalid source_ip format" });
+  }
+  if (!ipRegex.test(target_ip)) {
+    return res.status(400).json({ error: "Invalid target_ip format" });
+  }
+
+  // 3. Validate port
+  const portNum = parseInt(port, 10);
+  if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
+    return res.status(400).json({ error: "Port must be between 1 and 65535" });
+  }
+
+  // 4. Build shell command
+  // check.sh <source_ip> <target_ip> <port>
+  const shellCommand = `bash ${SCRIPT_PATH} ${source_ip} ${target_ip} ${portNum}`;
+
+  console.log(`\n[${new Date().toISOString()}]`);
+  console.log(`  Source  : ${source_ip}`);
+  console.log(`  Target  : ${target_ip}:${portNum}`);
+  console.log(`  Running : ${shellCommand}`);
+
+  // 5. Execute — 15s timeout (8s SSH + 5s nc + buffer)
+  exec(shellCommand, { timeout: 15000 }, (error, stdout, stderr) => {
+
+    const rawOutput   = (stdout || "") + (stderr || "");
+    const outputLower = rawOutput.toLowerCase();
+
+    // Determine open/closed
+    const isOpen =
+      (error === null) ||
+      outputLower.includes("succeeded") ||
+      outputLower.includes(" open")     ||
+      outputLower.includes("connected");
+
+    const timedOut = error && error.killed;
+
+    // Strip ANSI color codes from check.sh output
+    const cleanOutput = rawOutput
+      .replace(/\x1b\[[0-9;]*m/g, "")
+      .trim();
+
+    console.log(`  Result  : ${isOpen ? "✅ OPEN" : "❌ CLOSED"}`);
+
+    res.json({
+      source_ip,
+      target_ip,
+      port:      portNum,
+      command:   `nc -vz -w 5 ${target_ip} ${portNum}`,
+      output:    timedOut
+                   ? "Check timed out after 15 seconds"
+                   : cleanOutput || (error ? error.message : "No output received"),
+      success:   isOpen,
+      timestamp: new Date().toISOString(),
+    });
+  });
+});
+
+app.post("/curl", (req, res) => {
+  const { method = "GET", url, sshIp, body, headers = [] } = req.body;
+
+  if (!url)   return res.status(400).json({ error: "url is required" });
+  if (!sshIp) return res.status(400).json({ error: "sshIp is required" });
+
+  const bodyStr = typeof body === "object" && body !== null
+    ? JSON.stringify(body)
+    : (body || "");
+
+  const scriptPath = path.join(__dirname, "curl.sh");
+
+  const args = [
+    scriptPath,
+    method.toUpperCase(),
+    url,
+    sshIp,
+    bodyStr,
+    ...headers.filter(h => h && h.trim()),
+  ];
+
+  let output = "";
+  let done = false;
+
+  const proc = spawn("bash", args, { detached: false });
+
+  proc.stdout.on("data", (chunk) => { output += chunk.toString(); });
+  proc.stderr.on("data", (chunk) => { output += chunk.toString(); });
+
+  proc.on("close", (code) => {
+    if (done) return;
+    done = true;
+    console.log("EXIT:", code);
+    console.log("OUTPUT:", output);
+    const result = output.trim();
+    try {
+      return res.json(JSON.parse(result));
+    } catch {
+      return res.send(result);
+    }
+  });
+
+  proc.on("error", (err) => {
+    if (done) return;
+    done = true;
+    res.status(500).json({ error: err.message });
+  });
+
+  // Do NOT kill on req close — let script finish
+});
+
+
+
+
+
+
+
 
 if (!fs.existsSync(SAVE_DIR)) {
   fs.mkdirSync(SAVE_DIR, { recursive: true });
 }
+
 
 http.createServer((req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -106,4 +324,205 @@ http.createServer((req, res) => {
 
 }).listen(PORT, () => {
   console.log(`Running on port ${PORT} as user: ${process.env.USER}`);
+});
+
+
+
+
+
+function readActivities() {
+  try {
+    if (!fs.existsSync(DATA_FILE)) return [];
+    const raw = fs.readFileSync(DATA_FILE, 'utf-8').trim();
+    if (!raw) return [];
+    return JSON.parse(raw);
+  } catch (err) {
+    console.error('[readActivities] Parse error:', err.message);
+    return [];
+  }
+}
+
+
+function writeActivities(activities) {
+  fs.writeFileSync(DATA_FILE, JSON.stringify(activities, null, 2), 'utf-8');
+}
+
+// ─── Routes ──────────────────────────────────────────────────────────────────
+
+/* ─── GET all activities ────────────────────────────────────────────────────── */
+app.get('/api/activities', (req, res) => {
+  try {
+    const activities = readActivities();
+    const { status, search } = req.query;
+    let filtered = activities;
+
+    if (status && status !== 'All') {
+      filtered = filtered.filter(a => a.status === status);
+    }
+    if (search) {
+      const q = search.toLowerCase();
+      filtered = filtered.filter(a =>
+        a.name.toLowerCase().includes(q) ||
+        a.reason.toLowerCase().includes(q) ||
+        (a.assignee || '').toLowerCase().includes(q)   // ← search assignee too
+      );
+    }
+
+    filtered.sort((a, b) => new Date(b.scheduledDate) - new Date(a.scheduledDate));
+
+    res.json({ success: true, total: activities.length, count: filtered.length, data: filtered });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+/* ─── GET single activity ───────────────────────────────────────────────────── */
+app.get('/api/activities/:id', (req, res) => {
+  try {
+    const activities = readActivities();
+    const activity = activities.find(a => a.id === req.params.id);
+    if (!activity) return res.status(404).json({ success: false, message: 'Activity not found' });
+    res.json({ success: true, data: activity });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+/* ─── POST create activity ──────────────────────────────────────────────────── */
+app.post('/api/activities', (req, res) => {
+  try {
+    // ✅ assignee added here
+    const { name, reason, scheduledDate, status, assignee } = req.body;
+
+    if (!name || !name.trim())
+      return res.status(400).json({ success: false, message: 'Activity name is required' });
+    if (!reason || !reason.trim())
+      return res.status(400).json({ success: false, message: 'Reason is required' });
+    if (!scheduledDate)
+      return res.status(400).json({ success: false, message: 'Scheduled date is required' });
+
+    const newActivity = {
+      id:            randomUUID(),
+      name:          name.trim(),
+      reason:        reason.trim(),
+      scheduledDate,
+      status:        status || 'Pending',
+      assignee:      (assignee || '').trim(),   // ✅ saved to data.txt
+      createdAt:     new Date().toISOString(),
+      updatedAt:     new Date().toISOString(),
+    };
+
+    const activities = readActivities();
+    activities.push(newActivity);
+    writeActivities(activities);
+
+    res.status(201).json({ success: true, message: 'Activity created', data: newActivity });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+/* ─── PUT update activity ───────────────────────────────────────────────────── */
+app.put('/api/activities/:id', (req, res) => {
+  try {
+    const activities = readActivities();
+    const index = activities.findIndex(a => a.id === req.params.id);
+    if (index === -1)
+      return res.status(404).json({ success: false, message: 'Activity not found' });
+
+    // ✅ assignee added here
+    const { name, reason, scheduledDate, status, assignee } = req.body;
+
+    const updated = {
+      ...activities[index],
+      ...(name          !== undefined && { name: name.trim() }),
+      ...(reason        !== undefined && { reason: reason.trim() }),
+      ...(scheduledDate !== undefined && { scheduledDate }),
+      ...(status        !== undefined && { status }),
+      ...(assignee      !== undefined && { assignee: assignee.trim() }), // ✅ updated in data.txt
+      updatedAt: new Date().toISOString(),
+    };
+
+    activities[index] = updated;
+    writeActivities(activities);
+
+    res.json({ success: true, message: 'Activity updated', data: updated });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+/* ─── PATCH status only ─────────────────────────────────────────────────────── */
+app.patch('/api/activities/:id/status', (req, res) => {
+  try {
+    const { status } = req.body;
+    const validStatuses = ['Pending', 'In Progress', 'Completed'];
+
+    if (!validStatuses.includes(status))
+      return res.status(400).json({ success: false, message: `Status must be one of: ${validStatuses.join(', ')}` });
+
+    const activities = readActivities();
+    const index = activities.findIndex(a => a.id === req.params.id);
+    if (index === -1)
+      return res.status(404).json({ success: false, message: 'Activity not found' });
+
+    activities[index].status    = status;
+    activities[index].updatedAt = new Date().toISOString();
+    writeActivities(activities);
+
+    res.json({ success: true, message: 'Status updated', data: activities[index] });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+/* ─── DELETE activity ───────────────────────────────────────────────────────── */
+app.delete('/api/activities/:id', (req, res) => {
+  try {
+    const activities = readActivities();
+    const index = activities.findIndex(a => a.id === req.params.id);
+    if (index === -1)
+      return res.status(404).json({ success: false, message: 'Activity not found' });
+
+    const deleted = activities.splice(index, 1)[0];
+    writeActivities(activities);
+
+    res.json({ success: true, message: 'Activity deleted', data: deleted });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+/* ─── GET stats ─────────────────────────────────────────────────────────────── */
+app.get('/api/stats', (req, res) => {
+  try {
+    const activities = readActivities();
+    res.json({
+      success: true,
+      data: {
+        total:      activities.length,
+        pending:    activities.filter(a => a.status === 'Pending').length,
+        inProgress: activities.filter(a => a.status === 'In Progress').length,
+        completed:  activities.filter(a => a.status === 'Completed').length,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.use((req, res) => {
+  res.status(404).json({ success: false, message: `Route ${req.method} ${req.url} not found` });
+});
+
+
+
+// ── Start ─────────────────────────────────────────────────
+app.listen(PORT, "0.0.0.0", () => {
+  console.log("================================================");
+  console.log("  NC Checker Backend");
+  console.log(`  Listening : http://0.0.0.0:${PORT}`);
+  console.log(`  Health    : http://10.177.44.58:${PORT}/health`);
+  console.log(`  Script    : ${SCRIPT_PATH}`);
+  console.log("================================================");
 });
