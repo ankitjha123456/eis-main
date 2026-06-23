@@ -1,112 +1,220 @@
-#!/bin/bash
-# curl.sh - Become eisuser first, then SSH to remote IP, then run curl
-#
-# Flow: current user → su eisuser → ssh eisuser@<IP> → curl -k
-#
-# Usage:
-#   bash curl.sh <METHOD> <URL> <SSH_IP> <BODY> [header1] [header2] ...
-#
-# Mandatory: METHOD, URL, SSH_IP
-# Optional:  BODY (pass '' if none), then any number of headers as "Key: Value"
-#
-# Examples:
-#   bash curl.sh GET  http://10.177.44.71:3001/api  10.177.44.71
-#   bash curl.sh POST http://10.177.44.71:3001/api  10.177.44.71  '{"key":"val"}'
-#   bash curl.sh POST http://10.177.44.71:3001/api  10.177.44.71  '{"key":"val"}'  'Content-Type: application/json'
-#   bash curl.sh POST http://10.177.44.71:3001/api  10.177.44.71  '{"key":"val"}'  'Content-Type: application/json'  'Authorization: Bearer token'
+import { useState, useRef } from "react";
 
-METHOD="$1"
-URL="$2"
-SSH_IP="$3"
-BODY="$4"
-# $5, $6, $7 ... → optional headers, each as "Key: Value"
+// ── CHANGE THIS to your .58 server + port ──
+const API_URL = "http://10.177.44.58:4418/upload";
 
-SSH_USER="eisuser"
+export default function Activities() {
+  const [file, setFile] = useState(null);
+  const [targetServer, setTargetServer] = useState("");
+  const [status, setStatus] = useState("idle"); // idle | uploading | success | error
+  const [message, setMessage] = useState("");
+  const [dragging, setDragging] = useState(false);
+  const inputRef = useRef();
 
-# ─── Validation ───────────────────────────────────────────────────────────────
-if [ -z "$METHOD" ]; then
-  echo "ERROR: METHOD is required (GET, POST, PUT, PATCH, DELETE)"
-  exit 1
-fi
+  const handleFile = (f) => {
+    setFile(f);
+    setStatus("idle");
+    setMessage("");
+  };
 
-if [ -z "$URL" ]; then
-  echo "ERROR: URL is required"
-  exit 1
-fi
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragging(false);
+    const f = e.dataTransfer.files[0];
+    if (f) handleFile(f);
+  };
 
-if [ -z "$SSH_IP" ]; then
-  echo "ERROR: SSH_IP is required (e.g. 10.177.44.71)"
-  exit 1
-fi
+  const handleUpload = async () => {
+    if (!file) return;
+    if (!targetServer.trim()) {
+      setStatus("error");
+      setMessage("Please enter the target server IP.");
+      return;
+    }
+    setStatus("uploading");
+    setMessage("");
 
-# ─── Build the curl command (will run on the remote server) ───────────────────
-# -k always present — skip TLS certificate verification
-CURL_CMD="curl -k -X $METHOD"
+    const formData = new FormData();
+    formData.append("certificate", file);
+    formData.append("targetServer", targetServer.trim());
 
-# Always show response headers in output
-CURL_CMD="$CURL_CMD -i"
+    try {
+      const res = await fetch(API_URL, { method: "POST", body: formData });
+      const data = await res.json();
 
-# HTTP status code marker appended at end of response
-CURL_CMD="$CURL_CMD -w $'\n\n---CURL_EXIT_CODE:%{http_code}---\n'"
+      if (res.ok) {
+        setStatus("success");
+        setMessage(data.message || "Uploaded successfully!");
+      } else {
+        setStatus("error");
+        setMessage(data.error || "Upload failed.");
+      }
+    } catch (err) {
+      setStatus("error");
+      setMessage("Cannot reach server: " + err.message);
+    }
+  };
 
-# Headers — $5 onwards after shift
-shift 4
-for header in "$@"; do
-  if [ -n "$header" ]; then
-    SAFE_HDR="${header//"'"/"'\"'\"'"}"
-    CURL_CMD="$CURL_CMD -H '$SAFE_HDR'"
-  fi
-done
+  const reset = () => {
+    setFile(null);
+    setStatus("idle");
+    setMessage("");
+  };
 
-# Body — only for POST / PUT / PATCH
-if [ -n "$BODY" ] && [ "$METHOD" != "GET" ] && [ "$METHOD" != "DELETE" ]; then
-  ESCAPED_BODY="${BODY//"'"/"'\"'\"'"}"
-  CURL_CMD="$CURL_CMD -d '$ESCAPED_BODY'"
-fi
+  return (
+    <div style={styles.page}>
+      <div style={styles.card}>
+        <h2 style={styles.title}>🔐 Certificate Upload</h2>
+        <p style={styles.sub}>Drop your certificate file to send it to the server</p>
 
-CURL_CMD="$CURL_CMD '$URL'"
+        <input
+          type="text"
+          placeholder="Target server IP (e.g. 10.177.44.xx)"
+          value={targetServer}
+          onChange={(e) => setTargetServer(e.target.value)}
+          style={styles.input}
+        />
 
-# ─── Print what we are doing ──────────────────────────────────────────────────
-echo "======================================="
-echo " Step 1 : become $SSH_USER"
-echo " Step 2 : ssh $SSH_USER@$SSH_IP"
-echo " Step 3 : $CURL_CMD"
-echo " Method : $METHOD"
-echo " URL    : $URL"
-echo "======================================="
-echo ""
+        <div
+          style={{
+            ...styles.dropzone,
+            borderColor: dragging ? "#4f8ef7" : file ? "#22c55e" : "#444",
+            background: dragging ? "#1a2a3a" : "#161b22",
+          }}
+          onClick={() => inputRef.current.click()}
+          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={handleDrop}
+        >
+          <input
+            ref={inputRef}
+            type="file"
+            style={{ display: "none" }}
+            onChange={(e) => e.target.files[0] && handleFile(e.target.files[0])}
+          />
+          {file ? (
+            <>
+              <div style={styles.icon}>📄</div>
+              <div style={styles.filename}>{file.name}</div>
+              <div style={styles.filesize}>{(file.size / 1024).toFixed(1)} KB</div>
+            </>
+          ) : (
+            <>
+              <div style={styles.icon}>📂</div>
+              <div style={styles.droptext}>Drop certificate here</div>
+              <div style={styles.dropsub}>or click to browse</div>
+            </>
+          )}
+        </div>
 
-# ─── Step 1: become eisuser, Step 2: SSH, Step 3: curl ───────────────────────
-#
-# su -s /bin/bash eisuser -c "..."
-#   -s /bin/bash  → use bash as the shell for eisuser
-#   -c "..."      → run this command as eisuser
-#
-# Inside that command we run ssh which then runs curl remotely.
-# SSH options:
-#   -o StrictHostKeyChecking=no  → skip known_hosts prompt
-#   -o ConnectTimeout=15         → fail fast if unreachable
-#   -o BatchMode=yes             → no password prompt (needs SSH key)
+        <div style={styles.row}>
+          <button
+            style={{
+              ...styles.btn,
+              background: status === "uploading" ? "#333" : "#4f8ef7",
+              cursor: status === "uploading" || !file ? "not-allowed" : "pointer",
+              opacity: !file ? 0.5 : 1,
+            }}
+            onClick={handleUpload}
+            disabled={!file || status === "uploading"}
+          >
+            {status === "uploading" ? "Uploading..." : "Upload"}
+          </button>
 
-su -s /bin/bash "$SSH_USER" -c \
-  "ssh \
-    -o StrictHostKeyChecking=no \
-    -o ConnectTimeout=15 \
-    -o BatchMode=yes \
-    ${SSH_USER}@${SSH_IP} \
-    \"$CURL_CMD\"" 2>&1
+          {file && (
+            <button style={styles.resetBtn} onClick={reset}>
+              Clear
+            </button>
+          )}
+        </div>
 
-EXIT_CODE=$?
+        {message && (
+          <div
+            style={{
+              ...styles.statusBox,
+              background: status === "success" ? "#0d2d1a" : "#2d0d0d",
+              borderColor: status === "success" ? "#22c55e" : "#ef4444",
+              color: status === "success" ? "#22c55e" : "#ef4444",
+            }}
+          >
+            {status === "success" ? "✅ " : "❌ "}{message}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
-echo ""
-if [ $EXIT_CODE -eq 0 ]; then
-  echo "======================================="
-  echo " Done."
-  echo "======================================="
-elif [ $EXIT_CODE -eq 255 ]; then
-  echo "---CURL_PROCESS_EXIT:255---"
-  echo "ERROR: SSH failed — check IP '$SSH_IP' is reachable and SSH key is set for $SSH_USER"
-else
-  echo "---CURL_PROCESS_EXIT:$EXIT_CODE---"
-  echo "ERROR: Exited with code $EXIT_CODE"
-fi
+const styles = {
+  page: {
+    minHeight: "100vh",
+    background: "#0d1117",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontFamily: "monospace",
+  },
+  card: {
+    background: "#161b22",
+    border: "1px solid #30363d",
+    borderRadius: "12px",
+    padding: "40px",
+    width: "380px",
+    boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+  },
+  title: { color: "#e6edf3", margin: "0 0 6px", fontSize: "20px" },
+  sub: { color: "#8b949e", margin: "0 0 16px", fontSize: "13px" },
+  input: {
+    width: "100%",
+    padding: "10px 12px",
+    marginBottom: "20px",
+    borderRadius: "8px",
+    border: "1px solid #444",
+    background: "#0d1117",
+    color: "#e6edf3",
+    fontSize: "13px",
+    fontFamily: "monospace",
+    boxSizing: "border-box",
+  },
+  dropzone: {
+    border: "2px dashed",
+    borderRadius: "10px",
+    padding: "36px 20px",
+    textAlign: "center",
+    cursor: "pointer",
+    transition: "all 0.2s",
+    marginBottom: "20px",
+  },
+  icon: { fontSize: "36px", marginBottom: "8px" },
+  filename: { color: "#e6edf3", fontSize: "15px", fontWeight: "bold", wordBreak: "break-all" },
+  filesize: { color: "#8b949e", fontSize: "12px", marginTop: "4px" },
+  droptext: { color: "#e6edf3", fontSize: "15px" },
+  dropsub: { color: "#8b949e", fontSize: "12px", marginTop: "6px" },
+  row: { display: "flex", gap: "10px" },
+  btn: {
+    flex: 1,
+    padding: "12px",
+    border: "none",
+    borderRadius: "8px",
+    color: "#fff",
+    fontSize: "14px",
+    fontWeight: "bold",
+  },
+  resetBtn: {
+    padding: "12px 18px",
+    border: "1px solid #444",
+    borderRadius: "8px",
+    background: "transparent",
+    color: "#8b949e",
+    fontSize: "14px",
+    cursor: "pointer",
+  },
+  statusBox: {
+    marginTop: "16px",
+    padding: "12px 16px",
+    borderRadius: "8px",
+    border: "1px solid",
+    fontSize: "13px",
+    fontWeight: "bold",
+  },
+};
