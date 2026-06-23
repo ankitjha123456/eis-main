@@ -1,29 +1,38 @@
+const express = require('express');
+const cors = require('cors');
+const fs = require('fs');
+const path = require('path');
+const { randomUUID } = require('crypto');
+
+const app = express();
+const PORT = 4423;
+
+const DATA_FILE = path.join(__dirname, 'data.txt');
+
+app.use(cors());
+app.use(express.json());
+
+/* ─── File Helpers ─────────────────────────────────────────────────────────── */
 function readActivities() {
   try {
-    if (!fs.existsSync(DATA_FILE)) {
-      return [];
-    }
+    if (!fs.existsSync(DATA_FILE)) return [];
     const raw = fs.readFileSync(DATA_FILE, 'utf-8').trim();
     if (!raw) return [];
     return JSON.parse(raw);
   } catch (err) {
-    console.error('[readActivities] Parse error, resetting file:', err.message);
+    console.error('[readActivities] Parse error:', err.message);
     return [];
   }
 }
-
 
 function writeActivities(activities) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(activities, null, 2), 'utf-8');
 }
 
-// ─── Routes ──────────────────────────────────────────────────────────────────
-
+/* ─── GET all activities ────────────────────────────────────────────────────── */
 app.get('/api/activities', (req, res) => {
   try {
     const activities = readActivities();
-
-    // Optional: filter by status query param  e.g. ?status=Pending
     const { status, search } = req.query;
     let filtered = activities;
 
@@ -32,65 +41,55 @@ app.get('/api/activities', (req, res) => {
     }
     if (search) {
       const q = search.toLowerCase();
-      filtered = filtered.filter(
-        a =>
-          a.name.toLowerCase().includes(q) ||
-          a.reason.toLowerCase().includes(q)
+      filtered = filtered.filter(a =>
+        a.name.toLowerCase().includes(q) ||
+        a.reason.toLowerCase().includes(q) ||
+        (a.assignee || '').toLowerCase().includes(q)   // ← search assignee too
       );
     }
 
-    // Sort: newest scheduled date first
     filtered.sort((a, b) => new Date(b.scheduledDate) - new Date(a.scheduledDate));
 
-    res.json({
-      success: true,
-      total: activities.length,
-      count: filtered.length,
-      data: filtered,
-    });
+    res.json({ success: true, total: activities.length, count: filtered.length, data: filtered });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
+/* ─── GET single activity ───────────────────────────────────────────────────── */
 app.get('/api/activities/:id', (req, res) => {
   try {
     const activities = readActivities();
     const activity = activities.find(a => a.id === req.params.id);
-
-    if (!activity) {
-      return res.status(404).json({ success: false, message: 'Activity not found' });
-    }
-
+    if (!activity) return res.status(404).json({ success: false, message: 'Activity not found' });
     res.json({ success: true, data: activity });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
+/* ─── POST create activity ──────────────────────────────────────────────────── */
 app.post('/api/activities', (req, res) => {
   try {
-    const { name, reason, scheduledDate, status } = req.body;
+    // ✅ assignee added here
+    const { name, reason, scheduledDate, status, assignee } = req.body;
 
-    // Validation
-    if (!name || !name.trim()) {
+    if (!name || !name.trim())
       return res.status(400).json({ success: false, message: 'Activity name is required' });
-    }
-    if (!reason || !reason.trim()) {
+    if (!reason || !reason.trim())
       return res.status(400).json({ success: false, message: 'Reason is required' });
-    }
-    if (!scheduledDate) {
+    if (!scheduledDate)
       return res.status(400).json({ success: false, message: 'Scheduled date is required' });
-    }
 
     const newActivity = {
-      id: randomUUID(),
-      name: name.trim(),
-      reason: reason.trim(),
-      scheduledDate,                              // ISO date string e.g. "2026-06-15"
-      status: status || 'Pending',               // Pending | In Progress | Completed
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      id:            randomUUID(),
+      name:          name.trim(),
+      reason:        reason.trim(),
+      scheduledDate,
+      status:        status || 'Pending',
+      assignee:      (assignee || '').trim(),   // ✅ saved to data.txt
+      createdAt:     new Date().toISOString(),
+      updatedAt:     new Date().toISOString(),
     };
 
     const activities = readActivities();
@@ -103,24 +102,24 @@ app.post('/api/activities', (req, res) => {
   }
 });
 
+/* ─── PUT update activity ───────────────────────────────────────────────────── */
 app.put('/api/activities/:id', (req, res) => {
   try {
     const activities = readActivities();
     const index = activities.findIndex(a => a.id === req.params.id);
-
-    if (index === -1) {
+    if (index === -1)
       return res.status(404).json({ success: false, message: 'Activity not found' });
-    }
 
-    const { name, reason, scheduledDate, status } = req.body;
+    // ✅ assignee added here
+    const { name, reason, scheduledDate, status, assignee } = req.body;
 
-    // Merge only provided fields
     const updated = {
       ...activities[index],
-      ...(name        !== undefined && { name: name.trim() }),
-      ...(reason      !== undefined && { reason: reason.trim() }),
+      ...(name          !== undefined && { name: name.trim() }),
+      ...(reason        !== undefined && { reason: reason.trim() }),
       ...(scheduledDate !== undefined && { scheduledDate }),
-      ...(status      !== undefined && { status }),
+      ...(status        !== undefined && { status }),
+      ...(assignee      !== undefined && { assignee: assignee.trim() }), // ✅ updated in data.txt
       updatedAt: new Date().toISOString(),
     };
 
@@ -133,26 +132,21 @@ app.put('/api/activities/:id', (req, res) => {
   }
 });
 
+/* ─── PATCH status only ─────────────────────────────────────────────────────── */
 app.patch('/api/activities/:id/status', (req, res) => {
   try {
     const { status } = req.body;
     const validStatuses = ['Pending', 'In Progress', 'Completed'];
 
-    if (!validStatuses.includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: `Status must be one of: ${validStatuses.join(', ')}`,
-      });
-    }
+    if (!validStatuses.includes(status))
+      return res.status(400).json({ success: false, message: `Status must be one of: ${validStatuses.join(', ')}` });
 
     const activities = readActivities();
     const index = activities.findIndex(a => a.id === req.params.id);
-
-    if (index === -1) {
+    if (index === -1)
       return res.status(404).json({ success: false, message: 'Activity not found' });
-    }
 
-    activities[index].status = status;
+    activities[index].status    = status;
     activities[index].updatedAt = new Date().toISOString();
     writeActivities(activities);
 
@@ -162,14 +156,13 @@ app.patch('/api/activities/:id/status', (req, res) => {
   }
 });
 
+/* ─── DELETE activity ───────────────────────────────────────────────────────── */
 app.delete('/api/activities/:id', (req, res) => {
   try {
     const activities = readActivities();
     const index = activities.findIndex(a => a.id === req.params.id);
-
-    if (index === -1) {
+    if (index === -1)
       return res.status(404).json({ success: false, message: 'Activity not found' });
-    }
 
     const deleted = activities.splice(index, 1)[0];
     writeActivities(activities);
@@ -180,23 +173,45 @@ app.delete('/api/activities/:id', (req, res) => {
   }
 });
 
+/* ─── GET stats ─────────────────────────────────────────────────────────────── */
 app.get('/api/stats', (req, res) => {
   try {
     const activities = readActivities();
-
-    const stats = {
-      total:      activities.length,
-      pending:    activities.filter(a => a.status === 'Pending').length,
-      inProgress: activities.filter(a => a.status === 'In Progress').length,
-      completed:  activities.filter(a => a.status === 'Completed').length,
-    };
-
-    res.json({ success: true, data: stats });
+    res.json({
+      success: true,
+      data: {
+        total:      activities.length,
+        pending:    activities.filter(a => a.status === 'Pending').length,
+        inProgress: activities.filter(a => a.status === 'In Progress').length,
+        completed:  activities.filter(a => a.status === 'Completed').length,
+      },
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
+/* ─── Health check ──────────────────────────────────────────────────────────── */
+app.get('/api/health', (req, res) => {
+  res.json({ success: true, message: 'Activity Dashboard API is running', port: PORT });
+});
+
+/* ─── 404 ───────────────────────────────────────────────────────────────────── */
 app.use((req, res) => {
   res.status(404).json({ success: false, message: `Route ${req.method} ${req.url} not found` });
+});
+
+/* ─── Start ─────────────────────────────────────────────────────────────────── */
+app.listen(PORT, () => {
+  console.log(`\n✅  Activity Dashboard API running on http://localhost:${PORT}`);
+  console.log(`📁  Data file: ${DATA_FILE}`);
+  console.log('\nRoutes:');
+  console.log('  GET    /api/health');
+  console.log('  GET    /api/stats');
+  console.log('  GET    /api/activities');
+  console.log('  GET    /api/activities/:id');
+  console.log('  POST   /api/activities');
+  console.log('  PUT    /api/activities/:id');
+  console.log('  PATCH  /api/activities/:id/status');
+  console.log('  DELETE /api/activities/:id\n');
 });
