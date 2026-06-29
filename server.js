@@ -2,17 +2,15 @@ const express  = require("express");
 const { exec, spawn, execFile } = require("child_process");
 const cors     = require("cors");
 const path     = require("path");
-const fs       = require('fs');
+const fs = require('fs');
 const { randomUUID } = require('crypto');
-
 const app  = express();
 const PORT = 4423;
+const SSH_KEY = "/home/eisuser/.ssh/id_rsa";
+const SCP_USER = "eisuser";
+const REMOTE_DIR = "/tmp/";
+const SAVE_DIR = "/tmp/cert_uploads";
 
-// ── SSH / SCP config ──────────────────────────────────────────
-const SSH_KEY    = "/home/eisuser/.ssh/id_rsa";
-const SCP_USER   = "eisuser";
-
-// ── Certificate deploy config ─────────────────────────────────
 const CERT_SAVE_DIR = "/tmp/cert_uploads";
 
 const ENV_RANGES = {
@@ -23,112 +21,27 @@ const ENV_RANGES = {
 };
 
 const CERT_PATHS = {
-  RSAkeystore: "/opt/IBM/RSAkeystore",
+  RSAkeystore: "/opt/IBM/RSAKeystore",
   Endpoint:    "/opt/IBM/EndPoint_Public",
 };
 
-// ── Script paths ──────────────────────────────────────────────
-const SCRIPT_PATH  = path.join(__dirname, "check.sh");
+const CERT_SSH_KEY  = "/home/eisuser/.ssh/id_rsa";
+const CERT_SCP_USER = "eisuser";
+
+// Path to check.sh — same folder as server.js
+const SCRIPT_PATH = path.join(__dirname, "check.sh");
 const SCRIPT_PATH1 = path.join(__dirname, "cache.sh");
-const DATA_FILE    = path.join(__dirname, 'data.txt');
+const DATA_FILE = path.join(__dirname, 'data.txt');
 
 app.use(cors());
 app.use(express.json());
 
 // Ensure cert upload dir exists
-if (!fs.existsSync(CERT_SAVE_DIR)) {
-  fs.mkdirSync(CERT_SAVE_DIR, { recursive: true });
+if (!fs.existsSync(SAVE_DIR)) {
+  fs.mkdirSync(SAVE_DIR, { recursive: true });
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  HELPERS
-// ═══════════════════════════════════════════════════════════════
-
-// Run a command on a remote server via SSH
-function sshExec(ip, command) {
-  return new Promise((resolve, reject) => {
-    execFile("ssh", [
-      "-i", SSH_KEY,
-      "-o", "StrictHostKeyChecking=no",
-      "-o", "ConnectTimeout=10",
-      `${SCP_USER}@${ip}`,
-      command
-    ], (err, stdout, stderr) => {
-      if (err) return reject(stderr || err.message);
-      resolve(stdout.trim());
-    });
-  });
-}
-
-// SCP a local file to remote server
-function scpFile(localPath, ip, remotePath) {
-  return new Promise((resolve, reject) => {
-    execFile("scp", [
-      "-i", SSH_KEY,
-      "-o", "StrictHostKeyChecking=no",
-      "-o", "ConnectTimeout=10",
-      localPath,
-      `${SCP_USER}@${ip}:${remotePath}`
-    ], (err, stdout, stderr) => {
-      if (err) return reject(stderr || err.message);
-      resolve();
-    });
-  });
-}
-
-// Deploy cert to ONE server:
-//   1. Check if file exists → backup with timestamp
-//   2. chmod 777 on remote dir so scp can write
-//   3. SCP new cert
-//   4. chmod 777 on the deployed file
-async function deployToServer(ip, localFilePath, fileName, remoteDirPath) {
-  const remoteFilePath = `${remoteDirPath}/${fileName}`;
-  const result = { ip, status: "pending", backup: null, error: null };
-
-  try {
-    // Step 1: Check if file already exists on remote
-    const checkCmd = `[ -f "${remoteFilePath}" ] && echo "EXISTS" || echo "NOT_FOUND"`;
-    const checkResult = await sshExec(ip, checkCmd);
-
-    // Step 2: If exists → take timestamped backup
-    if (checkResult === "EXISTS") {
-      const timestamp = new Date().toISOString()
-        .replace(/[-:T]/g, "")
-        .split(".")[0]; // e.g. 20260617143022
-      const backupPath = `${remoteFilePath}_${timestamp}.bak`;
-      await sshExec(ip, `cp "${remoteFilePath}" "${backupPath}"`);
-      result.backup = backupPath;
-      console.log(`[deploy] ${ip} — backup: ${backupPath}`);
-    }
-
-    // Step 3: chmod 777 on remote directory so scp can write into it
-    await sshExec(ip, `chmod 777 "${remoteDirPath}"`);
-    console.log(`[deploy] ${ip} — chmod 777 ${remoteDirPath}`);
-
-    // Step 4: SCP new cert to remote
-    await scpFile(localFilePath, ip, remoteFilePath);
-    console.log(`[deploy] ${ip} — SCP done → ${remoteFilePath}`);
-
-    // Step 5: chmod 777 on the deployed file itself
-    await sshExec(ip, `chmod 777 "${remoteFilePath}"`);
-    console.log(`[deploy] ${ip} — chmod 777 ${remoteFilePath}`);
-
-    result.status = "success";
-
-  } catch (err) {
-    result.status = "failed";
-    result.error  = String(err);
-    console.error(`[deploy] ${ip} — FAILED: ${err}`);
-  }
-
-  return result;
-}
-
-// ═══════════════════════════════════════════════════════════════
-//  ROUTES
-// ═══════════════════════════════════════════════════════════════
-
-// ── GET /health ───────────────────────────────────────────────
+// ── GET /health ───────────────────────────────────────────
 app.get("/health", (req, res) => {
   res.json({
     status: "ok",
@@ -138,47 +51,44 @@ app.get("/health", (req, res) => {
   });
 });
 
-// ── GET /cache ────────────────────────────────────────────────
 app.get('/cache', (req, res) => {
-  console.log(`[${new Date().toISOString()}] /cache called`);
-  exec(`bash ${SCRIPT_PATH1}`, (error, stdout, stderr) => {
-    if (error) {
-      console.error('Script error:', error.message);
-      return res.status(500).json({ status: 'ERROR', message: error.message });
-    }
-    try {
-      const result = JSON.parse(stdout.trim());
-      return res.status(200).json(result);
-    } catch (e) {
-      return res.status(500).json({ status: 'ERROR', message: 'Failed to parse script output', raw: stdout });
-    }
-  });
+    console.log(`[${new Date().toISOString()}] /cache called`);
+    exec(`bash ${SCRIPT_PATH1}`, (error, stdout, stderr) => {
+        if (error) {
+            console.error('Script error:', error.message);
+            return res.status(500).json({ status: 'ERROR', message: error.message });
+        }
+        try {
+            const result = JSON.parse(stdout.trim());
+            return res.status(200).json(result);
+        } catch (e) {
+            return res.status(500).json({ status: 'ERROR', message: 'Failed to parse script output', raw: stdout });
+        }
+    });
 });
 
-// ── POST /api/validate ────────────────────────────────────────
 app.post("/api/validate", (req, res) => {
-  const { ip, brokerName, egName, apiName } = req.body;
-  if (!ip || !brokerName || !egName || !apiName) {
-    return res.status(400).json({ error: "Missing required fields: ip, brokerName, egName, apiName" });
-  }
-  const sanitize = (str) => str.replace(/[^a-zA-Z0-9._-]/g, "");
-  const safeIp     = sanitize(ip);
-  const safeBroker = sanitize(brokerName);
-  const safeEg     = sanitize(egName);
-  const safeApi    = sanitize(apiName);
-  const scriptPath = path.join(__dirname, "valid.sh");
-  const command    = `bash ${scriptPath} ${safeIp} ${safeBroker} ${safeEg} ${safeApi}`;
-  exec(command, { timeout: 30000 }, (error, stdout, stderr) => {
-    if (error) {
-      res.setHeader("Content-Type", "application/xml");
-      return res.status(500).send(`<error>${stderr || error.message}</error>`);
+    const { ip, brokerName, egName, apiName } = req.body;
+    if (!ip || !brokerName || !egName || !apiName) {
+        return res.status(400).json({ error: "Missing required fields: ip, brokerName, egName, apiName" });
     }
-    res.setHeader("Content-Type", "application/xml");
-    res.send(stdout);
-  });
+    const sanitize = (str) => str.replace(/[^a-zA-Z0-9._-]/g, "");
+    const safeIp     = sanitize(ip);
+    const safeBroker = sanitize(brokerName);
+    const safeEg     = sanitize(egName);
+    const safeApi    = sanitize(apiName);
+    const scriptPath = path.join(__dirname, "valid.sh");
+    const command = `bash ${scriptPath} ${safeIp} ${safeBroker} ${safeEg} ${safeApi}`;
+    exec(command, { timeout: 30000 }, (error, stdout, stderr) => {
+        if (error) {
+            res.setHeader("Content-Type", "application/xml");
+            return res.status(500).send(`<error>${stderr || error.message}</error>`);
+        }
+        res.setHeader("Content-Type", "application/xml");
+        res.send(stdout);
+    });
 });
 
-// ── POST /check ───────────────────────────────────────────────
 app.post("/check", (req, res) => {
   const { source_ip, target_ip, port } = req.body;
   if (!source_ip || !target_ip || !port) {
@@ -192,40 +102,35 @@ app.post("/check", (req, res) => {
     return res.status(400).json({ error: "Port must be between 1 and 65535" });
   }
   const shellCommand = `bash ${SCRIPT_PATH} ${source_ip} ${target_ip} ${portNum}`;
-  console.log(`\n[${new Date().toISOString()}] /check ${source_ip} → ${target_ip}:${portNum}`);
   exec(shellCommand, { timeout: 15000 }, (error, stdout, stderr) => {
     const rawOutput   = (stdout || "") + (stderr || "");
     const outputLower = rawOutput.toLowerCase();
-    const isOpen = (error === null) ||
-      outputLower.includes("succeeded") ||
-      outputLower.includes(" open") ||
-      outputLower.includes("connected");
-    const timedOut    = error && error.killed;
+    const isOpen = (error === null) || outputLower.includes("succeeded") || outputLower.includes(" open") || outputLower.includes("connected");
+    const timedOut = error && error.killed;
     const cleanOutput = rawOutput.replace(/\x1b\[[0-9;]*m/g, "").trim();
     res.json({
       source_ip, target_ip, port: portNum,
-      command:   `nc -vz -w 5 ${target_ip} ${portNum}`,
-      output:    timedOut ? "Check timed out after 15 seconds" : cleanOutput || (error ? error.message : "No output received"),
-      success:   isOpen,
+      command: `nc -vz -w 5 ${target_ip} ${portNum}`,
+      output: timedOut ? "Check timed out after 15 seconds" : cleanOutput || (error ? error.message : "No output received"),
+      success: isOpen,
       timestamp: new Date().toISOString(),
     });
   });
 });
 
-// ── POST /curl ────────────────────────────────────────────────
 app.post("/curl", (req, res) => {
   const { method = "GET", url, sshIp, body, headers = [] } = req.body;
   if (!url)   return res.status(400).json({ error: "url is required" });
   if (!sshIp) return res.status(400).json({ error: "sshIp is required" });
-  const bodyStr    = typeof body === "object" && body !== null ? JSON.stringify(body) : (body || "");
+  const bodyStr = typeof body === "object" && body !== null ? JSON.stringify(body) : (body || "");
   const scriptPath = path.join(__dirname, "curl.sh");
   const args = [scriptPath, method.toUpperCase(), url, sshIp, bodyStr, ...headers.filter(h => h && h.trim())];
   let output = "";
-  let done   = false;
+  let done = false;
   const proc = spawn("bash", args, { detached: false });
   proc.stdout.on("data", (chunk) => { output += chunk.toString(); });
   proc.stderr.on("data", (chunk) => { output += chunk.toString(); });
-  proc.on("close", () => {
+  proc.on("close", (code) => {
     if (done) return;
     done = true;
     const result = output.trim();
@@ -239,57 +144,88 @@ app.post("/curl", (req, res) => {
   });
 });
 
-// ── POST /upload — single server upload ───────────────────────
-app.post("/upload", (req, res) => {
-  const contentType = req.headers["content-type"] || "";
-  const boundary    = contentType.split("boundary=")[1];
-  if (!boundary) return res.status(400).json({ error: "No boundary found in content-type" });
 
-  let body = Buffer.alloc(0);
-  req.on("data", chunk => { body = Buffer.concat([body, chunk]); });
-  req.on("end", () => {
-    try {
-      const bodyStr  = body.toString("binary");
-      const nameMatch = bodyStr.match(/filename="(.+?)"/);
-      if (!nameMatch) return res.status(400).json({ error: "No file found in upload" });
-      const fileName = nameMatch[1];
 
-      const headerEnd   = bodyStr.indexOf("\r\n\r\n", bodyStr.indexOf("filename=")) + 4;
-      const footerStart = bodyStr.lastIndexOf(`\r\n--${boundary}`);
-      const fileBuffer  = body.slice(headerEnd, footerStart);
+// Ensure local temp dir exists
+if (!fs.existsSync(CERT_SAVE_DIR)) {
+  fs.mkdirSync(CERT_SAVE_DIR, { recursive: true });
+}
 
-      const targetMatch  = bodyStr.match(/name="targetServer"\r\n\r\n(.+?)\r\n--/);
-      const targetServer = targetMatch ? targetMatch[1].trim() : null;
-      if (!targetServer) return res.status(400).json({ error: "targetServer not provided" });
-
-      const localPath  = `${CERT_SAVE_DIR}/${fileName}`;
-      const remotePath = `${SCP_USER}@${targetServer}:/tmp/`;
-
-      fs.writeFile(localPath, fileBuffer, (err) => {
-        if (err) return res.status(500).json({ error: "Failed to save file locally: " + err.message });
-
-        execFile("scp", [
-          "-i", SSH_KEY,
-          "-o", "StrictHostKeyChecking=no",
-          localPath,
-          remotePath
-        ], (scpErr, stdout, stderr) => {
-          fs.unlink(localPath, () => {});
-          if (scpErr) return res.status(500).json({ error: stderr || scpErr.message });
-          res.json({ success: true, message: `${fileName} sent to ${targetServer}:/tmp/`, size: fileBuffer.length });
-        });
-      });
-    } catch (err) {
-      res.status(500).json({ error: "Parse error: " + err.message });
-    }
+// ── Helper: run ssh command on remote host ────────────────────────────────────
+function sshExec(ip, command) {
+  return new Promise((resolve, reject) => {
+    execFile("ssh", [
+      "-i", CERT_SSH_KEY,
+      "-o", "StrictHostKeyChecking=no",
+      "-o", "ConnectTimeout=10",
+      `${CERT_SCP_USER}@${ip}`,
+      command
+    ], (err, stdout, stderr) => {
+      if (err) return reject(stderr || err.message);
+      resolve(stdout.trim());
+    });
   });
-});
+}
 
-// ── POST /deploy — cert deploy to all env servers ─────────────
+// ── Helper: scp file to remote host ──────────────────────────────────────────
+function scpFile(localPath, ip, remotePath) {
+  return new Promise((resolve, reject) => {
+    execFile("scp", [
+      "-i", CERT_SSH_KEY,
+      "-o", "StrictHostKeyChecking=no",
+      "-o", "ConnectTimeout=10",
+      localPath,
+      `${CERT_SCP_USER}@${ip}:${remotePath}`
+    ], (err, stdout, stderr) => {
+      if (err) return reject(stderr || err.message);
+      resolve();
+    });
+  });
+}
+
+// ── Helper: deploy cert to ONE server ────────────────────────────────────────
+async function deployToServer(ip, localFilePath, fileName, remoteDirPath) {
+  const remoteFilePath = `${remoteDirPath}/${fileName}`;
+  const result = { ip, status: "pending", backup: null, error: null };
+
+  try {
+    // Step 1: Check if file already exists on remote
+    const checkCmd = `[ -f "${remoteFilePath}" ] && echo "EXISTS" || echo "NOT_FOUND"`;
+    const checkResult = await sshExec(ip, checkCmd);
+
+    // Step 2: If exists, take backup with timestamp
+    if (checkResult === "EXISTS") {
+      const timestamp = new Date().toISOString()
+        .replace(/[-:T]/g, "")
+        .split(".")[0]; // e.g. 20260617143022
+      const backupPath = `${remoteFilePath}_$(date '+%Y-%m-%d').backup`;
+      await sshExec(ip, `cp "${remoteFilePath}" "${backupPath}"`);
+      result.backup = backupPath;
+      console.log(`[deploy] ${ip} — backup created: ${backupPath}`);
+    }
+
+    // Step 3: SCP new cert to remote dir
+    await scpFile(localFilePath, ip, remoteFilePath);
+    result.status = "success";
+    console.log(`[deploy] ${ip} — cert deployed to ${remoteFilePath}`);
+
+  } catch (err) {
+    result.status = "failed";
+    result.error  = err;
+    console.error(`[deploy] ${ip} — FAILED: ${err}`);
+  }
+
+  return result;
+}
+
+// ── POST /deploy ──────────────────────────────────────────────────────────────
 app.post("/deploy", (req, res) => {
   const contentType = req.headers["content-type"] || "";
-  const boundary    = contentType.split("boundary=")[1];
-  if (!boundary) return res.status(400).json({ error: "No boundary in content-type" });
+  const boundary = contentType.split("boundary=")[1];
+
+  if (!boundary) {
+    return res.status(400).json({ error: "No boundary in content-type" });
+  }
 
   let body = Buffer.alloc(0);
   req.on("data", chunk => { body = Buffer.concat([body, chunk]); });
@@ -298,24 +234,25 @@ app.post("/deploy", (req, res) => {
     try {
       const bodyStr = body.toString("binary");
 
-      // Parse file
+      // ── Parse file ──
       const nameMatch = bodyStr.match(/filename="(.+?)"/);
       if (!nameMatch) return res.status(400).json({ error: "No file in upload" });
-      const fileName   = nameMatch[1];
-      const headerEnd  = bodyStr.indexOf("\r\n\r\n", bodyStr.indexOf("filename=")) + 4;
-      const footerStart = bodyStr.lastIndexOf(`\r\n--${boundary}`);
-      const fileBuffer = body.slice(headerEnd, footerStart);
+      const fileName = nameMatch[1];
 
-      // Parse environment
-      const envMatch    = bodyStr.match(/name="environment"\r\n\r\n(.+?)\r\n--/);
+      const headerEnd   = bodyStr.indexOf("\r\n\r\n", bodyStr.indexOf("filename=")) + 4;
+      const footerStart = bodyStr.lastIndexOf(`\r\n--${boundary}`);
+      const fileBuffer  = body.slice(headerEnd, footerStart);
+
+      // ── Parse environment field ──
+      const envMatch = bodyStr.match(/name="environment"\r\n\r\n(.+?)\r\n--/);
       const environment = envMatch ? envMatch[1].trim() : null;
       if (!environment || !ENV_RANGES[environment]) {
         return res.status(400).json({ error: "Invalid environment. Use UAT or SIT." });
       }
 
-      // Parse certPath
+      // ── Parse certPath field ──
       const pathMatch = bodyStr.match(/name="certPath"\r\n\r\n(.+?)\r\n--/);
-      const certPath  = pathMatch ? pathMatch[1].trim() : null;
+      const certPath = pathMatch ? pathMatch[1].trim() : null;
       if (!certPath || !CERT_PATHS[certPath]) {
         return res.status(400).json({ error: "Invalid certPath. Use RSAkeystore or Endpoint." });
       }
@@ -324,20 +261,21 @@ app.post("/deploy", (req, res) => {
       const ipList        = ENV_RANGES[environment];
       const localFilePath = `${CERT_SAVE_DIR}/${fileName}`;
 
-      // Save locally
+      // ── Save file locally ──
       fs.writeFileSync(localFilePath, fileBuffer);
-      console.log(`[deploy] File: ${localFilePath}`);
-      console.log(`[deploy] Env:  ${environment} → ${ipList.length} servers`);
-      console.log(`[deploy] Path: ${remoteDirPath}`);
+      console.log(`[deploy] Saved locally: ${localFilePath}`);
+      console.log(`[deploy] Environment: ${environment} → ${ipList.length} servers`);
+      console.log(`[deploy] Target path: ${remoteDirPath}`);
 
-      // Deploy to all IPs in parallel
+      // ── Deploy to all IPs in parallel ──
       const results = await Promise.all(
         ipList.map(ip => deployToServer(ip, localFilePath, fileName, remoteDirPath))
       );
 
-      // Cleanup local temp
+      // ── Cleanup local temp file ──
       fs.unlink(localFilePath, () => {});
 
+      // ── Summary ──
       const summary = {
         total:   results.length,
         success: results.filter(r => r.status === "success").length,
@@ -361,9 +299,76 @@ app.post("/deploy", (req, res) => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════════
-//  ACTIVITIES
-// ═══════════════════════════════════════════════════════════════
+
+
+
+
+// ── POST /upload — cert upload via multipart, scp to target ──────────────────
+app.post("/upload", (req, res) => {
+  const contentType = req.headers["content-type"] || "";
+  const boundary = contentType.split("boundary=")[1];
+
+  if (!boundary) {
+    return res.status(400).json({ error: "No boundary found in content-type" });
+  }
+
+  let body = Buffer.alloc(0);
+  req.on("data", chunk => { body = Buffer.concat([body, chunk]); });
+
+  req.on("end", () => {
+    try {
+      const bodyStr = body.toString("binary");
+
+      // Extract filename
+      const nameMatch = bodyStr.match(/filename="(.+?)"/);
+      if (!nameMatch) return res.status(400).json({ error: "No file found in upload" });
+      const fileName = nameMatch[1];
+
+      // Extract file bytes
+      const headerEnd   = bodyStr.indexOf("\r\n\r\n", bodyStr.indexOf("filename=")) + 4;
+      const footerStart = bodyStr.lastIndexOf(`\r\n--${boundary}`);
+      const fileBuffer  = body.slice(headerEnd, footerStart);
+
+      // Extract targetServer field
+      const targetMatch  = bodyStr.match(/name="targetServer"\r\n\r\n(.+?)\r\n--/);
+      const targetServer = targetMatch ? targetMatch[1].trim() : null;
+      if (!targetServer) return res.status(400).json({ error: "targetServer not provided" });
+
+      const localPath  = `${SAVE_DIR}/${fileName}`;
+      const remotePath = `${SCP_USER}@${targetServer}:${REMOTE_DIR}`;
+
+      fs.writeFile(localPath, fileBuffer, (err) => {
+        if (err) return res.status(500).json({ error: "Failed to save file locally: " + err.message });
+
+        console.log(`[upload] Saved: ${localPath} → scp to ${remotePath}`);
+
+        execFile("scp", [
+          "-i", SSH_KEY,
+          "-o", "StrictHostKeyChecking=no",
+          localPath,
+          remotePath
+        ], (scpErr, stdout, stderr) => {
+          fs.unlink(localPath, () => {});
+
+          if (scpErr) {
+            console.error("[upload] SCP failed:", stderr || scpErr.message);
+            return res.status(500).json({ error: stderr || scpErr.message });
+          }
+
+          res.json({
+            success: true,
+            message: `${fileName} sent to ${targetServer}:${REMOTE_DIR}`,
+            size: fileBuffer.length
+          });
+        });
+      });
+    } catch (err) {
+      res.status(500).json({ error: "Parse error: " + err.message });
+    }
+  });
+});
+
+// ── Activities ────────────────────────────────────────────────────────────────
 
 function readActivities() {
   try {
@@ -405,7 +410,7 @@ app.get('/api/activities', (req, res) => {
 app.get('/api/activities/:id', (req, res) => {
   try {
     const activities = readActivities();
-    const activity   = activities.find(a => a.id === req.params.id);
+    const activity = activities.find(a => a.id === req.params.id);
     if (!activity) return res.status(404).json({ success: false, message: 'Activity not found' });
     res.json({ success: true, data: activity });
   } catch (err) {
@@ -416,18 +421,14 @@ app.get('/api/activities/:id', (req, res) => {
 app.post('/api/activities', (req, res) => {
   try {
     const { name, reason, scheduledDate, status, assignee } = req.body;
-    if (!name || !name.trim())         return res.status(400).json({ success: false, message: 'Activity name is required' });
-    if (!reason || !reason.trim())     return res.status(400).json({ success: false, message: 'Reason is required' });
-    if (!scheduledDate)                return res.status(400).json({ success: false, message: 'Scheduled date is required' });
+    if (!name || !name.trim()) return res.status(400).json({ success: false, message: 'Activity name is required' });
+    if (!reason || !reason.trim()) return res.status(400).json({ success: false, message: 'Reason is required' });
+    if (!scheduledDate) return res.status(400).json({ success: false, message: 'Scheduled date is required' });
     const newActivity = {
-      id:            randomUUID(),
-      name:          name.trim(),
-      reason:        reason.trim(),
-      scheduledDate,
-      status:        status || 'Pending',
-      assignee:      (assignee || '').trim(),
-      createdAt:     new Date().toISOString(),
-      updatedAt:     new Date().toISOString(),
+      id: randomUUID(), name: name.trim(), reason: reason.trim(),
+      scheduledDate, status: status || 'Pending',
+      assignee: (assignee || '').trim(),
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
     };
     const activities = readActivities();
     activities.push(newActivity);
@@ -441,7 +442,7 @@ app.post('/api/activities', (req, res) => {
 app.put('/api/activities/:id', (req, res) => {
   try {
     const activities = readActivities();
-    const index      = activities.findIndex(a => a.id === req.params.id);
+    const index = activities.findIndex(a => a.id === req.params.id);
     if (index === -1) return res.status(404).json({ success: false, message: 'Activity not found' });
     const { name, reason, scheduledDate, status, assignee } = req.body;
     const updated = {
@@ -463,12 +464,12 @@ app.put('/api/activities/:id', (req, res) => {
 
 app.patch('/api/activities/:id/status', (req, res) => {
   try {
-    const { status }       = req.body;
-    const validStatuses    = ['Pending', 'In Progress', 'Completed'];
+    const { status } = req.body;
+    const validStatuses = ['Pending', 'In Progress', 'Completed'];
     if (!validStatuses.includes(status))
       return res.status(400).json({ success: false, message: `Status must be one of: ${validStatuses.join(', ')}` });
     const activities = readActivities();
-    const index      = activities.findIndex(a => a.id === req.params.id);
+    const index = activities.findIndex(a => a.id === req.params.id);
     if (index === -1) return res.status(404).json({ success: false, message: 'Activity not found' });
     activities[index].status    = status;
     activities[index].updatedAt = new Date().toISOString();
@@ -482,7 +483,7 @@ app.patch('/api/activities/:id/status', (req, res) => {
 app.delete('/api/activities/:id', (req, res) => {
   try {
     const activities = readActivities();
-    const index      = activities.findIndex(a => a.id === req.params.id);
+    const index = activities.findIndex(a => a.id === req.params.id);
     if (index === -1) return res.status(404).json({ success: false, message: 'Activity not found' });
     const deleted = activities.splice(index, 1)[0];
     writeActivities(activities);
@@ -513,13 +514,13 @@ app.use((req, res) => {
   res.status(404).json({ success: false, message: `Route ${req.method} ${req.url} not found` });
 });
 
-// ── Start ─────────────────────────────────────────────────────
+// ── Start ─────────────────────────────────────────────────
 app.listen(PORT, "0.0.0.0", () => {
   console.log("================================================");
   console.log("  NC Checker Backend");
   console.log(`  Listening : http://0.0.0.0:${PORT}`);
   console.log(`  Health    : http://10.177.44.58:${PORT}/health`);
-  console.log(`  Deploy    : http://10.177.44.58:${PORT}/deploy`);
+  console.log(`  Upload    : http://10.177.44.58:${PORT}/upload`);
   console.log(`  Script    : ${SCRIPT_PATH}`);
   console.log("================================================");
 });
