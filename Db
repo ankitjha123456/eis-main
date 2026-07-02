@@ -1,16 +1,21 @@
-<div class="result">
-    <h2>
-        <i class="fa-solid fa-file-code"></i>
-        Generated SQL
-    </h2>
+const BACKEND_URL = "http://10.177.44.29:4415/EISdev/depositAccShort/details/accounts";
 
-    <div id="queryOutput"></div>
-</div>
+const SQL_KEYS = [
+    "EIS_DMZ_URL",
+    "EISSOURCEID",
+    "SYSSERVICES",
+    "EIS_SYS_URL",
+    "HTTPTIMEOUT",
+    "CONTENTCHCK",
+    "THRDPRTYURL",
+    "APIPARAMETR",
+    "ACCESMASTER",
+    "API_MASTERS"
+];
 
+let lastResult = null;
 
-
-
-document.getElementById("queryForm").addEventListener("submit", function(e) {
+document.getElementById("queryForm").addEventListener("submit", function (e) {
     e.preventDefault();
 
     const data = {
@@ -27,34 +32,51 @@ document.getElementById("queryForm").addEventListener("submit", function(e) {
         "REQUEST_REFERENCE_NUMBER": document.getElementById("REQUEST_REFERENCE_NUMBER").value
     };
 
-    fetch("http://10.177.44.29:4415/EISdev/depositAccShort/details/accounts", {
+    const output = document.getElementById("queryOutput");
+    output.innerHTML = `<p class="placeholder">Generating...</p>`;
+
+    fetch(BACKEND_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data)
     })
-    .then(res => res.json())
-    .then(result => {
-        renderQueries(result);
-    })
-    .catch(err => {
-        document.getElementById("queryOutput").innerHTML =
-            `<p style="color:red;">Error: ${err.message}</p>`;
-    });
+        .then(res => {
+            if (!res.ok) {
+                throw new Error(`Server responded with ${res.status}`);
+            }
+            return res.json();
+        })
+        .then(result => {
+            lastResult = result;
+            renderQueries(result);
+        })
+        .catch(err => {
+            output.innerHTML = `<p class="error">Error: ${err.message}</p>`;
+            document.getElementById("copyAllBtn").style.display = "none";
+        });
+});
+
+document.getElementById("queryForm").addEventListener("reset", function () {
+    lastResult = null;
+    document.getElementById("queryOutput").innerHTML =
+        `<p class="placeholder">No queries generated yet. Fill the form and click "Generate Query".</p>`;
+    document.getElementById("copyAllBtn").style.display = "none";
 });
 
 function renderQueries(result) {
-    const sqlKeys = [
-        "EIS_DMZ_URL", "EISSOURCEID", "SYSSERVICES", "EIS_SYS_URL",
-        "HTTPTIMEOUT", "CONTENTCHCK", "THRDPRTYURL",
-        "APIPARAMETR", "ACCESMASTER", "API_MASTERS"
-    ];
-
     const container = document.getElementById("queryOutput");
+    const copyAllBtn = document.getElementById("copyAllBtn");
     container.innerHTML = "";
 
-    sqlKeys.forEach(key => {
-        if (!result[key]) return;
+    const foundKeys = SQL_KEYS.filter(key => result[key]);
 
+    if (foundKeys.length === 0) {
+        container.innerHTML = `<p class="error">No SQL statements found in the response.</p>`;
+        copyAllBtn.style.display = "none";
+        return;
+    }
+
+    foundKeys.forEach(key => {
         const block = document.createElement("div");
         block.className = "sql-block";
 
@@ -68,8 +90,11 @@ function renderQueries(result) {
             <textarea rows="4" readonly>${result[key]}</textarea>
         `;
 
-        block.querySelector(".copy-btn").addEventListener("click", () => {
-            navigator.clipboard.writeText(result[key]);
+        const copyBtn = block.querySelector(".copy-btn");
+        const textarea = block.querySelector("textarea");
+
+        copyBtn.addEventListener("click", () => {
+            copyToClipboard(textarea.value, copyBtn);
         });
 
         container.appendChild(block);
@@ -78,53 +103,50 @@ function renderQueries(result) {
     if (result.REQUEST_REFERENCE_NUMBER || result.RESPONSE_DATE) {
         const meta = document.createElement("p");
         meta.className = "sql-meta";
-        meta.textContent =
-            `Ref: ${result.REQUEST_REFERENCE_NUMBER || "-"} | ${result.RESPONSE_DATE || ""}`;
+        meta.textContent = `Ref: ${result.REQUEST_REFERENCE_NUMBER || "-"} | ${result.RESPONSE_DATE || ""}`;
         container.appendChild(meta);
     }
+
+    copyAllBtn.style.display = "inline-flex";
 }
 
+document.getElementById("copyAllBtn").addEventListener("click", () => {
+    if (!lastResult) return;
 
+    const combined = SQL_KEYS
+        .filter(key => lastResult[key])
+        .map(key => `-- ${key}\n${lastResult[key]}`)
+        .join("\n\n");
 
+    copyToClipboard(combined, document.getElementById("copyAllBtn"));
+});
 
+// Works over plain HTTP too (navigator.clipboard requires HTTPS/localhost)
+function copyToClipboard(text, btnEl) {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
 
+    let success = false;
+    try {
+        success = document.execCommand("copy");
+    } catch (err) {
+        console.error("Copy failed", err);
+    }
 
+    document.body.removeChild(textarea);
 
-.sql-block {
-    margin-bottom: 16px;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    overflow: hidden;
-}
-
-.sql-label {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: #f3f3f3;
-    padding: 6px 10px;
-    font-weight: 600;
-    font-size: 0.9rem;
-}
-
-.copy-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: 0.85rem;
-}
-
-.sql-block textarea {
-    width: 100%;
-    border: none;
-    padding: 8px 10px;
-    font-family: monospace;
-    font-size: 0.85rem;
-    resize: vertical;
-}
-
-.sql-meta {
-    font-size: 0.8rem;
-    color: #666;
-    margin-top: 8px;
+    if (btnEl) {
+        const original = btnEl.innerHTML;
+        btnEl.innerHTML = success
+            ? `<i class="fa-solid fa-check"></i> Copied`
+            : `<i class="fa-solid fa-xmark"></i> Failed`;
+        setTimeout(() => {
+            btnEl.innerHTML = original;
+        }, 1500);
+    }
 }
