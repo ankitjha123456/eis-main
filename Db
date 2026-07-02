@@ -1,12 +1,106 @@
-server {
-    listen 4415;
-    server_name 10.177.44.29;
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-    location /EISdev/ {
-        proxy_pass http://10.177.44.22:4002/;
+        <title>IBM ACE Query Generator</title>
 
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    }
-}
+        <link rel="stylesheet" href="style.css" />
+
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css" />
+    </head>
+
+    <body>
+        <div class="container">
+            <div class="header">
+                <i class="fa-solid fa-database"></i>
+                <h1>IBM ACE SQL Query Generator</h1>
+                <p>Generate Dynamic Configuration Queries</p>
+            </div>
+
+            <form id="queryForm">
+                <div class="grid">
+                    <div class="form-group">
+                        <label><i class="fa-solid fa-filter"></i> Fetch Flag</label>
+                        <input type="text" id="FETCH_FLAG" />
+                    </div>
+
+                    <div class="form-group">
+                        <label><i class="fa-solid fa-layer-group"></i> Cache For</label>
+                        <input type="text" id="CACHE" />
+                    </div>
+
+                    <div class="form-group">
+                        <label><i class="fa-solid fa-table-columns"></i> Field Name</label>
+                        <input type="text" id="FIELD_NAME" />
+                    </div>
+
+                    <div class="form-group">
+                        <label><i class="fa-solid fa-globe"></i> EIS DMZ URL</label>
+                        <input type="text" id="EIS_DMZ_URL" />
+                    </div>
+
+                    <div class="form-group">
+                        <label><i class="fa-solid fa-server"></i> SYS Service</label>
+                        <input type="text" id="SYS_SERVICE" />
+                    </div>
+
+                    <div class="form-group">
+                        <label><i class="fa-solid fa-link"></i> SYS URL</label>
+                        <input type="text" id="SYS_URL" />
+                    </div>
+
+                    <div class="form-group">
+                        <label><i class="fa-solid fa-clock"></i> HTTP Timeout</label>
+                        <input type="text" id="HTTPTimeOut" />
+                    </div>
+
+                    <div class="form-group">
+                        <label><i class="fa-solid fa-shield-halved"></i> Content Check</label>
+                        <input type="text" id="CONTENT_CHECK" />
+                    </div>
+
+                    <div class="form-group">
+                        <label><i class="fa-solid fa-gears"></i> Source Config</label>
+                        <input type="text" id="SOURCE_CONFIG" />
+                    </div>
+
+                    <div class="form-group">
+                        <label><i class="fa-solid fa-network-wired"></i> Third Party URL</label>
+                        <input type="text" id="THIRD_PARTY_URL" />
+                    </div>
+
+                    <div class="form-group full">
+                        <label><i class="fa-solid fa-hashtag"></i> Request Reference Number</label>
+                        <input type="text" id="REQUEST_REFERENCE_NUMBER" />
+                    </div>
+                </div>
+
+                <div class="button-area">
+                    <button type="submit">
+                        <i class="fa-solid fa-play"></i>
+                        Generate Query
+                    </button>
+
+                    <button type="reset" class="reset">
+                        <i class="fa-solid fa-rotate-left"></i>
+                        Reset
+                    </button>
+                </div>
+            </form>
+
+            <div class="result">
+                <h2>
+                    <i class="fa-solid fa-file-code"></i>
+                    Generated SQL
+                </h2>
+
+                <textarea id="query" rows="10"></textarea>
+            </div>
+        </div>
+
+<script src="script.js"></script>
+
+    </body>
+</html>
