@@ -1,114 +1,130 @@
-<!doctype html>
-<html lang="en">
-    <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<div class="result">
+    <h2>
+        <i class="fa-solid fa-file-code"></i>
+        Generated SQL
+    </h2>
 
-        <title>IBM ACE Query Generator</title>
+    <div id="queryOutput"></div>
+</div>
 
-        <link rel="stylesheet" href="style.css" />
 
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css" />
-    </head>
 
-    <body>
-        <div class="container">
-            <div class="header">
-                <i class="fa-solid fa-database"></i>
-                <h1>IBM ACE SQL Query Generator</h1>
-                <p>Generate Dynamic Configuration Queries</p>
+
+document.getElementById("queryForm").addEventListener("submit", function(e) {
+    e.preventDefault();
+
+    const data = {
+        "FETCH_FLAG": document.getElementById("FETCH_FLAG").value,
+        "CACHE": document.getElementById("CACHE").value,
+        "FIELD_NAME": document.getElementById("FIELD_NAME").value,
+        "EIS_DMZ_URL": document.getElementById("EIS_DMZ_URL").value,
+        "SYS_SERVICE": document.getElementById("SYS_SERVICE").value,
+        "SYS_URL": document.getElementById("SYS_URL").value,
+        "HTTPTimeOut": document.getElementById("HTTPTimeOut").value,
+        "CONTENT_CHECK": document.getElementById("CONTENT_CHECK").value,
+        "SOURCE_CONFIG": document.getElementById("SOURCE_CONFIG").value,
+        "THIRD_PARTY_URL": document.getElementById("THIRD_PARTY_URL").value,
+        "REQUEST_REFERENCE_NUMBER": document.getElementById("REQUEST_REFERENCE_NUMBER").value
+    };
+
+    fetch("http://10.177.44.29:4415/EISdev/depositAccShort/details/accounts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data)
+    })
+    .then(res => res.json())
+    .then(result => {
+        renderQueries(result);
+    })
+    .catch(err => {
+        document.getElementById("queryOutput").innerHTML =
+            `<p style="color:red;">Error: ${err.message}</p>`;
+    });
+});
+
+function renderQueries(result) {
+    const sqlKeys = [
+        "EIS_DMZ_URL", "EISSOURCEID", "SYSSERVICES", "EIS_SYS_URL",
+        "HTTPTIMEOUT", "CONTENTCHCK", "THRDPRTYURL",
+        "APIPARAMETR", "ACCESMASTER", "API_MASTERS"
+    ];
+
+    const container = document.getElementById("queryOutput");
+    container.innerHTML = "";
+
+    sqlKeys.forEach(key => {
+        if (!result[key]) return;
+
+        const block = document.createElement("div");
+        block.className = "sql-block";
+
+        block.innerHTML = `
+            <div class="sql-label">
+                <span>${key}</span>
+                <button type="button" class="copy-btn">
+                    <i class="fa-solid fa-copy"></i> Copy
+                </button>
             </div>
+            <textarea rows="4" readonly>${result[key]}</textarea>
+        `;
 
-            <form id="queryForm">
-                <div class="grid">
-                    <div class="form-group">
-                        <label><i class="fa-solid fa-filter"></i> Fetch Flag</label>
-                        <input type="text" id="FETCH_FLAG" />
-                    </div>
+        block.querySelector(".copy-btn").addEventListener("click", () => {
+            navigator.clipboard.writeText(result[key]);
+        });
 
-                    <div class="form-group">
-                        <label><i class="fa-solid fa-layer-group"></i> Cache For</label>
-                        <input type="text" id="CACHE" />
-                    </div>
+        container.appendChild(block);
+    });
 
-                    <div class="form-group">
-                        <label><i class="fa-solid fa-table-columns"></i> Field Name</label>
-                        <input type="text" id="FIELD_NAME" />
-                    </div>
-
-                    <div class="form-group">
-                        <label><i class="fa-solid fa-globe"></i> EIS DMZ URL</label>
-                        <input type="text" id="EIS_DMZ_URL" />
-                    </div>
-
-                    <div class="form-group">
-                        <label><i class="fa-solid fa-server"></i> SYS Service</label>
-                        <input type="text" id="SYS_SERVICE" />
-                    </div>
-
-                    <div class="form-group">
-                        <label><i class="fa-solid fa-link"></i> SYS URL</label>
-                        <input type="text" id="SYS_URL" />
-                    </div>
-
-                    <div class="form-group">
-                        <label><i class="fa-solid fa-clock"></i> HTTP Timeout</label>
-                        <input type="text" id="HTTPTimeOut" />
-                    </div>
-
-                    <div class="form-group">
-                        <label><i class="fa-solid fa-shield-halved"></i> Content Check</label>
-                        <input type="text" id="CONTENT_CHECK" />
-                    </div>
-
-                    <div class="form-group">
-                        <label><i class="fa-solid fa-gears"></i> Source Config</label>
-                        <input type="text" id="SOURCE_CONFIG" />
-                    </div>
-
-                    <div class="form-group">
-                        <label><i class="fa-solid fa-network-wired"></i> Third Party URL</label>
-                        <input type="text" id="THIRD_PARTY_URL" />
-                    </div>
-
-                    <div class="form-group full">
-                        <label><i class="fa-solid fa-hashtag"></i> Request Reference Number</label>
-                        <input type="text" id="REQUEST_REFERENCE_NUMBER" />
-                    </div>
-                </div>
-
-                <div class="button-area">
-                    <button type="submit">
-                        <i class="fa-solid fa-play"></i>
-                        Generate Query
-                    </button>
-
-                    <button type="reset" class="reset">
-                        <i class="fa-solid fa-rotate-left"></i>
-                        Reset
-                    </button>
-                </div>
-            </form>
-
-            <div class="result">
-                <h2>
-                    <i class="fa-solid fa-file-code"></i>
-                    Generated SQL
-                </h2>
-
-                <textarea id="query" rows="10"></textarea>
-            </div>
-        </div>
-
-<script src="script.js"></script>
-
-    </body>
-</html>
-this is my html file
+    if (result.REQUEST_REFERENCE_NUMBER || result.RESPONSE_DATE) {
+        const meta = document.createElement("p");
+        meta.className = "sql-meta";
+        meta.textContent =
+            `Ref: ${result.REQUEST_REFERENCE_NUMBER || "-"} | ${result.RESPONSE_DATE || ""}`;
+        container.appendChild(meta);
+    }
+}
 
 
-my backend return 
-curl -sk -X POST http://10.177.44.29:4415/EISdev/depositAccShort/details/accounts -H'Content-Type:application/json'  -d'{"FETCH_FLAG": "Q","CACHE": "DEV","FIELD_NAME": "PROTEAN|NPS_API||DUPLICATECHECK","EIS_DMZ_URL": "https://eissiwebuat.bank.sbi:7443/gen6/gateway/WS/service/duplicateCheck","SYS_SERVICE": "thirdPartyGenericProtean_NPS_sys","SYS_URL": "http://system.api:9003/thirdPartyGeneric/Protean_NPS/misc","HTTPTimeOut": "25","CONTENT_CHECK": "Y","SOURCE_CONFIG": "ST|CB|NS","THIRD_PARTY_URL": "https://121.240.64.236/WS/service/duplicateCheck","REQUEST_REFERENCE_NUMBER": "SBIST48955933528521499554"}'
-{"EIS_DMZ_URL":"INSERT into EISAPP.CACHE_DETAILS(FIELD_NAME,FIELD_VALUE,REQUEST_ACTION,PROCESSING_ACTION,RESPONSE_ACTION,SOURCE_ID,BACKEND_TYPE,BACKEND_SUB_TYPE,TRAN_CODE,SERVICE_NAME,CREATION_TIME)VALUES('PROTEAN_NPS_API_DUPLICATECHECK_EIS_DMZ_URL','https:\/\/eissiwebuat.bank.sbi:7443\/gen6\/gateway\/WS\/service\/duplicateCheck','NULL','SOURCE ID CONFIGURATION','NULL','Multiple','NPS_API','DUPLICATECHECK','PROTEAN','thirdPartyGenericProtean_NPS_sys',TRUNC(SYSDATE));","EISSOURCEID":"INSERT into EISAPP.CACHE_DETAILS(FIELD_NAME,FIELD_VALUE,REQUEST_ACTION,PROCESSING_ACTION,RESPONSE_ACTION,SOURCE_ID,BACKEND_TYPE,BACKEND_SUB_TYPE, TRAN_CODE,SERVICE_NAME,CREATION_TIME)VALUES('PROTEAN_NPS_API_DUPLICATECHECK','ST|CB|NS','NULL','SOURCE ID CONFIGURATION','NULL','Multiple','NPS_API','DUPLICATECHECK','PROTEAN','thirdPartyGenericProtean_NPS_sys',TRUNC(SYSDATE));","SYSSERVICES":"INSERT into EISAPP.CACHE_DETAILS(FIELD_NAME,FIELD_VALUE,REQUEST_ACTION,PROCESSING_ACTION,RESPONSE_ACTION,SOURCE_ID,BACKEND_TYPE,BACKEND_SUB_TYPE,TRAN_CODE,SERVICE_NAME,CREATION_TIME)VALUES('PROTEAN_NPS_API_Sys_Service','thirdPartyGenericProtean_NPS_sys','NULL','SOURCE ID CONFIGURATION','NULL','Multiple','NPS_API','DUPLICATECHECK','PROTEAN','thirdPartyGenericProtean_NPS_sys',TRUNC(SYSDATE));","EIS_SYS_URL":"INSERT into EISAPP.CACHE_DETAILS(FIELD_NAME, FIELD_VALUE,REQUEST_ACTION,PROCESSING_ACTION,RESPONSE_ACTION, SOURCE_ID,BACKEND_TYPE,BACKEND_SUB_TYPE,TRAN_CODE, SERVICE_NAME,CREATION_TIME)VALUES('PROTEAN_NPS_API_Sys_URL','http:\/\/system.api:9003\/thirdPartyGeneric\/Protean_NPS\/misc','NULL','NULL','NULL','Multiple','NPS_API','DUPLICATECHECK','PROTEAN','thirdPartyGenericProtean_NPS_sys',TRUNC(SYSDATE));","HTTPTIMEOUT":"INSERT into EISAPP.CACHE_DETAILS(FIELD_NAME,FIELD_VALUE,REQUEST_ACTION,PROCESSING_ACTION,RESPONSE_ACTION,SOURCE_ID, BACKEND_TYPE,BACKEND_SUB_TYPE,TRAN_CODE,SERVICE_NAME,CREATION_TIME)VALUES('PROTEAN_NPS_API_HTTPTimeOut','25','NULL','SOURCE ID CONFIGURATION','NULL','Multiple','NPS_API','DUPLICATECHECK','PROTEAN','thirdPartyGenericProtean_NPS_sys',TRUNC(SYSDATE));","CONTENTCHCK":"INSERT into EISAPP.CACHE_DETAILS(FIELD_NAME,FIELD_VALUE,REQUEST_ACTION,PROCESSING_ACTION, RESPONSE_ACTION, SOURCE_ID, BACKEND_TYPE, BACKEND_SUB_TYPE, TRAN_CODE, SERVICE_NAME,CREATION_TIME)VALUES('PROTEAN_NPS_API_DUPLICATECHECK_CONTENT_CHECK','Y','NULL','SOURCE ID CONFIGURATION','NULL','Multiple','NPS_API','DUPLICATECHECK','PROTEAN','thirdPartyGenericProtean_NPS_sys',TRUNC(SYSDATE));","THRDPRTYURL":"INSERT into EISAPP.CACHE_DETAILS(FIELD_NAME,FIELD_VALUE,REQUEST_ACTION,PROCESSING_ACTION, RESPONSE_ACTION, SOURCE_ID,BACKEND_TYPE,BACKEND_SUB_TYPE,TRAN_CODE,SERVICE_NAME,CREATION_TIME)VALUES('PROTEAN_NPS_API_DUPLICATECHECK_THIRD_PARTY_URL','https:\/\/121.240.64.236\/WS\/service\/duplicateCheck','NULL','SOURCE ID CONFIGURATION','NULL','Multiple','NPS_API','DUPLICATECHECK','PROTEAN','thirdPartyGenericProtean_NPS_sys',TRUNC(SYSDATE));","APIPARAMETR":"INSERT INTO EISAPP.THIRD_PARTY_API_PARAMETER(DESTINATION,CREATION_DATE_TIME)VALUES('PROTEAN',TRUNC(SYSDATE));","ACCESMASTER":"INSERT into EISAPP.THIRD_PARTY_API_ACCESS_MASTER(DESTINATION, TXN_TYPE, TXN_SUB_TYPE,SOURCE_ID, SERVICE_ACTIVE, CREATION_DATE_TIME)VALUES('PROTEAN','NPS_API','DUPLICATECHECK','ST|CB|NS','Y''NULL',TRUNC(SYSDATE));","API_MASTERS":"INSERT into EISAPP.THIRD_PARTY_API_MASTER(DESTINATION, TXN_TYPE, TXN_SUB_TYPE,ACTUAL_URL, ROUTE_URL, ACTUAL_URL_CACHE, ROUTE_URL_CACHE, ALLOWED_SOURCE, ALLOWED_SOURCE_CACHE, DB_ENCRYPTED,DB_ENCRYPTED_CACHE,CONTENT_CHECK,CONTENT_CHECK_CACHE,HTTPTIMEOUT,HTTPTIMEOUT_CACHE,SYS_URL_CACHE,SYS_URL,SYS_SERVICE,SYS_SERVICE_CACHE,CREATION_DATE_TIME)VALUES('PROTEAN','NPS_API','DUPLICATECHECK','https:\/\/eissiwebuat.bank.sbi:7443\/gen6\/gateway\/WS\/service\/duplicateCheck','https:\/\/121.240.64.236\/WS\/service\/duplicateCheck','PROTEAN_NPS_API_DUPLICATECHECK_THIRD_PARTY_URL','PROTEAN_NPS_API_DUPLICATECHECK_EIS_DMZ_URL','ST|CB|NS','PROTEAN_NPS_API_DUPLICATECHECK','Y|N|H','PROTEAN_PAYLOAD_LOGGING''Y','PROTEAN_NPS_API_DUPLICATECHECK_CONTENT_CHECK''25','PROTEAN_NPS_API_HTTPTimeOut','PROTEAN_NPS_API_Sys_URL''http:\/\/system.api:9003\/thirdPartyGeneric\/Protean_NPS\/misc','thirdPartyGenericProtean_NPS_sys','PROTEAN_NPS_API_Sys_Service',TRUNC(SYSDATE));","RESPONSE_DATE":"02-07-2026 13:12:08","REQUEST_REFERENCE_NUMBER":"SBIST48955933528521499554"}
 
-its showing undefine
+
+
+
+
+.sql-block {
+    margin-bottom: 16px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.sql-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #f3f3f3;
+    padding: 6px 10px;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.copy-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+
+.sql-block textarea {
+    width: 100%;
+    border: none;
+    padding: 8px 10px;
+    font-family: monospace;
+    font-size: 0.85rem;
+    resize: vertical;
+}
+
+.sql-meta {
+    font-size: 0.8rem;
+    color: #666;
+    margin-top: 8px;
+}
