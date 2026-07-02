@@ -1,70 +1,12 @@
-this is my javascript file
-
-document.getElementById("queryForm").addEventListener("submit",function(e){
-
-e.preventDefault();
-
-const data={
-"FETCH_FLAG":document.getElementById("FETCH_FLAG").value,
-"CACHE":document.getElementById("CACHE").value,
-"FIELD_NAME":document.getElementById("FIELD_NAME").value,
-"EIS_DMZ_URL":document.getElementById("EIS_DMZ_URL").value,
-"SYS_SERVICE":document.getElementById("SYS_SERVICE").value,
-"SYS_URL":document.getElementById("SYS_URL").value,
-"HTTPTimeOut":document.getElementById("HTTPTimeOut").value,
-"CONTENT_CHECK":document.getElementById("CONTENT_CHECK").value,
-"SOURCE_CONFIG":document.getElementById("SOURCE_CONFIG").value,
-"THIRD_PARTY_URL":document.getElementById("THIRD_PARTY_URL").value,
-"REQUEST_REFERENCE_NUMBER":document.getElementById("REQUEST_REFERENCE_NUMBER").value
-};
-
-fetch("http://10.177.44.22:4002/depositAccShort/details/accounts",{
-
-method:"POST",
-
-headers:{
-"Content-Type":"application/json"
-},
-
-body:JSON.stringify(data)
-
-})
-
-.then(res=>res.json())
-
-.then(result=>{
-
-document.getElementById("query").value=result.query;
-
-});
-
-});
-
-
-
-this is my revere.proxy in nginx
-
 server {
     listen 4415;
     server_name 10.177.44.29;
 
+    location /EISdev/ {
+        proxy_pass http://10.177.44.22:4002/;
 
-   location /EISdev{
-        proxy_pass http://10.177.44.22:4002;
-
-        proxy_set_header Host 10.177.44.22:4002;
+        proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
-
-
-
 }
-
-in console
-
-Access to fetch at 'http://10.177.44.22:4002/depositAccShort/details/accounts' from origin 'http://10.177.44.29:4415' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.
-script.js:19  POST http://10.177.44.22:4002/depositAccShort/details/accounts net::ERR_FAILED
-(anonymous) @ script.js:19
-script.js:19   Uncaught (in promise) TypeError: Failed to fetch
-    at HTMLFormElement.<anonymous> (script.js:19:1)
