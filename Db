@@ -1,110 +1,70 @@
-const http = require("http");
-const fs = require("fs");
-const { execFile } = require("child_process");
+this is my javascript file
 
-const PORT = 4418;
-const SAVE_DIR = "/tmp/cert_uploads"; // local temp folder on .58
+document.getElementById("queryForm").addEventListener("submit",function(e){
 
-// SSH key for THIS process's user (must be eisuser when you run `node app.js` as eisuser)
-const SSH_KEY = "/home/eisuser/.ssh/id_rsa";
-const SCP_USER = "eisuser";
-const REMOTE_DIR = "/tmp/"; // change to your real target dir later
+e.preventDefault();
 
-if (!fs.existsSync(SAVE_DIR)) {
-  fs.mkdirSync(SAVE_DIR, { recursive: true });
-}
+const data={
+"FETCH_FLAG":document.getElementById("FETCH_FLAG").value,
+"CACHE":document.getElementById("CACHE").value,
+"FIELD_NAME":document.getElementById("FIELD_NAME").value,
+"EIS_DMZ_URL":document.getElementById("EIS_DMZ_URL").value,
+"SYS_SERVICE":document.getElementById("SYS_SERVICE").value,
+"SYS_URL":document.getElementById("SYS_URL").value,
+"HTTPTimeOut":document.getElementById("HTTPTimeOut").value,
+"CONTENT_CHECK":document.getElementById("CONTENT_CHECK").value,
+"SOURCE_CONFIG":document.getElementById("SOURCE_CONFIG").value,
+"THIRD_PARTY_URL":document.getElementById("THIRD_PARTY_URL").value,
+"REQUEST_REFERENCE_NUMBER":document.getElementById("REQUEST_REFERENCE_NUMBER").value
+};
 
-http.createServer((req, res) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Headers", "*");
+fetch("http://10.177.44.22:4002/depositAccShort/details/accounts",{
 
-  if (req.method === "OPTIONS") return res.end();
+method:"POST",
 
-  if (req.method === "POST" && req.url === "/upload") {
-    const contentType = req.headers["content-type"] || "";
-    const boundary = contentType.split("boundary=")[1];
+headers:{
+"Content-Type":"application/json"
+},
 
-    if (!boundary) {
-      res.writeHead(400);
-      return res.end(JSON.stringify({ error: "No boundary found in content-type" }));
+body:JSON.stringify(data)
+
+})
+
+.then(res=>res.json())
+
+.then(result=>{
+
+document.getElementById("query").value=result.query;
+
+});
+
+});
+
+
+
+this is my revere.proxy in nginx
+
+server {
+    listen 4415;
+    server_name 10.177.44.29;
+
+
+   location /EISdev{
+        proxy_pass http://10.177.44.22:4002;
+
+        proxy_set_header Host 10.177.44.22:4002;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
 
-    let body = Buffer.alloc(0);
 
-    req.on("data", chunk => {
-      body = Buffer.concat([body, chunk]);
-    });
 
-    req.on("end", () => {
-      try {
-        const bodyStr = body.toString("binary");
+}
 
-        // ── Extract file part ──
-        const nameMatch = bodyStr.match(/filename="(.+?)"/);
-        if (!nameMatch) {
-          res.writeHead(400);
-          return res.end(JSON.stringify({ error: "No file found in upload" }));
-        }
-        const fileName = nameMatch[1];
+in console
 
-        const headerEnd = bodyStr.indexOf("\r\n\r\n", bodyStr.indexOf("filename=")) + 4;
-        const footerStart = bodyStr.lastIndexOf(`\r\n--${boundary}`);
-        const fileBuffer = body.slice(headerEnd, footerStart);
-
-        // ── Extract targetServer field (sent from React UI as a separate form field) ──
-        const targetMatch = bodyStr.match(/name="targetServer"\r\n\r\n(.+?)\r\n--/);
-        const targetServer = targetMatch ? targetMatch[1].trim() : null;
-
-        if (!targetServer) {
-          res.writeHead(400);
-          return res.end(JSON.stringify({ error: "targetServer not provided" }));
-        }
-
-        const localPath = `${SAVE_DIR}/${fileName}`;
-
-        fs.writeFile(localPath, fileBuffer, (err) => {
-          if (err) {
-            res.writeHead(500);
-            return res.end(JSON.stringify({ error: "Failed to save file locally: " + err.message }));
-          }
-
-          console.log(`Saved locally: ${localPath} (${fileBuffer.length} bytes)`);
-          console.log(`Running as user: ${process.env.USER || process.getuid?.()}`);
-
-          const remotePath = `${SCP_USER}@${targetServer}:${REMOTE_DIR}`;
-
-          execFile("scp", [
-            "-i", SSH_KEY,
-            "-o", "StrictHostKeyChecking=no",
-            localPath,
-            remotePath
-          ], (scpErr, stdout, stderr) => {
-            fs.unlink(localPath, () => {}); // cleanup local temp regardless
-
-            if (scpErr) {
-              console.error("SCP failed:", stderr || scpErr.message);
-              res.writeHead(500);
-              return res.end(JSON.stringify({ error: stderr || scpErr.message }));
-            }
-
-            res.writeHead(200, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({
-              success: true,
-              message: `${fileName} sent to ${targetServer}:${REMOTE_DIR}`,
-              size: fileBuffer.length
-            }));
-          });
-        });
-      } catch (err) {
-        res.writeHead(500);
-        res.end(JSON.stringify({ error: "Parse error: " + err.message }));
-      }
-    });
-  } else {
-    res.writeHead(404);
-    res.end("Not found");
-  }
-
-}).listen(PORT, () => {
-  console.log(`Running on port ${PORT} as user: ${process.env.USER}`);
-});
+Access to fetch at 'http://10.177.44.22:4002/depositAccShort/details/accounts' from origin 'http://10.177.44.29:4415' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+script.js:19  POST http://10.177.44.22:4002/depositAccShort/details/accounts net::ERR_FAILED
+(anonymous) @ script.js:19
+script.js:19   Uncaught (in promise) TypeError: Failed to fetch
+    at HTMLFormElement.<anonymous> (script.js:19:1)
