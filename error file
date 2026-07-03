@@ -1,11 +1,412 @@
+http://10.177.44.29:4415/curl
+
+POST
+
+
 {
   "method": "POST",
   "url": "http://eissiuat.sbi.co.in:3001/cheque_bth/enquiry/accounts",
   "sshIp": "10.177.44.52",
-  "body": "{\"SOURCE_ID\":\"CI\",\"ACCOUNT_NUMBER\":\"00000030095812248\",\"START_NUMBER\":\"040201\",\"END_NUMBER\":\"040201\",\"INSTRUMENT_TYPE\":\"31\",\"REQUEST_REFERENCE_NUMBER\":\"SBICI261600930q120814test\"}",
+  "body": {"SOURCE_ID":"CI","ACCOUNT_NUMBER":"00000030095812248","START_NUMBER":"040201","END_NUMBER":"040201","INSTRUMENT_TYPE":"31","REQUEST_REFERENCE_NUMBER":"SBICI261600930052087test1"},
   "headers": [
-    "Content-Type: application/json",
-    "Authorization: Bearer mytoken",
-    "X-Request-ID: REQ001"
+    "Content-Type: application/json"
   ]
 }
+
+
+const SAMPLE_REQS = {
+  'get-health':{method:'GET',url:'https://ace-server.internal/api/health',body:''},
+  'get-users':{method:'GET',url:'https://ace-server.internal/api/users',body:''},
+  'post-user':{method:'POST',url:'https://ace-server.internal/api/users',body:'{\n  "name": "John Doe",\n  "email": "john@example.com",\n  "role": "user"\n}'},
+  'put-user':{method:'PUT',url:'https://ace-server.internal/api/users/1',body:'{\n  "name": "John Updated",\n  "status": "active"\n}'},
+  'del-user':{method:'DELETE',url:'https://ace-server.internal/api/users/1',body:''},
+  'get-orders':{method:'GET',url:'https://ace-server.internal/api/orders',body:''},
+  'post-order':{method:'POST',url:'https://ace-server.internal/api/orders',body:'{\n  "user_id": 1,\n  "items": [\n    {"product_id": 2, "qty": 1}\n  ]\n}'},
+  'post-login':{method:'POST',url:'https://ace-server.internal/auth/login',body:'{\n  "username": "admin",\n  "password": "secret"\n}'},
+  'post-refresh':{method:'POST',url:'https://ace-server.internal/auth/refresh',body:'{\n  "refresh_token": "eyJhb..."\n}'},
+};
+
+function loadSampleReq(key) {
+  const r = SAMPLE_REQS[key];
+  if (!r) return;
+  document.getElementById('req-method').value = r.method;
+  document.getElementById('req-url').value = r.url;
+  document.getElementById('body-editor').value = r.body;
+  styleMethod();
+  document.querySelectorAll('.coll-req').forEach(el=>el.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+}
+
+function styleMethod() {
+  const sel = document.getElementById('req-method');
+  const cols = {GET:'#2ecc71',POST:'#fb923c',PUT:'#60a5fa',PATCH:'#a78bfa',DELETE:'#f87171',HEAD:'#94a3b8',OPTIONS:'#94a3b8'};
+  sel.style.color = cols[sel.value]||'#e2e8f0';
+}
+
+function switchReqTab(el, tab) {
+  document.querySelectorAll('#page-request .tab-btn').forEach(b => { if(b.closest('.tab-bar') === el.closest('.tab-bar')) b.classList.remove('active'); });
+  el.classList.add('active');
+  ['params','auth','headers','body','scripts'].forEach(t => { const c=document.getElementById('rt-'+t); if(c) c.classList.toggle('active',t===tab); });
+}
+function switchRespTab(el, tab) {
+  document.querySelectorAll('#page-request .pane:last-child .tab-btn').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  const map={body:'rr-body',headers:'rr-headers',cookies:'rr-cookies',timeline:'rr-timeline'};
+  Object.values(map).forEach(id=>document.getElementById(id).style.display='none');
+  document.getElementById(map[tab]).style.display='';
+}
+
+function addParam(tbodyId) {
+  const tbody = document.getElementById(tbodyId);
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td><input type="checkbox" class="p-chk" checked></td><td><input class="p-input" placeholder="Key"></td><td><input class="p-input" placeholder="Value"></td><td><input class="p-input" placeholder="Description" style="color:var(--text-d)"></td><td><button class="del-btn" onclick="this.closest('tr').remove();updateCounts()">×</button></td>`;
+  tbody.appendChild(tr);
+  updateCounts();
+}
+function updateCounts() {
+  const pc = [...document.querySelectorAll('#params-body tr')].filter(r=>r.querySelector('.p-chk')?.checked && r.querySelectorAll('.p-input')[0]?.value).length;
+  const hc = [...document.querySelectorAll('#headers-body tr')].filter(r=>r.querySelector('.p-chk')?.checked && r.querySelectorAll('.p-input')[0]?.value).length;
+  document.getElementById('pc').textContent = pc;
+  document.getElementById('hc').textContent = hc;
+}
+function setBody(type, btn) {
+  document.querySelectorAll('#body-types .tab-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('body-editor').style.display = type==='none'?'none':'';
+}
+
+function updateAuth() {
+  const type = document.getElementById('auth-type').value;
+  const f = document.getElementById('auth-fields');
+  const tpls = {
+    none:'',
+    bearer:`<div class="field-group"><div class="field-label">Token</div><input class="field-input" placeholder="Enter bearer token…"></div>`,
+    basic:`<div class="row-2"><div class="field-group"><div class="field-label">Username</div><input class="field-input" placeholder="Username"></div><div class="field-group"><div class="field-label">Password</div><input class="field-input" type="password" placeholder="Password"></div></div>`,
+    apikey:`<div class="row-2"><div class="field-group"><div class="field-label">Key Name</div><input class="field-input" placeholder="X-API-Key"></div><div class="field-group"><div class="field-label">Key Value</div><input class="field-input" placeholder="your-api-key"></div></div><div class="field-group"><div class="field-label">Add to</div><select class="field-select" style="width:160px"><option>Header</option><option>Query Param</option></select></div>`,
+    oauth2:`<div class="field-group"><div class="field-label">Access Token URL</div><input class="field-input" placeholder="https://auth.server/oauth/token"></div><div class="row-2"><div class="field-group"><div class="field-label">Client ID</div><input class="field-input" placeholder="client_id"></div><div class="field-group"><div class="field-label">Client Secret</div><input class="field-input" type="password" placeholder="client_secret"></div></div><button class="btn btn-ghost" style="margin-top:6px">Get New Access Token</button>`,
+  };
+  f.innerHTML = tpls[type]||'';
+}
+
+function buildFetchUrl() {
+  let url = document.getElementById('req-url').value.trim();
+  const params = [];
+  document.querySelectorAll('#params-body tr').forEach(r=>{
+    if (!r.querySelector('.p-chk')?.checked) return;
+    const ins = r.querySelectorAll('.p-input');
+    const k = ins[0]?.value.trim(), v = ins[1]?.value.trim();
+    if (k) params.push(encodeURIComponent(k)+'='+encodeURIComponent(v||''));
+  });
+  if (params.length) url += (url.includes('?')?'&':'?') + params.join('&');
+  return url;
+}
+
+async function sendRequest() {
+  const btn = document.getElementById('req-send-btn');
+  const method = document.getElementById('req-method').value;
+  const url = buildFetchUrl();
+  if (!url) { toast('Enter a URL first','warn'); return; }
+
+  btn.disabled = true;
+  btn.innerHTML = '<div class="loader" style="color:#1a0a00"><div class="ldot"></div><div class="ldot"></div><div class="ldot"></div></div>';
+
+  document.getElementById('resp-empty').style.display = 'flex';
+  document.getElementById('resp-json').style.display = 'none';
+  document.getElementById('resp-status-badge').innerHTML = '';
+  document.getElementById('resp-meta').textContent = '';
+
+  const headers = {};
+  document.querySelectorAll('#headers-body tr').forEach(r=>{
+    if (!r.querySelector('.p-chk')?.checked) return;
+    const ins = r.querySelectorAll('.p-input');
+    const k=ins[0]?.value.trim(),v=ins[1]?.value.trim();
+    if (k) headers[k]=v;
+  });
+  // Auth
+  const authType = document.getElementById('auth-type').value;
+  if (authType==='bearer') { const t=document.querySelector('#auth-fields input')?.value; if(t) headers['Authorization']='Bearer '+t; }
+  else if (authType==='basic') { const ins=document.querySelectorAll('#auth-fields input'); if(ins[0]?.value) headers['Authorization']='Basic '+btoa(ins[0].value+':'+(ins[1]?.value||'')); }
+  else if (authType==='apikey') { const ins=document.querySelectorAll('#auth-fields input'); if(ins[0]?.value&&ins[1]?.value) headers[ins[0].value]=ins[1].value; }
+
+  const bodyActive = document.querySelector('#body-types .active')?.textContent;
+  let body;
+  if (!['GET','HEAD'].includes(method) && bodyActive!=='none') {
+    const bt = document.getElementById('body-editor').value;
+    if (bt.trim()) { body=bt; if(!headers['Content-Type']) headers['Content-Type']='application/json'; }
+  }
+
+  const t0 = performance.now();
+  try {
+    const resp = await fetch(url, {method,headers,body});
+    const elapsed = Math.round(performance.now()-t0);
+    const text = await resp.text();
+    S.lastResp = text;
+    const size = new TextEncoder().encode(text).length;
+
+    const cat = Math.floor(resp.status/100);
+    const badgeCls = {2:'s-2xx',3:'s-2xx',4:'s-4xx',5:'s-5xx'}[cat]||'s-4xx';
+    const labels = {200:'OK',201:'Created',204:'No Content',400:'Bad Request',401:'Unauthorized',403:'Forbidden',404:'Not Found',500:'Internal Server Error'};
+    document.getElementById('resp-status-badge').innerHTML = `<div class="status-badge ${badgeCls}"><span class="s-dot"></span>${resp.status} ${labels[resp.status]||resp.statusText}</div>`;
+    document.getElementById('resp-meta').textContent = `${elapsed}ms · ${fmtSize(size)}`;
+
+    document.getElementById('resp-empty').style.display = 'none';
+    document.getElementById('resp-json').style.display = '';
+    try {
+      const json = JSON.parse(text);
+      document.getElementById('resp-json-content').innerHTML = syntaxHL(JSON.stringify(json,null,2));
+    } catch { document.getElementById('resp-json-content').textContent = text; }
+
+    // Response headers
+    const rhb = document.getElementById('resp-headers-body');
+    rhb.innerHTML='';
+    resp.headers.forEach((v,k) => { rhb.innerHTML+=`<tr><td>${k}</td><td>${v}</td></tr>`; });
+
+    // Timeline
+    document.getElementById('rr-timeline').innerHTML = `<div style="color:var(--acc-teal)">▸ DNS Lookup …… ~${Math.floor(elapsed*.08)}ms</div><div style="color:var(--acc-blue)">▸ TCP Connect …… ~${Math.floor(elapsed*.15)}ms</div><div style="color:var(--acc-coral)">▸ TLS Handshake … ~${Math.floor(elapsed*.2)}ms</div><div style="color:var(--text-m)">▸ Request Sent</div><div style="color:var(--acc-purple)">▸ Waiting (TTFB) … ~${Math.floor(elapsed*.5)}ms</div><div style="color:var(--acc-green)">▸ Content Transfer … ~${Math.floor(elapsed*.07)}ms</div><div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px">Total: <span style="color:var(--text)">${elapsed}ms</span></div>`;
+
+    // History
+    S.reqHistory.unshift({method, url:document.getElementById('req-url').value, status:resp.status, time:elapsed, ts:new Date()});
+    renderHistory();
+    toast(`${resp.status} in ${elapsed}ms`);
+  } catch(err) {
+    const elapsed = Math.round(performance.now()-t0);
+    document.getElementById('resp-empty').style.display='none';
+    document.getElementById('resp-json').style.display='';
+    document.getElementById('resp-json-content').innerHTML = `<span style="color:var(--acc-red)">⚠ Error: ${err.message}</span>\n\n<span style="color:var(--text-d)">Common causes:\n• CORS policy blocked the request\n• Network unreachable\n• Invalid URL or server offline\n\nFor ACE server, ensure CORS headers are set:\nAccess-Control-Allow-Origin: *</span>`;
+    document.getElementById('resp-status-badge').innerHTML = `<div class="status-badge s-5xx"><span class="s-dot"></span>Network Error</div>`;
+    toast('Request failed: '+err.message,'err');
+  } finally {
+    btn.disabled=false;
+    btn.innerHTML='<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M3 8h10M9 4l4 4-4 4"/></svg> Send';
+  }
+}
+
+function renderHistory() {
+  const hist = document.getElementById('req-history');
+  hist.innerHTML = S.reqHistory.slice(0,8).map(h=>{
+    const age = Math.floor((Date.now()-h.ts)/1000);
+    const ageStr = age<60?`${age}s`:age<3600?`${Math.floor(age/60)}m`:`${Math.floor(age/3600)}h`;
+    const mcls = {GET:'mt-get',POST:'mt-post',PUT:'mt-put',PATCH:'mt-patch',DELETE:'mt-delete'}[h.method]||'mt-get';
+    return `<div class="hist-item"><span class="method-tag ${mcls}">${h.method}</span><span style="font-size:11px;color:var(--text-m);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${new URL(h.url).pathname}</span><span class="hist-time">${ageStr}</span></div>`;
+  }).join('');
+}
+
+function copyResp() {
+  if (S.lastResp) { navigator.clipboard.writeText(S.lastResp); toast('Response copied'); }
+  else toast('No response yet','warn');
+}
+function downloadResp() {
+  if (!S.lastResp) { toast('No response yet','warn'); return; }
+  const a=document.createElement('a'); a.href='data:application/json,'+encodeURIComponent(S.lastResp); a.download='response.json'; a.click();
+  toast('Response downloaded');
+}
+function saveReq() { toast('Request saved to collection'); }
+function newReqTab() {
+  document.getElementById('req-url').value='';
+  document.getElementById('body-editor').value='';
+  document.getElementById('req-method').value='GET';
+  styleMethod();
+  document.querySelectorAll('.coll-req').forEach(el=>el.classList.remove('active'));
+}
+function filterReqs(val) {
+  document.querySelectorAll('.coll-req').forEach(el => {
+    el.style.display = el.querySelector('.req-name-text').textContent.toLowerCase().includes(val.toLowerCase()) ? '' : 'none';
+  });
+}
+function toggleColl(el) {
+  el.classList.toggle('open');
+}
+
+function syntaxHL(json) {
+  return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?|[{}\[\],:])/g, m=>{
+    if (/^"/.test(m)) return /:$/.test(m)?`<span class="j-key">${m}</span>`:`<span class="j-str">${m}</span>`;
+    if (/true|false/.test(m)) return `<span class="j-bool">${m}</span>`;
+    if (/null/.test(m)) return `<span class="j-null">${m}</span>`;
+    if (/[{}\[\]]/.test(m)) return `<span class="j-p">${m}</span>`;
+    return `<span class="j-num">${m}</span>`;
+  });
+}
+function fmtSize(b) { return b<1024?b+' B':b<1048576?(b/1024).toFixed(1)+' KB':(b/1048576).toFixed(2)+' MB'; }
+
+
+
+<div class="page" id="page-request">
+  <div class="workspace">
+    <!-- Sidebar -->
+    <div class="ws-sidebar">
+      <div style="padding:10px">
+        <button class="btn btn-coral" style="width:100%;justify-content:center" onclick="newReqTab()">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M8 3v10M3 8h10"/></svg>
+          New Request
+        </button>
+      </div>
+      <div style="padding:0 10px 6px"><input class="field-input" style="font-size:11px;padding:5px 8px" placeholder="Search requests…" oninput="filterReqs(this.value)"/></div>
+      <div id="req-collections">
+        <div class="coll-group">
+          <div class="coll-title open" onclick="toggleColl(this)">
+            <span class="arrow">▶</span>
+            <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" style="width:13px;height:13px"><rect x="1" y="3" width="12" height="9" rx="1"/><path d="M5 3V2a1 1 0 011-1h2a1 1 0 011 1v1"/></svg>
+            ACE Server APIs
+          </div>
+          <div class="coll-items">
+            <div class="coll-req active" onclick="loadSampleReq('get-health')"><span class="method-tag mt-get">GET</span><span class="req-name-text">Health Check</span></div>
+            <div class="coll-req" onclick="loadSampleReq('get-users')"><span class="method-tag mt-get">GET</span><span class="req-name-text">Get All Users</span></div>
+            <div class="coll-req" onclick="loadSampleReq('post-user')"><span class="method-tag mt-post">POST</span><span class="req-name-text">Create User</span></div>
+            <div class="coll-req" onclick="loadSampleReq('put-user')"><span class="method-tag mt-put">PUT</span><span class="req-name-text">Update User</span></div>
+            <div class="coll-req" onclick="loadSampleReq('del-user')"><span class="method-tag mt-delete">DEL</span><span class="req-name-text">Delete User</span></div>
+            <div class="coll-req" onclick="loadSampleReq('get-orders')"><span class="method-tag mt-get">GET</span><span class="req-name-text">Get Orders</span></div>
+            <div class="coll-req" onclick="loadSampleReq('post-order')"><span class="method-tag mt-post">POST</span><span class="req-name-text">Create Order</span></div>
+          </div>
+        </div>
+        <div class="coll-group">
+          <div class="coll-title" onclick="toggleColl(this)">
+            <span class="arrow">▶</span>
+            <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" style="width:13px;height:13px"><rect x="1" y="3" width="12" height="9" rx="1"/><path d="M5 3V2a1 1 0 011-1h2a1 1 0 011 1v1"/></svg>
+            Auth APIs
+          </div>
+          <div class="coll-items">
+            <div class="coll-req" onclick="loadSampleReq('post-login')"><span class="method-tag mt-post">POST</span><span class="req-name-text">Login</span></div>
+            <div class="coll-req" onclick="loadSampleReq('post-refresh')"><span class="method-tag mt-post">POST</span><span class="req-name-text">Refresh Token</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="sb-section-label">History</div>
+      <div id="req-history"></div>
+    </div>
+
+    <!-- Main -->
+    <div class="ws-main" style="overflow:hidden">
+      <!-- URL bar -->
+      <div class="ws-toolbar" style="gap:8px">
+        <select class="method-select" id="req-method" onchange="styleMethod()">
+          <option>GET</option><option>POST</option><option>PUT</option>
+          <option>PATCH</option><option>DELETE</option><option>HEAD</option><option>OPTIONS</option>
+        </select>
+        <input class="url-bar-input" id="req-url" placeholder="service url" value="http://10.177.44.xx"/>
+        <button class="btn btn-ghost btn-sm" onclick="saveReq()">Save</button>
+        <button class="btn btn-coral" id="req-send-btn" onclick="sendRequest()">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+          Send
+        </button>
+      </div>
+
+      <!-- Split: request + response -->
+      <div class="split-h" style="flex:1;overflow:hidden">
+        <!-- Request pane -->
+        <div class="pane" style="flex:1;border-right:1px solid var(--border)">
+          <div class="tab-bar">
+            <button class="tab-btn active" onclick="switchReqTab(this,'params')">Params <span style="font-size:10px;opacity:.6" id="pc">2</span></button>
+            <button class="tab-btn" onclick="switchReqTab(this,'auth')">Auth</button>
+            <button class="tab-btn" onclick="switchReqTab(this,'headers')">Headers <span style="font-size:10px;opacity:.6" id="hc">1</span></button>
+            <button class="tab-btn" onclick="switchReqTab(this,'body')">Body</button>
+            <button class="tab-btn" onclick="switchReqTab(this,'scripts')">Scripts</button>
+          </div>
+          <div class="pane-body">
+
+            <!-- Params -->
+            <div class="tab-content active" id="rt-params">
+              <p style="font-size:11px;color:var(--text-d);margin-bottom:10px">Query params are appended to the URL automatically.</p>
+              <table class="param-table">
+                <thead><tr><th style="width:22px"></th><th>Key</th><th>Value</th><th>Description</th><th style="width:26px"></th></tr></thead>
+                <tbody id="params-body"></tbody>
+              </table>
+              <button onclick="addParam('params-body')" style="margin-top:8px;background:none;border:1px dashed var(--border-m);border-radius:var(--r);color:var(--text-d);padding:5px 12px;width:100%;text-align:left;cursor:pointer;font-size:12px;transition:all .15s" onmouseover="this.style.borderColor='var(--acc-coral)';this.style.color='var(--acc-coral)'" onmouseout="this.style.borderColor='var(--border-m)';this.style.color='var(--text-d)'">+ Add Parameter</button>
+            </div>
+
+            <!-- Auth -->
+            <div class="tab-content" id="rt-auth">
+              <div class="field-group">
+                <div class="field-label">Auth Type</div>
+                <select class="field-select" style="width:200px" id="auth-type" onchange="updateAuth()">
+                  <option value="none">No Auth</option>
+                  <option value="bearer">Bearer Token</option>
+                  <option value="basic">Basic Auth</option>
+                  <option value="apikey">API Key</option>
+                  <option value="oauth2">OAuth 2.0</option>
+                </select>
+              </div>
+              <div id="auth-fields"></div>
+            </div>
+
+            <!-- Headers -->
+            <div class="tab-content" id="rt-headers">
+              <table class="param-table">
+                <thead><tr><th style="width:22px"></th><th>Key</th><th>Value</th><th>Description</th><th style="width:26px"></th></tr></thead>
+                <tbody id="headers-body"></tbody>
+              </table>
+              <button onclick="addParam('headers-body')" style="margin-top:8px;background:none;border:1px dashed var(--border-m);border-radius:var(--r);color:var(--text-d);padding:5px 12px;width:100%;text-align:left;cursor:pointer;font-size:12px;transition:all .15s" onmouseover="this.style.borderColor='var(--acc-coral)';this.style.color='var(--acc-coral)'" onmouseout="this.style.borderColor='var(--border-m)';this.style.color='var(--text-d)'">+ Add Header</button>
+            </div>
+
+            <!-- Body -->
+            <div class="tab-content" id="rt-body">
+              <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap" id="body-types">
+                <button class="tab-btn" style="font-size:11px;padding:4px 10px" onclick="setBody('none',this)">none</button>
+                <button class="tab-btn active" onclick="setBody('json',this)" style="font-size:11px;padding:4px 10px">JSON</button>
+                <button class="tab-btn" onclick="setBody('form',this)" style="font-size:11px;padding:4px 10px">form-data</button>
+                <button class="tab-btn" onclick="setBody('urlenc',this)" style="font-size:11px;padding:4px 10px">x-www-form-urlencoded</button>
+                <button class="tab-btn" onclick="setBody('raw',this)" style="font-size:11px;padding:4px 10px">raw</button>
+              </div>
+              <textarea class="field-textarea" id="body-editor" style="min-height:200px;color:#a8d8a8">{
+  "status": "check"
+}</textarea>
+            </div>
+
+            <!-- Scripts -->
+            <div class="tab-content" id="rt-scripts">
+              <div style="margin-bottom:10px">
+                <div class="field-label" style="margin-bottom:6px">Pre-request Script</div>
+                <textarea class="field-textarea" style="min-height:120px;color:#c9d1d9" placeholder="// Runs before the request&#10;// pm.environment.set('token', 'abc');&#10;// pm.globals.set('baseUrl', 'https://ace-server.internal');"></textarea>
+              </div>
+              <div>
+                <div class="field-label" style="margin-bottom:6px">Post-response Script</div>
+                <textarea class="field-textarea" style="min-height:120px;color:#c9d1d9" placeholder="// Runs after response&#10;// const data = pm.response.json();&#10;// pm.test('Status is 200', () => pm.response.to.have.status(200));"></textarea>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Response pane -->
+        <div class="pane" style="flex:1">
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(--bg-panel);border-bottom:1px solid var(--border);flex-shrink:0">
+            <span style="font-size:11px;color:var(--text-d);font-weight:600">RESPONSE</span>
+            <div id="resp-status-badge"></div>
+            <div id="resp-meta" style="font-size:11px;color:var(--text-d);font-family:var(--font-mono)"></div>
+            <div style="flex:1"></div>
+            <button class="btn btn-ghost btn-sm" onclick="copyResp()">Copy</button>
+            <button class="btn btn-ghost btn-sm" onclick="downloadResp()">Save</button>
+          </div>
+          <div class="tab-bar">
+            <button class="tab-btn active" onclick="switchRespTab(this,'body')">Body</button>
+            <button class="tab-btn" onclick="switchRespTab(this,'headers')">Headers</button>
+            <button class="tab-btn" onclick="switchRespTab(this,'cookies')">Cookies</button>
+            <button class="tab-btn" onclick="switchRespTab(this,'timeline')">Timeline</button>
+          </div>
+          <div class="pane-body" style="overflow:auto">
+            <div id="rr-body">
+              <div id="resp-empty" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;gap:10px;color:var(--text-d)">
+                <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" opacity=".4"><circle cx="12" cy="12" r="9"/><path d="M12 8v5l3 3"/></svg>
+                <p style="font-size:13px">Click Send to get a response</p>
+                <p style="font-size:11px;color:var(--text-d)">Keyboard: Ctrl + Enter</p>
+              </div>
+              <div id="resp-json" class="output-block" style="display:none;max-height:none;background:transparent;border:none;padding:0">
+                <button class="copy-btn" onclick="copyResp()">Copy</button>
+                <div id="resp-json-content"></div>
+              </div>
+            </div>
+            <div id="rr-headers" style="display:none">
+              <table class="tbl">
+                <thead><tr><th>Key</th><th>Value</th></tr></thead>
+                <tbody id="resp-headers-body"></tbody>
+              </table>
+            </div>
+            <div id="rr-cookies" style="display:none">
+              <p style="color:var(--text-d);font-size:12px;padding:20px 0">No cookies received.</p>
+            </div>
+            <div id="rr-timeline" style="display:none;font-family:var(--font-mono);font-size:12px;line-height:2.2;color:var(--text-m)"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
