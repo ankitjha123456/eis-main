@@ -10,15 +10,15 @@ server {
         try_files $uri $uri/ /index.html;
     }
 
-    # index1.html at /gen6ui (renamed to avoid clashing with the API path below)
-    location /gen6ui {
-        alias /usr/share/nginx/html/gen6ui;
-        index index1.html;
-        try_files $uri $uri/ /gen6ui/index1.html;
+    # EISdev/index.html at /EISdev
+    location /EISdev {
+        alias /usr/share/nginx/html/EISdev;
+        index index.html;
+        try_files $uri $uri/ /EISdev/index.html;
     }
 
-    # your existing API proxy — unchanged
-    location /EISdev/ {
+    # API proxy moved to its own dedicated path
+    location /EISdev-api/ {
         proxy_pass http://10.177.44.22:4002/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
