@@ -4,21 +4,28 @@ server {
 
     root /usr/share/nginx/html;
 
-    # index.html at /
+    # Root page
     location / {
         index index.html;
         try_files $uri $uri/ /index.html;
     }
 
-    # EISdev/index.html at /EISdev
-    location /EISdev {
-        alias /usr/share/nginx/html/EISdev;
+    # EISdev static page
+    location /EISdev/ {
+        alias /usr/share/nginx/html/EISdev/;
         index index.html;
-        try_files $uri $uri/ /EISdev/index.html;
+        try_files $uri $uri/ =404;
     }
 
-    # API proxy moved to its own dedicated path
-    location /EISdev-api/ {
+    # DBQUERY static page
+    location /DBQUERY/ {
+        alias /usr/share/nginx/html/DBQUERY/;
+        index index.html;
+        try_files $uri $uri/ =404;
+    }
+
+    # API proxy — separate path, no clash with /EISdev/
+    location /api/ {
         proxy_pass http://10.177.44.22:4002/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
