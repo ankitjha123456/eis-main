@@ -1,28 +1,2002 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>EIS DevSuite — IBM ACE Toolkit | by ANKIT</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080c14;--bg2:#0e1525;--bg3:#141d2e;--bg4:#1a2540;--bg5:#202e48;
+  --b1:rgba(99,179,237,.09);--b2:rgba(99,179,237,.18);--b3:rgba(99,179,237,.32);
+  --blue:#4f9cf9;--teal:#2dd4bf;--purple:#a78bfa;--coral:#fb923c;
+  --green:#34d399;--red:#f87171;--yellow:#fbbf24;--sky:#38bdf8;
+  --t1:#e2e8f0;--t2:#94a3b8;--t3:#475569;--t4:#2d3748;
+  --fd:'Space Grotesk',sans-serif;--fu:'Inter',sans-serif;--fm:'JetBrains Mono',monospace;
+  --r:7px;--rl:13px;--rx:20px;
+}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--t1);font-family:var(--fu);font-size:13px}
 
-Access to fetch at 'https://10.177.56.207/tfs/SBIEIS/EISGITREPO/_git/' from origin 'http://10.177.44.29:4415' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+/* ══════════ LOGIN SCREEN ══════════ */
+#login-screen{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 30% 20%,#101c33 0%,var(--bg) 65%);}
+#login-screen.off{display:none}
+.login-card{width:360px;background:var(--bg2);border:1px solid var(--b2);border-radius:var(--rx);padding:34px 32px 28px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.login-logo{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.login-logo .t-gem{width:34px;height:34px;font-size:16px}
+.login-logo .ll-txt{font-family:var(--fd);font-size:18px;font-weight:700;color:var(--t1)}
+.login-tag{font-size:10.5px;color:var(--t3);font-family:var(--fm);margin-bottom:22px;letter-spacing:.3px}
+.login-tag b{color:var(--sky)}
+.login-fg{margin-bottom:14px}
+.login-fl{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--t3);font-weight:600;margin-bottom:6px}
+.login-fi{width:100%;background:var(--bg3);border:1px solid var(--b2);border-radius:var(--r);padding:10px 12px;font-size:13px;color:var(--t1);transition:border-color .15s,box-shadow .15s}
+.login-fi:focus{border-color:var(--sky);box-shadow:0 0 0 3px rgba(56,189,248,.15)}
+.login-err{display:none;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);color:var(--red);font-size:11.5px;padding:8px 10px;border-radius:var(--r);margin-bottom:14px}
+.login-err.on{display:block}
+.login-btn{width:100%;background:linear-gradient(135deg,var(--blue),var(--sky));color:#03182a;font-weight:700;font-size:13px;padding:11px;border-radius:var(--r);margin-top:4px;transition:opacity .15s}
+.login-btn:hover{opacity:.9}
+.login-hint{margin-top:18px;padding-top:14px;border-top:1px dashed var(--b2);font-size:10.5px;color:var(--t3);line-height:1.7;font-family:var(--fm)}
+.login-hint b{color:var(--t2)}
+.login-foot{text-align:center;margin-top:16px;font-size:10px;color:var(--t3)}
+.login-foot b{color:var(--purple)}
+button{font-family:var(--fu);cursor:pointer;border:none;outline:none;background:none}
+input,select,textarea{font-family:var(--fu);outline:none;border:none;background:none;color:var(--t1)}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-thumb{background:var(--b2);border-radius:2px}
+::-webkit-scrollbar-thumb:hover{background:var(--b3)}
 
-    location /tfs {
-        proxy_pass https://10.177.56.207:443/tfs/SBIEIS/EISGITREPO/_git/;
-        include snippets/cors_proxy_ssl.conf;
-    }
+/* === APP SHELL === */
+#app{height:100vh;display:flex;flex-direction:column;overflow:hidden}
 
-[eisuser@devmq02 nginx]$ cat snippets/cors_proxy_ssl.conf
-proxy_ssl_verify off;
-add_header 'Access-Control-Allow-Origin' '*' always;
-add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
-add_header 'Access-Control-Allow-Headers' 'Content-Type, Authorization' always;
+/* === TOPBAR === */
+.topbar{
+  height:50px;flex-shrink:0;z-index:200;
+  background:rgba(8,12,20,.96);border-bottom:1px solid var(--b2);
+  backdrop-filter:blur(20px);
+  display:flex;align-items:center;padding:0 18px;gap:12px;
+}
+.t-logo{display:flex;align-items:center;gap:8px;font-family:var(--fd);font-size:15px;font-weight:700;letter-spacing:-.3px;text-decoration:none;color:var(--t1)}
+.t-gem{width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,var(--blue),var(--purple));display:flex;align-items:center;justify-content:center;font-size:13px}
+.t-sep{width:1px;height:18px;background:var(--b2)}
+.t-bread{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--t2)}
+.t-bread .active{color:var(--t1);font-weight:500}
+.t-space{flex:1}
+.t-env{display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:100px;font-size:11px;font-weight:500;background:rgba(79,156,249,.08);border:1px solid rgba(79,156,249,.18);color:var(--blue)}
+.t-env-dot{width:5px;height:5px;border-radius:50%;background:var(--green);animation:blink 2s infinite}
+.btn-back{display:none;align-items:center;gap:5px;padding:4px 11px;border-radius:var(--r);border:1px solid var(--b2);color:var(--t2);font-size:11px;transition:all .18s}
+.btn-back:hover{background:var(--b1);color:var(--t1)}
+.btn-back.on{display:flex}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
 
-if ($request_method = 'OPTIONS') {
-        add_header 'Access-Control-Allow-Origin' '*';
-        add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS';
-        add_header 'Access-Control-Allow-Headers' 'Content-Type, Authorization';
-        add_header 'Content-Length' '0';
-        return 204;
+/* === PAGE SYSTEM === */
+.content{flex:1;overflow:hidden;position:relative}
+.page{position:absolute;inset:0;opacity:0;pointer-events:none;transform:translateY(14px);transition:opacity .3s ease,transform .3s ease;overflow:hidden}
+.page.on{opacity:1;pointer-events:all;transform:translateY(0)}
+
+/* === HOME === */
+#ph{display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:auto;padding:32px 20px;background:radial-gradient(ellipse 80% 55% at 50% -5%,rgba(79,156,249,.07),transparent)}
+.h-eye{display:inline-flex;align-items:center;gap:7px;font-size:10px;font-weight:600;letter-spacing:1.4px;text-transform:uppercase;color:var(--blue);margin-bottom:12px}
+.h-eye::before,.h-eye::after{content:'';width:22px;height:1px;background:var(--blue);opacity:.45}
+.h-title{font-family:var(--fd);font-size:clamp(24px,3.6vw,40px);font-weight:700;line-height:1.08;letter-spacing:-1px;text-align:center;background:linear-gradient(135deg,#e2e8f0,#64748b);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.h-sub{margin-top:10px;font-size:13px;color:var(--t2);text-align:center;line-height:1.65;max-width:440px}
+.h-sub b{color:var(--blue)}
+.cards{display:flex;gap:20px;flex-wrap:wrap;justify-content:center;max-width:1060px;margin-top:44px}
+
+/* === MODULE CARD === */
+.mcard{
+  width:230px;background:var(--bg2);border:1px solid var(--b1);
+  border-radius:var(--rx);padding:28px 20px 24px;
+  cursor:pointer;position:relative;overflow:hidden;text-align:center;
+  transition:transform .28s cubic-bezier(.34,1.56,.64,1),border-color .28s,box-shadow .28s;
+}
+.mcard::after{content:'';position:absolute;inset:0;border-radius:var(--rx);opacity:0;transition:opacity .28s;pointer-events:none}
+.mcard:hover{transform:translateY(-8px)}
+.mcard:hover::after{opacity:1}
+.c-db::after{background:radial-gradient(circle at 50% 0%,rgba(45,212,191,.09),transparent 68%)}
+.c-req::after{background:radial-gradient(circle at 50% 0%,rgba(251,146,60,.09),transparent 68%)}
+.c-sw::after{background:radial-gradient(circle at 50% 0%,rgba(167,139,250,.09),transparent 68%)}
+.c-ci::after{background:radial-gradient(circle at 50% 0%,rgba(56,189,248,.09),transparent 68%)}
+.c-db:hover{border-color:rgba(45,212,191,.3);box-shadow:0 20px 55px rgba(45,212,191,.1)}
+.c-req:hover{border-color:rgba(251,146,60,.3);box-shadow:0 20px 55px rgba(251,146,60,.1)}
+.c-sw:hover{border-color:rgba(167,139,250,.3);box-shadow:0 20px 55px rgba(167,139,250,.1)}
+.c-ci:hover{border-color:rgba(56,189,248,.3);box-shadow:0 20px 55px rgba(56,189,248,.1)}
+.c-arrow{position:absolute;top:16px;right:16px;color:var(--t3);font-size:13px;transition:all .2s}
+.mcard:hover .c-arrow{color:var(--t2);transform:translate(2px,-2px)}
+
+/* === RING ICON === */
+.ring{width:76px;height:76px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 17px;position:relative}
+.ring::before,.ring::after{content:'';position:absolute;border-radius:50%;animation:pr 2.6s ease-in-out infinite}
+.ring::before{inset:-9px;opacity:.13}
+.ring::after{inset:-18px;opacity:.06;animation-delay:.55s}
+.rt{background:rgba(45,212,191,.11)}.rt::before,.rt::after{border:1px solid var(--teal)}
+.ro{background:rgba(251,146,60,.11)}.ro::before,.ro::after{border:1px solid var(--coral)}
+.rp{background:rgba(167,139,250,.11)}.rp::before,.rp::after{border:1px solid var(--purple)}
+.rs{background:rgba(56,189,248,.11)}.rs::before,.rs::after{border:1px solid var(--sky)}
+@keyframes pr{0%,100%{transform:scale(1);opacity:.13}50%{transform:scale(1.12);opacity:.23}}
+.ring i{font-size:27px;position:relative;z-index:1}
+.c-name{font-family:var(--fd);font-size:15.5px;font-weight:600;letter-spacing:-.2px;margin-bottom:7px}
+.c-desc{font-size:11px;color:var(--t2);line-height:1.6}
+.c-badge{display:inline-block;margin-top:13px;padding:2px 9px;border-radius:100px;font-size:9.5px;font-weight:600;letter-spacing:.5px;text-transform:uppercase}
+.bt{background:rgba(45,212,191,.08);color:var(--teal);border:1px solid rgba(45,212,191,.2)}
+.bo{background:rgba(251,146,60,.08);color:var(--coral);border:1px solid rgba(251,146,60,.2)}
+.bp{background:rgba(167,139,250,.08);color:var(--purple);border:1px solid rgba(167,139,250,.2)}
+.bs{background:rgba(56,189,248,.08);color:var(--sky);border:1px solid rgba(56,189,248,.2)}
+
+/* === WORKSPACE === */
+.ws{display:flex;height:100%}
+.wsb{width:215px;flex-shrink:0;background:var(--bg3);border-right:1px solid var(--b1);display:flex;flex-direction:column;overflow-y:auto}
+.wbm{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.wtb{height:46px;flex-shrink:0;display:flex;align-items:center;padding:0 14px;gap:8px;background:var(--bg2);border-bottom:1px solid var(--b1)}
+.wbd{flex:1;overflow:auto}
+
+/* === SIDEBAR === */
+.sb-lbl{font-size:9.5px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--t3);padding:13px 14px 5px}
+.sb-it{display:flex;align-items:center;gap:8px;padding:6px 14px;cursor:pointer;color:var(--t2);font-size:11.5px;border-left:2px solid transparent;transition:all .14s}
+.sb-it:hover{background:rgba(255,255,255,.025);color:var(--t1)}
+.sb-it.on{background:rgba(79,156,249,.05);color:var(--blue);border-left-color:var(--blue)}
+.sb-it i{width:14px;text-align:center;font-size:12px}
+
+/* === FORMS === */
+.fg{display:flex;flex-direction:column;gap:4px;margin-bottom:12px}
+.fl{font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--t2)}
+.fl i{margin-right:5px;opacity:.7}
+.fi,.fs,.fta{background:var(--bg3);border:1px solid var(--b2);border-radius:var(--r);color:var(--t1);padding:8px 10px;font-size:12.5px;width:100%;transition:border-color .18s,box-shadow .18s}
+.fi:focus,.fs:focus,.fta:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(79,156,249,.1)}
+.fi::placeholder,.fta::placeholder{color:var(--t3)}
+.fta{font-family:var(--fm);font-size:11.5px;resize:vertical;min-height:72px;line-height:1.65}
+.fs{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2364748b' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 9px center;padding-right:26px}
+.r2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.r3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+
+/* === BUTTONS === */
+.btn{display:inline-flex;align-items:center;gap:5px;border-radius:var(--r);padding:7px 14px;font-size:12.5px;font-weight:500;transition:all .18s;white-space:nowrap}
+.btn i{font-size:12px}
+.btn-p{background:var(--blue);color:#fff}
+.btn-p:hover{background:#6aabff;transform:translateY(-1px);box-shadow:0 5px 18px rgba(79,156,249,.35)}
+.btn-t{background:var(--teal);color:#041410}
+.btn-t:hover{background:#5de8d4;transform:translateY(-1px);box-shadow:0 5px 18px rgba(45,212,191,.28)}
+.btn-o{background:var(--coral);color:#1a0800}
+.btn-o:hover{background:#fd9f49;transform:translateY(-1px);box-shadow:0 5px 18px rgba(251,146,60,.28)}
+.btn-pu{background:var(--purple);color:#0d0720}
+.btn-pu:hover{background:#b8a3fb;transform:translateY(-1px);box-shadow:0 5px 18px rgba(167,139,250,.28)}
+.btn-sky{background:var(--sky);color:#03182a}
+.btn-sky:hover{background:#67d2f8;transform:translateY(-1px);box-shadow:0 5px 18px rgba(56,189,248,.28)}
+.btn-g{background:var(--b1);color:var(--t2);border:1px solid var(--b2)}
+.btn-g:hover{background:var(--b2);color:var(--t1)}
+.btn-danger{background:rgba(248,113,113,.1);color:var(--red);border:1px solid rgba(248,113,113,.2)}
+.btn-danger:hover{background:rgba(248,113,113,.2)}
+.btn-sm{padding:4px 9px;font-size:11px}
+.btn:disabled{opacity:.42;cursor:not-allowed;transform:none!important;box-shadow:none!important}
+
+/* === PANELS === */
+.panel{background:var(--bg2);border:1px solid var(--b1);border-radius:var(--rl);padding:18px}
+.pt{font-family:var(--fd);font-size:13.5px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:7px;color:var(--t1)}
+.pt i{font-size:14px}
+
+/* === TABLES === */
+.tbl{width:100%;border-collapse:collapse;font-size:12px}
+.tbl th{text-align:left;padding:7px 9px;color:var(--t3);font-size:9.5px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;border-bottom:1px solid var(--b1)}
+.tbl td{padding:8px 9px;border-bottom:1px solid var(--b1);vertical-align:middle}
+.tbl tr:last-child td{border:none}
+.tbl tr:hover td{background:rgba(255,255,255,.015)}
+
+/* === OUTPUT === */
+.out{background:rgba(5,8,16,.7);border:1px solid var(--b1);border-radius:var(--rl);padding:14px;font-family:var(--fm);font-size:11.5px;line-height:1.75;white-space:pre-wrap;word-break:break-all;color:#a8d8a8;overflow:auto;position:relative}
+.out .cbtn{position:absolute;top:9px;right:9px;background:rgba(255,255,255,.06);border:1px solid var(--b2);border-radius:5px;padding:2px 8px;font-size:10px;color:var(--t2);cursor:pointer;font-family:var(--fu);transition:all .14s}
+.out .cbtn:hover{background:rgba(255,255,255,.1);color:var(--t1)}
+
+/* === STATUS BADGES === */
+.sbadge{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:100px;font-size:11px;font-weight:600}
+.s2{background:rgba(52,211,153,.1);color:var(--green);border:1px solid rgba(52,211,153,.2)}
+.s3{background:rgba(251,191,36,.1);color:var(--yellow);border:1px solid rgba(251,191,36,.2)}
+.s4{background:rgba(248,113,113,.1);color:var(--red);border:1px solid rgba(248,113,113,.2)}
+.s5{background:rgba(248,113,113,.1);color:var(--red);border:1px solid rgba(248,113,113,.2)}
+.sdot{width:5px;height:5px;border-radius:50%;background:currentColor}
+
+/* === LOADER === */
+.ld{display:inline-flex;gap:3px;align-items:center}
+.ldd{width:4px;height:4px;border-radius:50%;background:currentColor;animation:la .85s ease-in-out infinite}
+.ldd:nth-child(2){animation-delay:.14s}.ldd:nth-child(3){animation-delay:.28s}
+@keyframes la{0%,80%,100%{transform:scale(.5);opacity:.35}40%{transform:scale(1);opacity:1}}
+
+/* === TOAST === */
+#toast{position:fixed;bottom:22px;right:22px;background:var(--bg2);border:1px solid var(--b2);border-radius:var(--rl);padding:9px 14px;font-size:12.5px;z-index:9999;transform:translateY(10px);opacity:0;transition:all .22s cubic-bezier(.34,1.56,.64,1);pointer-events:none;display:flex;align-items:center;gap:7px;box-shadow:0 8px 28px rgba(0,0,0,.55);max-width:300px}
+#toast.on{transform:translateY(0);opacity:1}
+
+/* === TABS === */
+.tabbar{display:flex;background:var(--bg3);border-bottom:1px solid var(--b1);flex-shrink:0}
+.tabb{padding:8px 13px;font-size:11.5px;font-weight:500;color:var(--t2);cursor:pointer;background:none;border-bottom:2px solid transparent;border-top:none;border-left:none;border-right:none;transition:color .14s}
+.tabb:hover{color:var(--t1)}
+.tabb.on{color:var(--blue);border-bottom-color:var(--blue)}
+.tc{display:none}.tc.on{display:block}
+
+/* === SPLIT PANE === */
+.sph{display:flex;height:100%;overflow:hidden}
+.pane{overflow:hidden;display:flex;flex-direction:column}
+.pbd{flex:1;overflow:auto;padding:14px}
+
+/* === PARAM TABLE === */
+.ptbl{width:100%;border-collapse:collapse;margin-bottom:7px}
+.ptbl th{color:var(--t3);font-size:9.5px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;padding:4px 7px;border-bottom:1px solid var(--b1)}
+.ptbl td{padding:2px 3px;vertical-align:middle}
+.pi{width:100%;background:var(--bg3);border:1px solid transparent;border-radius:5px;color:var(--t1);padding:5px 7px;font-size:11.5px;font-family:var(--fm);transition:border-color .14s}
+.pi:focus{border-color:var(--blue)}
+.pi::placeholder{color:var(--t3)}
+.pchk{accent-color:var(--blue);cursor:pointer;width:13px;height:13px}
+.dbtn{background:none;color:var(--t3);font-size:13px;cursor:pointer;padding:2px 4px;border-radius:3px;transition:color .1s;border:none}
+.dbtn:hover{color:var(--red)}
+.add-row-btn{margin-top:7px;background:none;border:1px dashed var(--b2);border-radius:var(--r);color:var(--t3);padding:5px 11px;width:100%;text-align:left;cursor:pointer;font-size:11.5px;transition:all .15s;font-family:var(--fu)}
+.add-row-btn:hover{border-color:var(--coral);color:var(--coral)}
+
+/* === JSON HIGHLIGHT === */
+.jk{color:#79b8ff}.js{color:#9ecbff}.jn{color:#f3bf7a}.jb{color:#e06c75}.jp{color:#58606e}
+
+/* === METHOD SELECT === */
+.msel{background:var(--bg3);border:1px solid var(--b2);border-radius:var(--r);color:var(--t1);padding:0 9px;font-size:11.5px;font-weight:700;font-family:var(--fm);cursor:pointer;appearance:none;min-width:82px;height:34px}
+.msel:focus{border-color:var(--blue)}
+.urli{flex:1;height:34px;background:var(--bg3);border:1px solid var(--b2);border-radius:var(--r);color:var(--t1);padding:0 11px;font-size:12px;font-family:var(--fm);transition:border-color .18s}
+.urli:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(79,156,249,.09)}
+.urli::placeholder{color:var(--t3);font-family:var(--fu)}
+.ssh-pill{background:var(--bg4);border:1px solid rgba(56,189,248,.25);border-radius:var(--r);color:var(--sky);padding:0 9px;font-size:11px;font-family:var(--fm);height:34px;display:flex;align-items:center;gap:5px;flex-shrink:0;white-space:nowrap}
+.ssh-pill i{font-size:10px}
+
+/* === COLLECTION ITEMS === */
+.cg{border-bottom:1px solid var(--b1)}
+.ct{display:flex;align-items:center;gap:7px;padding:8px 13px;cursor:pointer;font-size:10.5px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;transition:background .12s}
+.ct:hover{background:rgba(255,255,255,.02)}
+.ct .ar{transition:transform .18s;font-size:9px;margin-right:1px}
+.ct.op .ar{transform:rotate(90deg)}
+.ci-list{display:none}
+.ct.op+.ci-list{display:block}
+.ci{display:flex;align-items:center;gap:6px;padding:5px 13px 5px 22px;cursor:pointer;transition:background .1s}
+.ci:hover{background:rgba(255,255,255,.025)}
+.ci.on{background:rgba(251,146,60,.05)}
+.mt{font-family:var(--fm);font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;min-width:36px;text-align:center}
+.mg{color:#2ecc71;background:rgba(46,204,113,.1)}.mp{color:#fb923c;background:rgba(251,146,60,.1)}
+.mu{color:#60a5fa;background:rgba(96,165,250,.1)}.mpa{color:#a78bfa;background:rgba(167,139,250,.1)}
+.md{color:#f87171;background:rgba(248,113,113,.1)}
+.rn{font-size:11px;color:var(--t2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ci.on .rn{color:var(--t1)}
+
+/* === HISTORY ITEM === */
+.hi{display:flex;align-items:center;gap:7px;padding:6px 13px;cursor:pointer;border-bottom:1px solid var(--b1);transition:background .1s;font-size:11px}
+.hi:hover{background:rgba(255,255,255,.025)}
+.hi-url{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--t2);font-size:10.5px}
+.hi-t{font-size:9.5px;color:var(--t3);font-family:var(--fm);flex-shrink:0}
+.hi-s{font-size:9.5px;font-family:var(--fm);flex-shrink:0}
+.hi-s.ok{color:var(--green)}.hi-s.err{color:var(--red)}.hi-s.warn{color:var(--yellow)}
+
+/* === CONN INDICATOR === */
+.conn{display:flex;align-items:center;gap:5px;font-size:10.5px;padding:5px 10px;border-radius:100px;background:rgba(52,211,153,.07);border:1px solid rgba(52,211,153,.15);color:var(--green)}
+.cdot{width:5px;height:5px;border-radius:50%;background:var(--green);animation:blink 2s infinite}
+
+/* === UPLOAD ZONE === */
+.uz{border:2px dashed var(--b2);border-radius:var(--rl);padding:22px 16px;text-align:center;cursor:pointer;transition:all .2s;position:relative}
+.uz:hover,.uz.drag{border-color:var(--purple);background:rgba(167,139,248,.04)}
+.uz input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.uz i{font-size:24px;color:var(--t3);margin-bottom:7px;display:block}
+.uz-lbl{font-size:12px;color:var(--t2)}.uz-sub{font-size:10.5px;color:var(--t3);margin-top:3px}
+.uz-fn{margin-top:7px;padding:3px 10px;background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.2);border-radius:var(--r);font-size:11px;color:var(--purple);font-family:var(--fm);display:none}
+.uz-fn.on{display:inline-block}
+.pgbar{height:2px;background:var(--bg3);border-radius:2px;margin-top:6px;overflow:hidden}
+.pgfill{height:100%;border-radius:2px;width:0%;transition:width .35s}
+.pgfill.purple{background:var(--purple)}.pgfill.sky{background:var(--sky)}
+
+/* === SWAGGER VALIDATION ITEMS === */
+.vi{display:flex;align-items:flex-start;gap:9px;padding:9px 12px;border-bottom:1px solid var(--b1);font-size:12px}
+.vi:last-child{border:none}
+.vi-ic{flex-shrink:0;width:17px;height:17px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;margin-top:1px}
+.vi-ok{background:rgba(52,211,153,.14);color:var(--green)}.vi-warn{background:rgba(251,191,36,.14);color:var(--yellow)}.vi-err{background:rgba(248,113,113,.14);color:var(--red)}
+.vi-b{flex:1}.vi-t{font-weight:500;color:var(--t1);margin-bottom:1px}.vi-s{color:var(--t2);font-size:10.5px;font-family:var(--fm)}
+
+/* === ACE DB FIELDS === */
+.ace-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.ace-full{grid-column:span 2}
+.sql-block{margin-bottom:14px;border:1px solid var(--b1);border-radius:var(--r);overflow:hidden}
+.sql-label{display:flex;justify-content:space-between;align-items:center;background:var(--bg4);padding:6px 10px;font-weight:600;font-size:11px;color:var(--blue)}
+.sql-copy{background:rgba(79,156,249,.1);border:1px solid rgba(79,156,249,.2);color:var(--blue);padding:2px 8px;border-radius:4px;font-size:10px;cursor:pointer;font-family:var(--fu)}
+.sql-copy:hover{background:rgba(79,156,249,.2)}
+.sql-block textarea{width:100%;border:none;padding:9px 11px;font-family:var(--fm);font-size:11.5px;resize:vertical;background:var(--bg3);color:#a8d8a8;line-height:1.65}
+.sql-meta{font-size:10.5px;color:var(--t3);margin-top:6px;font-family:var(--fm);padding:0 2px}
+
+/* === CI/CD TFS === */
+.ci-step{display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-bottom:1px solid var(--b1)}
+.ci-step:last-child{border:none}
+.ci-step-num{width:24px;height:24px;border-radius:50%;background:rgba(56,189,248,.1);border:1px solid rgba(56,189,248,.2);color:var(--sky);font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px}
+.ci-step-body{flex:1}
+.ci-step-title{font-size:12px;font-weight:600;color:var(--t1);margin-bottom:3px}
+.ci-step-sub{font-size:10.5px;color:var(--t2)}
+.ci-step.done .ci-step-num{background:rgba(52,211,153,.1);border-color:rgba(52,211,153,.2);color:var(--green)}
+.ci-step.running .ci-step-num{background:rgba(56,189,248,.15);border-color:var(--sky);color:var(--sky);animation:pulse-step 1s ease-in-out infinite}
+.ci-step.error .ci-step-num{background:rgba(248,113,113,.1);border-color:rgba(248,113,113,.2);color:var(--red)}
+@keyframes pulse-step{0%,100%{box-shadow:0 0 0 0 rgba(56,189,248,.4)}50%{box-shadow:0 0 0 5px rgba(56,189,248,.0)}}
+.ci-log{font-family:var(--fm);font-size:11px;line-height:1.7;color:#a8d8a8;background:rgba(5,8,16,.6);border:1px solid var(--b1);border-radius:var(--r);padding:10px 12px;margin-top:10px;max-height:180px;overflow-y:auto;white-space:pre-wrap}
+.ci-log .log-ok{color:var(--green)}.ci-log .log-err{color:var(--red)}.ci-log .log-info{color:var(--sky)}.ci-log .log-warn{color:var(--yellow)}
+.progress-track{height:4px;background:var(--bg3);border-radius:2px;margin-top:8px;overflow:hidden}
+.progress-fill-sky{height:100%;background:linear-gradient(90deg,var(--sky),var(--blue));border-radius:2px;width:0%;transition:width .6s ease}
+
+/* === API CALL PROGRESS BAR (DB Query / Request Hit) === */
+.api-pgwrap{display:none;padding:8px 12px;background:var(--bg3);border-bottom:1px solid var(--b1)}
+.api-pgwrap.on{display:block}
+.api-pgwrap .api-pglabel{display:flex;justify-content:space-between;font-size:10px;color:var(--t2);font-family:var(--fm);margin-bottom:5px}
+.api-pgtrack{height:4px;background:var(--bg4);border-radius:2px;overflow:hidden}
+.api-pgfill{height:100%;width:0%;border-radius:2px;background:linear-gradient(90deg,var(--teal),var(--sky));transition:width .3s ease}
+
+/* === CACHE BLOCK (Postman-style) === */
+.cache-block{margin-top:12px;border:1px solid var(--b2);border-radius:var(--r);overflow:hidden;background:rgba(56,189,248,.03)}
+.cache-block .cb-h{display:flex;align-items:center;gap:6px;padding:7px 11px;background:var(--bg4);font-size:11px;font-weight:600;color:var(--sky);font-family:var(--fm)}
+.cache-block .cb-body{padding:9px 13px;font-family:var(--fm);font-size:11.5px;line-height:1.85;color:#a8d8a8;white-space:pre}
+.cache-block .cb-key{color:var(--sky)}
+.cache-block .cb-val{color:var(--yellow, #e8c07d)}
+.cache-block .cb-copyable{cursor:pointer;border-bottom:1px dashed transparent}
+.cache-block .cb-copyable:hover{border-bottom-color:var(--sky);color:var(--sky)}
+.cache-block .cb-h{position:relative}
+.cache-block .cb-h .sql-copy{font-size:9.5px;padding:2px 8px}
+
+/* === SWAGGER MISSING-FIELD CHIP + EDITOR === */
+.fld-chip{display:inline-flex;align-items:center;gap:4px;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.25);color:var(--red);padding:2px 8px 2px 9px;border-radius:100px;font-family:var(--fm);font-size:10.5px;margin:2px 4px 2px 0;cursor:pointer;transition:all .15s}
+.fld-chip:hover{background:rgba(248,113,113,.2)}
+.fld-chip.resolved{background:rgba(52,211,153,.1);border-color:rgba(52,211,153,.25);color:var(--green)}
+.fld-chip i{font-size:9px}
+.fld-editor{margin:8px 0 4px;padding:11px 12px;border:1px solid var(--b3);border-radius:var(--rl);background:var(--bg4)}
+.fld-editor .fe-title{font-size:11.5px;font-weight:600;color:var(--t1);margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.fld-editor .fe-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+.fld-editor .fe-lbl{font-size:9.5px;color:var(--t3);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;font-weight:600}
+.fld-editor input,.fld-editor select,.fld-editor textarea{width:100%;background:var(--bg3);border:1px solid var(--b2);border-radius:var(--r);padding:6px 8px;font-size:11.5px;color:var(--t1)}
+.fld-editor textarea{min-height:44px;resize:vertical;font-family:var(--fu)}
+.fld-editor .fe-actions{display:flex;gap:6px;justify-content:flex-end;margin-top:2px}
+
+/* === TFS UPLOAD ZONE === */
+.tfs-uz{border:2px dashed rgba(56,189,248,.25);border-radius:var(--rl);padding:28px 20px;text-align:center;cursor:pointer;transition:all .2s;position:relative;background:rgba(56,189,248,.02)}
+.tfs-uz:hover,.tfs-uz.drag{border-color:var(--sky);background:rgba(56,189,248,.05)}
+.tfs-uz input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.tfs-uz i{font-size:32px;color:rgba(56,189,248,.4);margin-bottom:10px;display:block;transition:color .2s}
+.tfs-uz:hover i{color:var(--sky)}
+.tfs-file-info{margin-top:10px;padding:8px 14px;background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.2);border-radius:var(--r);display:none;text-align:left}
+.tfs-file-info.on{display:block}
+.tfs-fname{font-family:var(--fm);font-size:12px;color:var(--sky);font-weight:500}
+.tfs-fsize{font-size:10.5px;color:var(--t3);margin-top:2px}
+</style>
+</head>
+<body>
+
+<!-- ══ LOGIN SCREEN ══ -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo"><div class="t-gem">⬡</div><div class="ll-txt">EIS DevSuite</div></div>
+    <div class="login-tag">IBM ACE Developer Toolkit · built by <b>ANKIT</b> for the EIS Team</div>
+    <div class="login-err" id="login-err">Invalid username or password. Please try again.</div>
+    <div class="login-fg">
+      <div class="login-fl">Username</div>
+      <input class="login-fi" id="login-user" placeholder="Enter your username" autocomplete="username" onkeydown="if(event.key==='Enter')doLogin()"/>
+    </div>
+    <div class="login-fg">
+      <div class="login-fl">Password</div>
+      <input class="login-fi" id="login-pass" type="password" placeholder="Enter your password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"/>
+    </div>
+    <button class="login-btn" onclick="doLogin()"><i class="fa-solid fa-right-to-bracket"></i> Sign In</button>
+    <div class="login-hint">
+      <b>Demo credentials</b><br>
+      Username: <b>ankit.eis</b><br>
+      Password: <b>EIS@Ankit2026</b>
+    </div>
+    <div class="login-foot">Developed by <b>ANKIT</b> · EIS Team internal tool</div>
+  </div>
+</div>
+
+<div id="app" style="display:none">
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <a class="t-logo" href="#" onclick="goHome();return false">
+    <div class="t-gem">⬡</div>
+    EIS DevSuite
+  </a>
+  <div class="t-sep"></div>
+  <div class="t-bread" id="bread"><span>Dashboard</span></div>
+  <div class="t-space"></div>
+  <span style="font-size:10.5px;color:var(--t3);font-family:var(--fm);margin-right:12px;white-space:nowrap">EIS Team · built by <b style="color:var(--sky)">ANKIT</b></span>
+  <button class="btn-back" id="bb" onclick="goHome()">
+    <i class="fa fa-chevron-left" style="font-size:10px"></i> Back
+  </button>
+  <div class="t-env"><span class="t-env-dot"></span><span id="env-lbl">IBM ACE Server</span></div>
+  <button class="btn-back" id="logout-btn" style="margin-left:8px" onclick="doLogout()" title="Sign out">
+    <i class="fa-solid fa-right-from-bracket" style="font-size:10px"></i> Logout
+  </button>
+</div>
+
+<div class="content">
+
+<!-- ══ HOME ══ -->
+<div class="page on" id="ph">
+  <div class="h-eye">EIS TEAM · IBM ACE DEVELOPER TOOLKIT</div>
+  <div class="h-title">Developer Operations<br>Command Center</div>
+  <div class="h-sub">Four integrated tools. Zero context switching.<br><b>DB Query · API Client · Swagger Validator · TFS CI/CD</b></div>
+  <div style="text-align:center;margin-top:-6px;margin-bottom:18px;font-size:11px;color:var(--t3);font-family:var(--fm)">Designed &amp; developed by <b style="color:var(--sky)">ANKIT</b> for the <b style="color:var(--purple)">EIS Team</b></div>
+  <div class="cards">
+
+    <div class="mcard c-db" onclick="openPage('db')">
+      <span class="c-arrow"><i class="fa fa-arrow-up-right-from-square"></i></span>
+      <div class="ring rt"><i class="fa-solid fa-database" style="color:var(--teal)"></i></div>
+      <div class="c-name">DB Query</div>
+      <div class="c-desc">Execute queries on IBM ACE database with live field builder, schema explorer and result export.</div>
+      <span class="c-badge bt">ACE Database</span>
+    </div>
+
+    <div class="mcard c-req" onclick="openPage('req')">
+      <span class="c-arrow"><i class="fa fa-arrow-up-right-from-square"></i></span>
+      <div class="ring ro"><i class="fa-solid fa-bolt" style="color:var(--coral)"></i></div>
+      <div class="c-name">Request Hit</div>
+      <div class="c-desc">Full-featured API client routed via SSH tunnel — params, headers, auth, body, history and collections.</div>
+      <span class="c-badge bo">API Client</span>
+    </div>
+
+    <div class="mcard c-sw" onclick="openPage('sw')">
+      <span class="c-arrow"><i class="fa fa-arrow-up-right-from-square"></i></span>
+      <div class="ring rp"><i class="fa-solid fa-file-shield" style="color:var(--purple)"></i></div>
+      <div class="c-name">Swagger Validation</div>
+      <div class="c-desc">Upload XSD/XML and YAML/JSON — auto cross-validate fields and generate a corrected OpenAPI spec.</div>
+      <span class="c-badge bp">Schema Validator</span>
+    </div>
+
+    <div class="mcard c-ci" onclick="openPage('ci')">
+      <span class="c-arrow"><i class="fa fa-arrow-up-right-from-square"></i></span>
+      <div class="ring rs"><i class="fa-solid fa-code-branch" style="color:var(--sky)"></i></div>
+      <div class="c-name">TFS Check-In</div>
+      <div class="c-desc">Upload API zip, set feature/branch details and auto check-in to TFS via CI/CD pipeline with commit message.</div>
+      <span class="c-badge bs">CI/CD · TFS</span>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══════════════════════════
+     DB QUERY PAGE
+══════════════════════════ -->
+<div class="page" id="pdb">
+  <div class="ws">
+    <div class="wsb">
+      <div style="padding:10px 12px;border-bottom:1px solid var(--b1)">
+        <div class="conn"><span class="cdot"></span>ACE DB Connected</div>
+      </div>
+      <div class="sb-lbl">Quick Fill</div>
+      <div class="sb-it on" onclick="dbQuickFill(this,'fetch')" data-f='{"FETCH_FLAG":"Y"}'><i class="fa-solid fa-filter"></i>Fetch Flag</div>
+      <div class="sb-it" onclick="dbQuickFill(this,'cache')" data-f='{"CACHE":"1800","FIELD_NAME":"EIS_CONFIG"}'><i class="fa-solid fa-layer-group"></i>Cache Config</div>
+      <div class="sb-it" onclick="dbQuickFill(this,'sys')" data-f='{"SYS_SERVICE":"ACCOUNT","SYS_URL":"http://sys.internal/api"}'><i class="fa-solid fa-server"></i>SYS Service</div>
+      <div class="sb-it" onclick="dbQuickFill(this,'tp')" data-f='{"THIRD_PARTY_URL":"https://eis.dmz/partner","HTTPTimeOut":"30000"}'><i class="fa-solid fa-network-wired"></i>Third Party</div>
+      <div class="sb-it" onclick="dbQuickFill(this,'cc')" data-f='{"CONTENT_CHECK":"Y","SOURCE_CONFIG":"PROD"}'><i class="fa-solid fa-shield-halved"></i>Content Check</div>
+      <div class="sb-lbl">Server</div>
+      <div class="sb-it" style="cursor:default"><i class="fa-solid fa-circle-dot" style="color:var(--green)"></i><span style="font-family:var(--fm);font-size:10px">10.177.44.29:4415</span></div>
+    </div>
+    <div class="wbm">
+      <div class="wtb">
+        <i class="fa-solid fa-database" style="color:var(--teal);font-size:14px"></i>
+        <span style="font-family:var(--fd);font-size:13px;font-weight:600">IBM ACE SQL Query Generator</span>
+        <div class="t-space"></div>
+        <button class="btn btn-g btn-sm" onclick="dbReset()"><i class="fa-solid fa-rotate-left"></i> Reset</button>
+        <button class="btn btn-t" id="db-btn" onclick="dbSubmit()"><i class="fa-solid fa-play"></i> Generate Query</button>
+      </div>
+      <div class="wbd" style="padding:16px;display:flex;flex-direction:column;gap:14px">
+
+        <div class="panel">
+          <div class="pt"><i class="fa-solid fa-plug" style="color:var(--teal)"></i>ACE Server Endpoint</div>
+          <div class="r2">
+            <div class="fg" style="margin-bottom:0">
+              <div class="fl"><i class="fa-solid fa-globe"></i>API URL</div>
+              <input class="fi" id="ace-url" value="http://10.177.44.29:4415/api/depositAccShort/details/accounts"/>
+            </div>
+            <div class="fg" style="margin-bottom:0">
+              <div class="fl"><i class="fa-solid fa-arrow-left"></i>Back Link URL</div>
+              <input class="fi" id="ace-back" value="http://10.177.44.29:4415/REPO"/>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="pt"><i class="fa-solid fa-table-columns" style="color:var(--teal)"></i>Query Parameters</div>
+          <div class="ace-grid">
+            <div class="fg"><div class="fl"><i class="fa-solid fa-filter"></i>Fetch Flag</div><input class="fi" id="FETCH_FLAG" placeholder="e.g. Y"/></div>
+            <div class="fg"><div class="fl"><i class="fa-solid fa-layer-group"></i>Cache For</div><input class="fi" id="CACHE" placeholder="e.g. 1800"/></div>
+            <div class="fg"><div class="fl"><i class="fa-solid fa-table-columns"></i>Field Name</div><input class="fi" id="FIELD_NAME" placeholder="e.g. EIS_CONFIG"/></div>
+            <div class="fg"><div class="fl"><i class="fa-solid fa-globe"></i>EIS DMZ URL</div><input class="fi" id="EIS_DMZ_URL" placeholder="https://eis.dmz.internal/api"/></div>
+            <div class="fg"><div class="fl"><i class="fa-solid fa-server"></i>SYS Service</div><input class="fi" id="SYS_SERVICE" placeholder="e.g. ACCOUNT_SERVICE"/></div>
+            <div class="fg"><div class="fl"><i class="fa-solid fa-link"></i>SYS URL</div><input class="fi" id="SYS_URL" placeholder="http://sys.internal/api"/></div>
+            <div class="fg"><div class="fl"><i class="fa-solid fa-clock"></i>HTTP Timeout</div><input class="fi" id="HTTPTimeOut" placeholder="e.g. 30000"/></div>
+            <div class="fg"><div class="fl"><i class="fa-solid fa-shield-halved"></i>Content Check</div><input class="fi" id="CONTENT_CHECK" placeholder="Y or N"/></div>
+            <div class="fg"><div class="fl"><i class="fa-solid fa-gears"></i>Source Config</div><input class="fi" id="SOURCE_CONFIG" placeholder="e.g. PROD"/></div>
+            <div class="fg"><div class="fl"><i class="fa-solid fa-network-wired"></i>Third Party URL</div><input class="fi" id="THIRD_PARTY_URL" placeholder="https://partner.api/endpoint"/></div>
+            <div class="fg ace-full"><div class="fl"><i class="fa-solid fa-hashtag"></i>Request Reference Number</div><input class="fi" id="REQUEST_REFERENCE_NUMBER" placeholder="e.g. REF-2024-001"/></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="pt" style="display:flex;align-items:center">
+            <i class="fa-solid fa-file-code" style="color:var(--teal)"></i>Generated SQL Queries
+            <div class="t-space"></div>
+            <span id="db-meta" style="font-size:10.5px;color:var(--t3);font-family:var(--fm);font-weight:400"></span>
+          </div>
+          <div class="api-pgwrap" id="db-pgwrap">
+            <div class="api-pglabel"><span id="db-pglabel-txt">Connecting…</span><span id="db-pgpct">0%</span></div>
+            <div class="api-pgtrack"><div class="api-pgfill" id="db-pgfill"></div></div>
+          </div>
+          <div id="db-out">
+            <div style="color:var(--t3);text-align:center;padding:28px;font-size:12px">
+              <i class="fa-solid fa-code" style="font-size:26px;display:block;margin-bottom:8px;opacity:.28"></i>
+              Fill in the fields above and click <strong style="color:var(--teal)">Generate Query</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════
+     REQUEST HIT PAGE
+══════════════════════════ -->
+<div class="page" id="preq">
+  <div class="ws">
+    <div class="wsb">
+      <div style="padding:9px">
+        <button class="btn btn-o" style="width:100%;justify-content:center;font-size:12px" onclick="newReq()">
+          <i class="fa-solid fa-plus"></i> New Request
+        </button>
+      </div>
+      <div style="padding:0 9px 7px">
+        <input class="fi" style="font-size:11px;padding:5px 8px" placeholder="Search requests…" oninput="filterReqs(this.value)"/>
+      </div>
+      <div id="req-colls">
+        <div class="cg">
+          <div class="ct op" onclick="toggleColl(this)">
+            <span class="ar">▶</span><i class="fa-regular fa-folder-open" style="font-size:11px"></i>ACE Server APIs
+          </div>
+          <div class="ci-list">
+            <div class="ci on" onclick="loadReq('get-health',this)"><span class="mt mg">GET</span><span class="rn">Health Check</span></div>
+            <div class="ci" onclick="loadReq('get-users',this)"><span class="mt mg">GET</span><span class="rn">Get All Users</span></div>
+            <div class="ci" onclick="loadReq('post-user',this)"><span class="mt mp">POST</span><span class="rn">Create User</span></div>
+            <div class="ci" onclick="loadReq('put-user',this)"><span class="mt mu">PUT</span><span class="rn">Update User</span></div>
+            <div class="ci" onclick="loadReq('del-user',this)"><span class="mt md">DEL</span><span class="rn">Delete User</span></div>
+            <div class="ci" onclick="loadReq('post-ace',this)"><span class="mt mp">POST</span><span class="rn">ACE Deposit Query</span></div>
+            <div class="ci" onclick="loadReq('get-orders',this)"><span class="mt mg">GET</span><span class="rn">Get Orders</span></div>
+          </div>
+        </div>
+        <div class="cg">
+          <div class="ct" onclick="toggleColl(this)">
+            <span class="ar">▶</span><i class="fa-regular fa-folder" style="font-size:11px"></i>Auth APIs
+          </div>
+          <div class="ci-list">
+            <div class="ci" onclick="loadReq('post-login',this)"><span class="mt mp">POST</span><span class="rn">Login</span></div>
+            <div class="ci" onclick="loadReq('post-refresh',this)"><span class="mt mp">POST</span><span class="rn">Refresh Token</span></div>
+          </div>
+        </div>
+        <div class="cg" id="saved-coll-wrap" style="display:none">
+          <div class="ct op" onclick="toggleColl(this)">
+            <span class="ar">▶</span><i class="fa-solid fa-bookmark" style="font-size:11px;color:var(--coral)"></i>Saved Requests
+          </div>
+          <div class="ci-list" id="saved-coll-list"></div>
+        </div>
+      </div>
+      <div class="sb-lbl">History <span id="hist-count" style="font-size:9px;color:var(--t3)"></span></div>
+      <div id="req-hist"></div>
+    </div>
+
+    <div class="wbm" style="overflow:hidden">
+      <!-- URL BAR with SSH routing -->
+      <div class="wtb" style="gap:7px;flex-wrap:nowrap">
+        <select class="msel" id="req-method" onchange="styleM()">
+          <option>GET</option><option>POST</option><option>PUT</option>
+          <option>PATCH</option><option>DELETE</option><option>HEAD</option><option>OPTIONS</option>
+        </select>
+        <!-- SSH routing indicator -->
+        <div class="ssh-pill" title="Requests are tunnelled through this SSH server">
+          <i class="fa-solid fa-shield-halved"></i>
+          <input id="req-sship" value="10.177.44.58" style="background:none;border:none;color:var(--sky);font-family:var(--fm);font-size:11px;width:96px;outline:none" placeholder="SSH IP"/>
+        </div>
+        <span style="color:var(--t3);font-size:12px;flex-shrink:0">→</span>
+        <input class="urli" id="req-url" placeholder="http://10.177.44.xx/api/endpoint" value="http://10.177.44.29:4415/api/health"/>
+        <button class="btn btn-g btn-sm" onclick="saveReq()"><i class="fa-regular fa-floppy-disk"></i> Save</button>
+        <button class="btn btn-o" id="req-send" onclick="sendReq()">
+          <i class="fa-solid fa-paper-plane"></i> Send
+        </button>
+      </div>
+
+      <!-- Route info bar -->
+      <div style="display:flex;align-items:center;gap:8px;padding:5px 14px;background:rgba(56,189,248,.04);border-bottom:1px solid rgba(56,189,248,.1);flex-shrink:0;flex-wrap:wrap">
+        <i class="fa-solid fa-route" style="color:var(--sky);font-size:10px"></i>
+        <span style="font-size:10.5px;color:var(--t3)">Routing via SSH tunnel:</span>
+        <span id="route-display" style="font-family:var(--fm);font-size:10.5px;color:var(--sky)">Client → 10.177.44.58 → 10.177.44.29:4415</span>
+        <div class="t-space"></div>
+        <span style="font-size:10px;color:var(--t3)">via backend:</span>
+        <input id="req-backend" value="http://10.177.44.29:4415/curl" title="This app runs in a browser and cannot open real SSH sockets. Point this at the ssh-proxy-server (see companion backend) which does the real SSH hop → nginx → target." style="background:var(--bg3);border:1px solid var(--b2);border-radius:4px;color:var(--sky);font-family:var(--fm);font-size:10px;padding:2px 6px;width:190px;outline:none"/>
+        <span style="font-size:10px;color:var(--t3)" id="tunnel-status">Tunnel ready</span>
+      </div>
+      <div style="padding:4px 14px 6px;background:rgba(56,189,248,.02);font-size:9.5px;color:var(--t3);border-bottom:1px solid rgba(56,189,248,.08)">
+        <i class="fa-solid fa-circle-info"></i> A browser page can't open SSH sockets directly — this calls the small <b style="color:var(--t2)">ssh-proxy-server</b> (Node.js, included below) which does the real hop: Client → this backend → SSH <span style="color:var(--sky)">10.177.44.58</span> (nginx) → target host/port, then relays the JSON back here.
+      </div>
+
+      <div class="sph" style="flex:1">
+        <!-- Request pane -->
+        <div class="pane" style="flex:1;border-right:1px solid var(--b1)">
+          <div class="tabbar">
+            <button class="tabb on" onclick="swRT(this,'p')">Params <span id="pc" style="font-size:9px;opacity:.55">0</span></button>
+            <button class="tabb" onclick="swRT(this,'a')">Auth</button>
+            <button class="tabb" onclick="swRT(this,'h')">Headers <span id="hc" style="font-size:9px;opacity:.55">1</span></button>
+            <button class="tabb" onclick="swRT(this,'b')">Body</button>
+            <button class="tabb" onclick="swRT(this,'s')">Scripts</button>
+          </div>
+          <div class="pbd">
+            <div class="tc on" id="rt-p">
+              <p style="font-size:10.5px;color:var(--t3);margin-bottom:9px"><i class="fa-solid fa-circle-info" style="margin-right:4px"></i>Query params are appended to the URL automatically</p>
+              <table class="ptbl"><thead><tr><th style="width:20px"></th><th>Key</th><th>Value</th><th>Description</th><th style="width:24px"></th></tr></thead><tbody id="pt"></tbody></table>
+              <button onclick="addP('pt')" class="add-row-btn">+ Add Parameter</button>
+            </div>
+            <div class="tc" id="rt-a">
+              <div class="fg"><div class="fl">Auth Type</div>
+                <select class="fs" style="width:190px" id="auth-type" onchange="updAuth()">
+                  <option value="none">No Auth</option><option value="bearer">Bearer Token</option>
+                  <option value="basic">Basic Auth</option><option value="apikey">API Key</option><option value="oauth2">OAuth 2.0</option>
+                </select>
+              </div>
+              <div id="auth-fields"></div>
+            </div>
+            <div class="tc" id="rt-h">
+              <table class="ptbl"><thead><tr><th style="width:20px"></th><th>Key</th><th>Value</th><th>Description</th><th style="width:24px"></th></tr></thead><tbody id="ht"></tbody></table>
+              <button onclick="addP('ht')" class="add-row-btn">+ Add Header</button>
+            </div>
+            <div class="tc" id="rt-b">
+              <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:9px" id="btypes">
+                <button class="tabb" style="font-size:10.5px;padding:3px 9px" onclick="setBody('none',this)">none</button>
+                <button class="tabb on" onclick="setBody('json',this)" style="font-size:10.5px;padding:3px 9px">JSON</button>
+                <button class="tabb" onclick="setBody('form',this)" style="font-size:10.5px;padding:3px 9px">form-data</button>
+                <button class="tabb" onclick="setBody('urlenc',this)" style="font-size:10.5px;padding:3px 9px">x-www-form-urlencoded</button>
+                <button class="tabb" onclick="setBody('raw',this)" style="font-size:10.5px;padding:3px 9px">raw</button>
+              </div>
+              <textarea class="fta" id="body-ed" style="min-height:220px;color:#a8d8a8;font-size:11.5px">{"status":"check"}</textarea>
+            </div>
+            <div class="tc" id="rt-s">
+              <div style="margin-bottom:10px"><div class="fl" style="margin-bottom:6px">Pre-request Script</div>
+                <textarea class="fta" style="min-height:110px;color:#c9d1d9" placeholder="// pm.environment.set('token', 'abc');&#10;// console.log('Request starting...');"></textarea></div>
+              <div><div class="fl" style="margin-bottom:6px">Post-response Script</div>
+                <textarea class="fta" style="min-height:110px;color:#c9d1d9" placeholder="// pm.test('Status 200', () => pm.response.to.have.status(200));&#10;// const data = pm.response.json();"></textarea></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Response pane -->
+        <div class="pane" style="flex:1">
+          <div style="display:flex;align-items:center;gap:8px;padding:7px 13px;background:var(--bg3);border-bottom:1px solid var(--b1);flex-shrink:0">
+            <span style="font-size:10px;color:var(--t3);font-weight:600;text-transform:uppercase;letter-spacing:.5px">Response</span>
+            <div id="resp-sbadge"></div>
+            <div id="resp-meta" style="font-size:10.5px;color:var(--t3);font-family:var(--fm)"></div>
+            <div class="t-space"></div>
+            <button class="btn btn-g btn-sm" onclick="copyResp()"><i class="fa-regular fa-copy"></i> Copy</button>
+            <button class="btn btn-g btn-sm" onclick="dlResp()"><i class="fa-solid fa-download"></i> Save</button>
+          </div>
+          <div class="api-pgwrap" id="req-pgwrap">
+            <div class="api-pglabel"><span id="req-pglabel-txt">Connecting…</span><span id="req-pgpct">0%</span></div>
+            <div class="api-pgtrack"><div class="api-pgfill" id="req-pgfill"></div></div>
+          </div>
+          <div class="tabbar">
+            <button class="tabb on" onclick="swRespT(this,'b')">Body</button>
+            <button class="tabb" onclick="swRespT(this,'h')">Headers</button>
+            <button class="tabb" onclick="swRespT(this,'c')">Cookies</button>
+            <button class="tabb" onclick="swRespT(this,'t')">Timeline</button>
+          </div>
+          <div class="pbd" style="overflow:auto">
+            <div id="rr-b">
+              <div id="resp-empty" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:56px 20px;gap:9px;color:var(--t3)">
+                <i class="fa-regular fa-clock" style="font-size:36px;opacity:.22"></i>
+                <p style="font-size:12.5px">Click <strong style="color:var(--coral)">Send</strong> to get a response</p>
+                <p style="font-size:10.5px">Routed via <code style="color:var(--sky);font-family:var(--fm)" id="route-hint">10.177.44.58</code> · Ctrl+Enter</p>
+              </div>
+              <div id="resp-json" class="out" style="display:none;background:transparent;border:none;padding:0">
+                <button class="cbtn" onclick="copyResp()">Copy</button>
+                <div id="resp-json-c"></div>
+              </div>
+            </div>
+            <div id="rr-h" style="display:none"><table class="tbl"><thead><tr><th>Key</th><th>Value</th></tr></thead><tbody id="rhb"></tbody></table></div>
+            <div id="rr-c" style="display:none"><p style="color:var(--t3);font-size:12px;padding:18px 0">No cookies received.</p></div>
+            <div id="rr-t" style="display:none;font-family:var(--fm);font-size:11.5px;line-height:2.2;color:var(--t2)"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════
+     SWAGGER VALIDATION PAGE
+══════════════════════════ -->
+<div class="page" id="psw">
+  <div class="ws">
+    <div class="wsb">
+      <div class="sb-lbl">Steps</div>
+      <div class="sb-it on" id="sw-s1"><i class="fa-solid fa-upload"></i>1. Upload Files</div>
+      <div class="sb-it" id="sw-s2"><i class="fa-solid fa-sitemap"></i>2. Parse Schemas</div>
+      <div class="sb-it" id="sw-s3"><i class="fa-solid fa-code-compare"></i>3. Cross-Validate</div>
+      <div class="sb-it" id="sw-s4"><i class="fa-solid fa-wand-magic-sparkles"></i>4. Generate YAML</div>
+      <div class="sb-lbl">Options</div>
+      <div class="sb-it"><input type="checkbox" id="sw-strict" checked style="accent-color:var(--purple);width:12px;height:12px"><label for="sw-strict" style="cursor:pointer;margin-left:2px">Strict Mode</label></div>
+      <div class="sb-it"><input type="checkbox" id="sw-autofix" checked style="accent-color:var(--purple);width:12px;height:12px"><label for="sw-autofix" style="cursor:pointer;margin-left:2px">Auto-fix YAML</label></div>
+      <div class="sb-it"><input type="checkbox" id="sw-addmissing" checked style="accent-color:var(--purple);width:12px;height:12px"><label for="sw-addmissing" style="cursor:pointer;margin-left:2px">Add Missing Fields</label></div>
+      <div class="sb-lbl">Recent</div>
+      <div class="sb-it" style="flex-direction:column;align-items:flex-start;gap:1px;cursor:default"><span style="font-size:11px">user-api.yaml</span><span style="font-size:9.5px;color:var(--t3)">3 issues · 2h ago</span></div>
+    </div>
+    <div class="wbm">
+      <div class="wtb">
+        <i class="fa-solid fa-file-shield" style="color:var(--purple);font-size:14px"></i>
+        <span style="font-family:var(--fd);font-size:13px;font-weight:600">Swagger / OpenAPI Schema Validator</span>
+        <div class="t-space"></div>
+        <button class="btn btn-g btn-sm" onclick="swReset()"><i class="fa-solid fa-rotate-left"></i> Reset</button>
+        <button class="btn btn-pu" id="sw-btn" onclick="runSw()"><i class="fa-solid fa-play"></i> Compare & Validate</button>
+      </div>
+      <div class="wbd" style="padding:16px;display:grid;grid-template-rows:auto 1fr;gap:14px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <div class="panel">
+            <div class="pt"><i class="fa-solid fa-file-code" style="color:var(--purple)"></i>XSD / XML Schema</div>
+            <div class="uz" id="xsd-uz" ondragover="dov(event,'xsd-uz')" ondragleave="dlv('xsd-uz')" ondrop="dop(event,'xsd')">
+              <input type="file" accept=".xsd,.xml" onchange="fsel(this,'xsd')"/>
+              <i class="fa-solid fa-file-arrow-up"></i>
+              <div class="uz-lbl">Drop XSD / XML or click to browse</div>
+              <div class="uz-sub">.xsd · .xml accepted</div>
+              <span class="uz-fn" id="xsd-fn"></span>
+            </div>
+            <div class="pgbar"><div class="pgfill purple" id="xsd-pf"></div></div>
+            <div class="fg" style="margin-top:11px;margin-bottom:0">
+              <div class="fl"><i class="fa-solid fa-code"></i>Or paste XSD content</div>
+              <textarea class="fta" id="xsd-ct" style="min-height:90px;font-size:11px" placeholder="&lt;?xml version=&quot;1.0&quot;?&gt;&#10;&lt;xs:schema xmlns:xs=&quot;http://www.w3.org/2001/XMLSchema&quot;&gt;&#10;  &lt;xs:element name=&quot;User&quot;&gt;...&lt;/xs:element&gt;&#10;&lt;/xs:schema&gt;"></textarea>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="pt"><i class="fa-solid fa-file-lines" style="color:var(--purple)"></i>OpenAPI YAML / JSON</div>
+            <div class="uz" id="yaml-uz" ondragover="dov(event,'yaml-uz')" ondragleave="dlv('yaml-uz')" ondrop="dop(event,'yaml')">
+              <input type="file" accept=".yaml,.yml,.json" onchange="fsel(this,'yaml')"/>
+              <i class="fa-solid fa-file-arrow-up"></i>
+              <div class="uz-lbl">Drop YAML / JSON or click to browse</div>
+              <div class="uz-sub">.yaml · .yml · .json accepted</div>
+              <span class="uz-fn" id="yaml-fn"></span>
+            </div>
+            <div class="pgbar"><div class="pgfill purple" id="yaml-pf"></div></div>
+            <div class="fg" style="margin-top:11px;margin-bottom:0">
+              <div class="fl"><i class="fa-solid fa-code"></i>Or paste YAML / JSON content</div>
+              <textarea class="fta" id="yaml-ct" style="min-height:90px;font-size:11px" placeholder="openapi: 3.0.0&#10;info:&#10;  title: My API&#10;  version: 1.0.0&#10;paths:&#10;  /resource:&#10;    get:&#10;      responses:&#10;        '200':&#10;          description: Success"></textarea>
+            </div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;overflow:hidden">
+          <div class="panel" style="display:flex;flex-direction:column;overflow:hidden">
+            <div class="pt" style="flex-shrink:0">
+              <i class="fa-solid fa-circle-check" style="color:var(--purple)"></i>Validation Report
+              <div class="t-space"></div>
+              <span id="sw-sum" style="font-size:10.5px;color:var(--t3);font-weight:400"></span>
+            </div>
+            <div style="flex:1;overflow:auto" id="sw-report">
+              <div style="color:var(--t3);text-align:center;padding:32px;font-size:11.5px">
+                <i class="fa-solid fa-file-shield" style="font-size:26px;display:block;margin-bottom:8px;opacity:.25"></i>
+                Upload files and click <strong style="color:var(--purple)">Compare & Validate</strong>
+              </div>
+            </div>
+          </div>
+          <div class="panel" style="display:flex;flex-direction:column;overflow:hidden">
+            <div class="pt" style="flex-shrink:0;display:flex;align-items:center">
+              <i class="fa-solid fa-wand-magic-sparkles" style="color:var(--green)"></i>
+              <span style="margin-left:7px">Updated OpenAPI Spec</span>
+              <div class="t-space"></div>
+              <button class="btn btn-g btn-sm" onclick="dlYaml()"><i class="fa-solid fa-download"></i> Download</button>
+            </div>
+            <div style="flex:1;overflow:auto">
+              <div class="out" id="sw-out" style="min-height:100%;color:#a8d8a8;border-radius:var(--r);border:1px solid var(--b1)">
+                <span style="color:var(--t3)">Corrected YAML (with all XSD fields added) will appear here…</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════
+     TFS CI/CD PAGE
+══════════════════════════ -->
+<div class="page" id="pci">
+  <div class="ws">
+    <div class="wsb">
+      <div class="sb-lbl">Pipeline Steps</div>
+      <div class="sb-it on" id="ci-s1"><i class="fa-solid fa-file-zipper"></i>1. Upload API Zip</div>
+      <div class="sb-it" id="ci-s2"><i class="fa-solid fa-sliders"></i>2. Configure Pipeline</div>
+      <div class="sb-it" id="ci-s3"><i class="fa-solid fa-code-branch"></i>3. Branch & Commit</div>
+      <div class="sb-it" id="ci-s4"><i class="fa-solid fa-upload"></i>4. TFS Check-In</div>
+      <div class="sb-it" id="ci-s5"><i class="fa-solid fa-circle-check"></i>5. Verify</div>
+      <div class="sb-lbl">TFS Server</div>
+      <div class="sb-it" style="cursor:default"><i class="fa-solid fa-server" style="color:var(--sky)"></i><span style="font-family:var(--fm);font-size:10px">10.177.44.29</span></div>
+      <div class="sb-lbl">Recent Check-ins</div>
+      <div id="ci-history" style="font-size:10.5px"></div>
+    </div>
+
+    <div class="wbm">
+      <div class="wtb">
+        <i class="fa-solid fa-code-branch" style="color:var(--sky);font-size:14px"></i>
+        <span style="font-family:var(--fd);font-size:13px;font-weight:600">TFS Code Check-In via CI/CD Pipeline</span>
+        <div class="t-space"></div>
+        <button class="btn btn-g btn-sm" onclick="ciReset()"><i class="fa-solid fa-rotate-left"></i> Reset</button>
+        <button class="btn btn-sky" id="ci-btn" onclick="ciSubmit()">
+          <i class="fa-solid fa-upload"></i> Check-In to TFS
+        </button>
+      </div>
+
+      <div class="wbd" style="padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:14px">
+
+        <!-- Left column: Upload + Config -->
+        <div style="display:flex;flex-direction:column;gap:14px">
+
+          <!-- ZIP Upload -->
+          <div class="panel">
+            <div class="pt"><i class="fa-solid fa-file-zipper" style="color:var(--sky)"></i>API Package (ZIP)</div>
+            <div class="tfs-uz" id="ci-uz" ondragover="ciDov(event)" ondragleave="ciDlv()" ondrop="ciDop(event)">
+              <input type="file" accept=".zip,.bar,.tar.gz" onchange="ciFileSelect(this)"/>
+              <i class="fa-solid fa-cloud-arrow-up"></i>
+              <div style="font-size:13px;color:var(--t2);margin-bottom:4px">Drop your API ZIP / BAR file here</div>
+              <div style="font-size:10.5px;color:var(--t3)">.zip · .bar · .tar.gz accepted</div>
+            </div>
+            <div class="pgbar" style="margin-top:8px"><div class="pgfill sky" id="ci-pf"></div></div>
+            <div class="tfs-file-info" id="ci-finfo">
+              <div class="tfs-fname" id="ci-fname"></div>
+              <div class="tfs-fsize" id="ci-fsize"></div>
+            </div>
+          </div>
+
+          <!-- TFS Connection -->
+          <div class="panel">
+            <div class="pt"><i class="fa-solid fa-server" style="color:var(--sky)"></i>TFS Server Connection</div>
+            <div class="fg"><div class="fl"><i class="fa-solid fa-globe"></i>TFS Server URL</div><input class="fi" id="ci-tfsurl" value="http://10.177.44.29:4415/tfs" placeholder="http://tfs-server:4415/tfs"/></div>
+            <div class="fg"><div class="fl"><i class="fa-solid fa-server"></i>Check-in Backend Service URL <span style="color:var(--red)">*</span></div><input class="fi" id="ci-backend" value="http://localhost:5000/api/tfs-checkin" placeholder="http://your-backend-host:5000/api/tfs-checkin"/>
+              <div style="font-size:9.5px;color:var(--t3);margin-top:4px;line-height:1.5"><i class="fa-solid fa-circle-info"></i> You upload the ZIP here in the UI. This backend service (Node.js, included in the companion code) unzips it and runs <code style="color:var(--teal);font-family:var(--fm)">git init/clone → add → commit → push</code> for you — no manual cmd needed.</div>
+            </div>
+            <div class="r2">
+              <div class="fg"><div class="fl"><i class="fa-solid fa-building"></i>Collection</div><input class="fi" id="ci-collection" value="DefaultCollection" placeholder="DefaultCollection"/></div>
+              <div class="fg"><div class="fl"><i class="fa-solid fa-diagram-project"></i>Project</div><input class="fi" id="ci-project" value="ACE_Services" placeholder="ProjectName"/></div>
+            </div>
+            <div class="r2">
+              <div class="fg"><div class="fl"><i class="fa-solid fa-user"></i>TFS Username</div><input class="fi" id="ci-user" placeholder="domain\username"/></div>
+              <div class="fg"><div class="fl"><i class="fa-solid fa-key"></i>Password / PAT</div><input class="fi" type="password" id="ci-pass" placeholder="Personal Access Token"/></div>
+            </div>
+          </div>
+
+          <!-- Clone Path -->
+          <div class="panel">
+            <div class="pt"><i class="fa-solid fa-folder-tree" style="color:var(--sky)"></i>Repository & Clone</div>
+            <div class="fg"><div class="fl"><i class="fa-solid fa-code-fork"></i>Repository Name <span style="color:var(--red)">*</span></div><input class="fi" id="ci-reponame" placeholder="e.g. ACE_Services.git / $/ACE_Services"/></div>
+            <div class="fg"><div class="fl"><i class="fa-solid fa-folder-open"></i>Clone / Workspace Path</div><input class="fi" id="ci-clonepath" placeholder="$/ProjectName/Branch/Path  or  C:\workspace\repo"/></div>
+            <div class="fg" style="margin-bottom:0"><div class="fl"><i class="fa-solid fa-copy"></i>Target Directory in TFS</div><input class="fi" id="ci-targetdir" placeholder="$/ACE_Services/Dev/APIs/MyFeature"/></div>
+          </div>
+        </div>
+
+        <!-- Right column: Branch + Commit + Log -->
+        <div style="display:flex;flex-direction:column;gap:14px">
+
+          <!-- Branch & Feature -->
+          <div class="panel">
+            <div class="pt"><i class="fa-solid fa-code-branch" style="color:var(--sky)"></i>Branch & Feature Details</div>
+            <div class="r2">
+              <div class="fg"><div class="fl"><i class="fa-solid fa-code-branch"></i>Branch Name</div><input class="fi" id="ci-branch" placeholder="e.g. dev, feature/JIRA-123, release/v2.1"/></div>
+              <div class="fg"><div class="fl"><i class="fa-solid fa-tag"></i>Feature Name</div><input class="fi" id="ci-feature" placeholder="e.g. DepositAccountShort"/></div>
+            </div>
+            <div class="fg"><div class="fl"><i class="fa-solid fa-ticket"></i>Work Item / Ticket ID</div><input class="fi" id="ci-workitem" placeholder="e.g. JIRA-4521 or TFS #1234"/></div>
+            <div class="fg"><div class="fl"><i class="fa-solid fa-user-tie"></i>Author / Developer</div><input class="fi" id="ci-author" placeholder="John Doe"/></div>
+          </div>
+
+          <!-- Commit Message -->
+          <div class="panel">
+            <div class="pt"><i class="fa-solid fa-message" style="color:var(--sky)"></i>Commit Message <span style="font-size:10px;color:var(--t3);font-weight:400">(-m "")</span></div>
+            <div class="fg" style="margin-bottom:8px">
+              <div class="fl">Message</div>
+              <textarea class="fta" id="ci-msg" style="min-height:80px" placeholder="[JIRA-4521] Add DepositAccountShort API — implements short deposit account query with EIS DMZ routing and ACE SQL generation"></textarea>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap" id="ci-msg-chips">
+              <button class="btn btn-g btn-sm" onclick="appendMsg('[Feature] ')"><i class="fa-solid fa-plus"></i>[Feature]</button>
+              <button class="btn btn-g btn-sm" onclick="appendMsg('[Bugfix] ')"><i class="fa-solid fa-bug"></i>[Bugfix]</button>
+              <button class="btn btn-g btn-sm" onclick="appendMsg('[Hotfix] ')"><i class="fa-solid fa-fire"></i>[Hotfix]</button>
+              <button class="btn btn-g btn-sm" onclick="appendMsg('[Refactor] ')"><i class="fa-solid fa-arrow-rotate-right"></i>[Refactor]</button>
+              <button class="btn btn-g btn-sm" onclick="appendMsg('[Config] ')"><i class="fa-solid fa-gear"></i>[Config]</button>
+              <button class="btn btn-g btn-sm" onclick="ciAutoMsg()"><i class="fa-solid fa-wand-magic-sparkles"></i>Auto-fill</button>
+            </div>
+          </div>
+
+          <!-- Pipeline Options -->
+          <div class="panel">
+            <div class="pt"><i class="fa-solid fa-sliders" style="color:var(--sky)"></i>Pipeline Options</div>
+            <div class="r2">
+              <div class="fg"><div class="fl"><i class="fa-solid fa-code-merge"></i>Check-in Type</div>
+                <select class="fs" id="ci-type">
+                  <option value="checkin">Direct Check-In</option>
+                  <option value="shelveset">Shelveset (Review)</option>
+                  <option value="gated">Gated Check-In</option>
+                </select>
+              </div>
+              <div class="fg"><div class="fl"><i class="fa-solid fa-robot"></i>CI Trigger</div>
+                <select class="fs" id="ci-trigger">
+                  <option value="auto">Auto Build on Check-in</option>
+                  <option value="manual">Manual Trigger</option>
+                  <option value="none">No Build</option>
+                </select>
+              </div>
+            </div>
+            <div class="r2">
+              <div class="fg"><div class="fl"><i class="fa-solid fa-rotate"></i>Overwrite Policy</div>
+                <select class="fs" id="ci-overwrite">
+                  <option value="merge">Merge</option>
+                  <option value="replace">Replace All</option>
+                  <option value="skip">Skip Existing</option>
+                </select>
+              </div>
+              <div class="fg"><div class="fl"><i class="fa-solid fa-boxes-stacked"></i>Build Config</div>
+                <select class="fs" id="ci-buildcfg">
+                  <option value="Debug">Debug</option>
+                  <option value="Release">Release</option>
+                  <option value="QA">QA</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Pipeline Progress -->
+          <div class="panel" id="ci-progress-panel" style="display:none">
+            <div class="pt"><i class="fa-solid fa-gauge-high" style="color:var(--sky)"></i>Pipeline Progress</div>
+            <div class="progress-track"><div class="progress-fill-sky" id="ci-progress"></div></div>
+            <div style="margin-top:10px" id="ci-steps-list"></div>
+            <div class="ci-log" id="ci-log"></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /content -->
+</div><!-- /app -->
+
+<div id="toast"><span id="ti"></span><span id="tm"></span></div>
+
+<script>
+// ══════════ STATE ══════════
+const ST = {
+  page:'home', lastResp:null, xsd:'', yaml:'',
+  savedReqs: JSON.parse(localStorage.getItem('devSuiteReqs')||'[]'),
+  reqHist: JSON.parse(localStorage.getItem('devSuiteHist')||'[]'),
+  ciFile: null, ciHistory: JSON.parse(localStorage.getItem('devSuiteCi')||'[]')
+};
+
+// ══════════ NAV ══════════
+const PAGES={db:'pdb',req:'preq',sw:'psw',ci:'pci'};
+const LABELS={db:'DB Query',req:'Request Hit',sw:'Swagger Validation',ci:'TFS Check-In'};
+const COLORS={db:'var(--teal)',req:'var(--coral)',sw:'var(--purple)',ci:'var(--sky)'};
+
+function openPage(id){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));
+  document.getElementById(PAGES[id]).classList.add('on');
+  ST.page=id;
+  document.getElementById('bb').classList.add('on');
+  document.getElementById('bread').innerHTML=`<span style="color:var(--t3)">Dashboard</span><span style="color:var(--t3);margin:0 5px">›</span><span class="active" style="color:${COLORS[id]}">${LABELS[id]}</span>`;
+  document.getElementById('env-lbl').textContent=id==='db'?'IBM ACE DB':'IBM ACE Server';
+  if(id==='req'){ renderHist(); renderSavedReqs(); updateRouteDisplay(); }
+  if(id==='ci'){ renderCiHistory(); }
+}
+function goHome(){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));
+  document.getElementById('ph').classList.add('on');
+  ST.page='home';
+  document.getElementById('bb').classList.remove('on');
+  document.getElementById('bread').innerHTML='<span>Dashboard</span>';
+  document.getElementById('env-lbl').textContent='IBM ACE Server';
 }
 
+// ══════════ TOAST ══════════
+function toast(msg,type='ok'){
+  const icons={ok:'<i class="fa-solid fa-check" style="color:var(--green)"></i>',err:'<i class="fa-solid fa-xmark" style="color:var(--red)"></i>',warn:'<i class="fa-solid fa-triangle-exclamation" style="color:var(--yellow)"></i>',info:'<i class="fa-solid fa-circle-info" style="color:var(--sky)"></i>'};
+  document.getElementById('ti').innerHTML=icons[type]||icons.ok;
+  document.getElementById('tm').textContent=msg;
+  const t=document.getElementById('toast');t.classList.add('on');
+  setTimeout(()=>t.classList.remove('on'),2800);
+}
 
+// ══════════ DB / ACE ══════════
+function dbQuickFill(el,_){
+  document.querySelectorAll('#pdb .sb-it').forEach(i=>i.classList.remove('on'));
+  el.classList.add('on');
+  try{ const d=JSON.parse(el.dataset.f||'{}'); Object.entries(d).forEach(([k,v])=>{ const e=document.getElementById(k);if(e)e.value=v; }); }catch(e){}
+}
+function dbReset(){
+  ['FETCH_FLAG','CACHE','FIELD_NAME','EIS_DMZ_URL','SYS_SERVICE','SYS_URL','HTTPTimeOut','CONTENT_CHECK','SOURCE_CONFIG','THIRD_PARTY_URL','REQUEST_REFERENCE_NUMBER'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  document.getElementById('db-out').innerHTML=`<div style="color:var(--t3);text-align:center;padding:28px;font-size:12px"><i class="fa-solid fa-code" style="font-size:26px;display:block;margin-bottom:8px;opacity:.28"></i>Fill in the fields above and click <strong style="color:var(--teal)">Generate Query</strong></div>`;
+  document.getElementById('db-meta').textContent='';
+  toast('Form reset');
+}
+async function dbSubmit(){
+  const btn=document.getElementById('db-btn');
+  const apiUrl=document.getElementById('ace-url').value.trim();
+  const data={FETCH_FLAG:$v('FETCH_FLAG'),CACHE:$v('CACHE'),FIELD_NAME:$v('FIELD_NAME'),EIS_DMZ_URL:$v('EIS_DMZ_URL'),SYS_SERVICE:$v('SYS_SERVICE'),SYS_URL:$v('SYS_URL'),HTTPTimeOut:$v('HTTPTimeOut'),CONTENT_CHECK:$v('CONTENT_CHECK'),SOURCE_CONFIG:$v('SOURCE_CONFIG'),THIRD_PARTY_URL:$v('THIRD_PARTY_URL'),REQUEST_REFERENCE_NUMBER:$v('REQUEST_REFERENCE_NUMBER')};
+  btn.disabled=true;
+  btn.innerHTML=`<div class="ld" style="color:#041410"><div class="ldd"></div><div class="ldd"></div><div class="ldd"></div></div>`;
+  document.getElementById('db-out').innerHTML=`<div style="color:var(--t2);text-align:center;padding:24px;font-size:12px"><div class="ld" style="color:var(--teal);margin:0 auto 8px"><div class="ldd"></div><div class="ldd"></div><div class="ldd"></div></div>Calling ACE server…</div>`;
+  const pgh=apiProgressStart('db',['Connecting to ACE server…','Sending request…','Waiting for response…','Receiving data…']);
+  const t0=performance.now();
+  try{
+    const resp=await fetch(apiUrl,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+    const result=await resp.json();
+    const ms=Math.round(performance.now()-t0);
+    document.getElementById('db-meta').textContent=`${resp.status} · ${ms}ms`;
+    renderAce(result,data);
+    apiProgressFinish(pgh,true);
+    toast(`Queries generated in ${ms}ms`);
+  }catch(err){
+    const ms=Math.round(performance.now()-t0);
+    document.getElementById('db-meta').textContent=`Error · ${ms}ms`;
+    document.getElementById('db-out').innerHTML=`<div style="padding:14px"><div style="color:var(--red);font-size:12.5px;margin-bottom:8px"><i class="fa-solid fa-triangle-exclamation"></i> ${err.message}</div><div style="color:var(--t2);font-size:11.5px">Check ACE server at:<br><code style="color:var(--teal);font-family:var(--fm)">${apiUrl}</code></div></div>`;
+    apiProgressFinish(pgh,false);
+    toast('ACE server error','err');
+  }finally{btn.disabled=false;btn.innerHTML='<i class="fa-solid fa-play"></i> Generate Query';}
+}
+const SQL_KEYS=['EIS_DMZ_URL','EISSOURCEID','SYSSERVICES','EIS_SYS_URL','HTTPTIMEOUT','CONTENTCHCK','THRDPRTYURL','APIPARAMETR','ACCESMASTER','API_MASTERS'];
+function renderAce(result,reqData){
+  const c=document.getElementById('db-out');c.innerHTML='';
+  c.appendChild(buildCacheBlock(result,reqData));
+  if(result.REQUEST_REFERENCE_NUMBER||result.RESPONSE_DATE){
+    const m=document.createElement('p');m.className='sql-meta';
+    m.innerHTML=`<i class="fa-solid fa-tag" style="margin-right:4px;color:var(--teal)"></i>Ref: <strong>${result.REQUEST_REFERENCE_NUMBER||'-'}</strong> &nbsp;|&nbsp; ${result.RESPONSE_DATE||''}`;
+    c.appendChild(m);
+  }
+}
 
-this is my js
+// Builds the single-tab, Postman-style response view:
+// Cache:{ -EIS_DMZ_URL: <actual query value>, -EISSOURCEID: <actual query value>, ... }
+function buildCacheBlock(result,reqData){
+  const entries=[];
+  SQL_KEYS.forEach(k=>{
+    if(result[k]!==undefined&&result[k]!==null&&result[k]!=='')entries.push([k,result[k]]);
+  });
+  const wrap=document.createElement('div');
+  wrap.className='cache-block';
+  wrap.style.marginTop='0';
+  if(!entries.length){
+    wrap.innerHTML=`<div class="cb-h"><i class="fa-solid fa-layer-group"></i>Cache</div><div class="cb-body" style="color:var(--t3)">Cache:{\n  no query results returned — check parameters\n}</div>`;
+    return wrap;
+  }
+  const que = 'Query';
+  const allText='Cache:{\n'+entries.map(([k,v])=>`  -${que}: ${v}`).join(',\n')+'\n}';
+
+  const body=entries.map(([k,v])=>
+    `  <span class="cb-key">-${que}</span>: <span class="cb-val cb-copyable" data-copy="${esc(v)}" data-label="${que}" title="Click to copy this value">${esc(v)}</span>`
+  ).join(',\n');
+  wrap.innerHTML=`<div class="cb-h"><i class="fa-solid fa-layer-group"></i>Cache<button class="sql-copy" style="margin-left:auto" id="cb-copyall"><i class="fa-solid fa-copy"></i> Copy All</button></div><div class="cb-body">Cache:{\n${body}\n}</div>`;
+  wrap.querySelector('#cb-copyall').onclick=()=>{navigator.clipboard.writeText(allText);toast('Copied full Cache block');};
+  wrap.querySelectorAll('.cb-copyable').forEach(el=>{
+    el.onclick=()=>{navigator.clipboard.writeText(el.dataset.copy);toast('Copied: '+el.dataset.label);};
+  });
+  return wrap;
+}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+// Postman-style Cache summary for the Request Hit / API Client response (single Body tab)
+function buildReqCacheBlock(resp,json){
+  const entries=[];
+  ['cache-control','etag','age','expires','x-cache','x-cache-hits'].forEach(h=>{
+    const v=resp.headers.get(h);
+    if(v)entries.push([h,v]);
+  });
+  // walk JSON body (shallow, one level of nesting) for any key containing "cache"
+  function scan(obj,prefix){
+    if(!obj||typeof obj!=='object')return;
+    Object.entries(obj).forEach(([k,v])=>{
+      if(/cache/i.test(k)) entries.push([prefix+k, typeof v==='object'?JSON.stringify(v):String(v)]);
+      else if(v&&typeof v==='object'&&!Array.isArray(v)) scan(v,prefix+k+'.');
+    });
+  }
+  if(json)scan(json,'');
+  const wrap=document.createElement('div');
+  wrap.className='cache-block';
+  wrap.id='req-cache-block';
+  const body=entries.length
+    ? entries.map(([k,v])=>`  <span class="cb-key">-${esc(k)}</span>: <span class="cb-val">${esc(v)}</span>`).join(',\n')
+    : '  <span class="cb-val">no cache headers or fields found in this response</span>';
+  wrap.innerHTML=`<div class="cb-h"><i class="fa-solid fa-layer-group"></i>Cache</div><div class="cb-body">Cache:{\n${body}\n}</div>`;
+  return wrap;
+}
+function $v(id){const e=document.getElementById(id);return e?e.value:'';}
+
+// ══════════ GENERIC API CALL PROGRESS BAR ══════════
+function apiProgressStart(prefix,stages){
+  const wrap=document.getElementById(prefix+'-pgwrap');
+  const fill=document.getElementById(prefix+'-pgfill');
+  const pct=document.getElementById(prefix+'-pgpct');
+  const lbl=document.getElementById(prefix+'-pglabel-txt');
+  if(!wrap)return null;
+  wrap.classList.add('on');
+  fill.style.background='';
+  let p=0;
+  lbl.textContent=stages[0];
+  pct.textContent='0%';
+  fill.style.width='0%';
+  const iv=setInterval(()=>{
+    p=Math.min(p+Math.random()*9+3,92);
+    fill.style.width=p.toFixed(0)+'%';
+    pct.textContent=Math.round(p)+'%';
+    const si=Math.min(Math.floor(p/(100/stages.length)),stages.length-1);
+    lbl.textContent=stages[si];
+  },220);
+  return{iv,fill,pct,wrap,lbl};
+}
+function apiProgressFinish(h,ok){
+  if(!h)return;
+  clearInterval(h.iv);
+  h.fill.style.width='100%';h.pct.textContent='100%';
+  h.lbl.textContent=ok?'Done':'Failed';
+  h.fill.style.background=ok?'linear-gradient(90deg,var(--teal),var(--green))':'linear-gradient(90deg,var(--red),#f87171)';
+  setTimeout(()=>{h.wrap.classList.remove('on');h.fill.style.width='0%';h.fill.style.background='';},1000);
+}
+
+// ══════════ REQUEST HIT ══════════
+const PRESETS={
+  'get-health':{m:'GET',u:'http://10.177.44.29:4415/api/health',b:''},
+  'get-users':{m:'GET',u:'http://10.177.44.29:4415/api/users',b:''},
+  'post-user':{m:'POST',u:'http://10.177.44.29:4415/api/users',b:'{\n  "name": "John Doe",\n  "email": "john@example.com",\n  "role": "user"\n}'},
+  'put-user':{m:'PUT',u:'http://10.177.44.29:4415/api/users/1',b:'{\n  "name": "John Updated",\n  "status": "active"\n}'},
+  'del-user':{m:'DELETE',u:'http://10.177.44.29:4415/api/users/1',b:''},
+  'post-ace':{m:'POST',u:'http://10.177.44.29:4415/api/depositAccShort/details/accounts',b:'{\n  "FETCH_FLAG": "Y",\n  "FIELD_NAME": "EIS_CONFIG",\n  "CACHE": "1800"\n}'},
+  'get-orders':{m:'GET',u:'http://10.177.44.29:4415/api/orders',b:''},
+  'post-login':{m:'POST',u:'http://10.177.44.29:4415/auth/login',b:'{\n  "username": "admin",\n  "password": "secret"\n}'},
+  'post-refresh':{m:'POST',u:'http://10.177.44.29:4415/auth/refresh',b:'{\n  "refresh_token": "eyJhb..."\n}'},
+};
+
+function loadReq(key,el){
+  const p=PRESETS[key];if(!p)return;
+  document.getElementById('req-method').value=p.m;
+  document.getElementById('req-url').value=p.u;
+  document.getElementById('body-ed').value=p.b;
+  styleM(); updateRouteDisplay();
+  document.querySelectorAll('.ci').forEach(c=>c.classList.remove('on'));
+  el.classList.add('on');
+}
+function styleM(){
+  const s=document.getElementById('req-method');
+  const c={GET:'#2ecc71',POST:'#fb923c',PUT:'#60a5fa',PATCH:'#a78bfa',DELETE:'#f87171',HEAD:'#94a3b8',OPTIONS:'#94a3b8'};
+  s.style.color=c[s.value]||'#e2e8f0';
+}
+function updateRouteDisplay(){
+  const ssh=document.getElementById('req-sship').value||'?';
+  const url=document.getElementById('req-url').value;
+  let target='?';
+  try{ const u=new URL(url); target=u.host; }catch(e){ target=url.replace(/^https?:\/\//,'').split('/')[0]; }
+  document.getElementById('route-display').textContent=`Client → ${ssh} (SSH) → ${target}`;
+  document.getElementById('route-hint').textContent=ssh;
+}
+function swRT(el,t){
+  el.closest('.tabbar').querySelectorAll('.tabb').forEach(b=>b.classList.remove('on'));
+  el.classList.add('on');
+  ['p','a','h','b','s'].forEach(k=>{const c=document.getElementById('rt-'+k);if(c)c.classList.toggle('on',k===t);});
+}
+function swRespT(el,t){
+  el.closest('.tabbar').querySelectorAll('.tabb').forEach(b=>b.classList.remove('on'));
+  el.classList.add('on');
+  const m={b:'rr-b',h:'rr-h',c:'rr-c',t:'rr-t'};
+  Object.values(m).forEach(id=>{const e=document.getElementById(id);if(e)e.style.display='none';});
+  document.getElementById(m[t]).style.display='';
+}
+function addP(tbId,k='',v='',d='',en=true){
+  const tb=document.getElementById(tbId);
+  const tr=document.createElement('tr');
+  tr.innerHTML=`<td><input type="checkbox" class="pchk" ${en?'checked':''} onchange="updCnt()"></td><td><input class="pi" placeholder="Key" value="${esc(k)}" oninput="updCnt()"></td><td><input class="pi" placeholder="Value" value="${esc(v)}"></td><td><input class="pi" placeholder="Desc" value="${esc(d)}" style="color:var(--t3)"></td><td><button class="dbtn" onclick="this.closest('tr').remove();updCnt()">×</button></td>`;
+  tb.appendChild(tr);updCnt();
+}
+function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')}
+function updCnt(){
+  const pc=[...document.querySelectorAll('#pt tr')].filter(r=>r.querySelector('.pchk')?.checked&&r.querySelectorAll('.pi')[0]?.value).length;
+  const hc=[...document.querySelectorAll('#ht tr')].filter(r=>r.querySelector('.pchk')?.checked&&r.querySelectorAll('.pi')[0]?.value).length;
+  document.getElementById('pc').textContent=pc;
+  document.getElementById('hc').textContent=hc;
+}
+function setBody(t,btn){
+  document.querySelectorAll('#btypes .tabb').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  document.getElementById('body-ed').style.display=t==='none'?'none':'';
+}
+function updAuth(){
+  const t=document.getElementById('auth-type').value;
+  const tpls={none:'',bearer:`<div class="fg"><div class="fl">Token</div><input class="fi" placeholder="Enter bearer token"></div>`,basic:`<div class="r2"><div class="fg"><div class="fl">Username</div><input class="fi" placeholder="Username"></div><div class="fg"><div class="fl">Password</div><input class="fi" type="password" placeholder="Password"></div></div>`,apikey:`<div class="r2"><div class="fg"><div class="fl">Key Name</div><input class="fi" placeholder="X-API-Key"></div><div class="fg"><div class="fl">Key Value</div><input class="fi" placeholder="api-key"></div></div><div class="fg"><div class="fl">Add To</div><select class="fs" style="width:160px"><option>Header</option><option>Query Param</option></select></div>`,oauth2:`<div class="fg"><div class="fl">Token URL</div><input class="fi" placeholder="https://auth.server/token"></div><div class="r2"><div class="fg"><div class="fl">Client ID</div><input class="fi" placeholder="client_id"></div><div class="fg"><div class="fl">Secret</div><input class="fi" type="password" placeholder="client_secret"></div></div>`};
+  document.getElementById('auth-fields').innerHTML=tpls[t]||'';
+}
+function buildUrl(){
+  let url=document.getElementById('req-url').value.trim();
+  const params=[];
+  document.querySelectorAll('#pt tr').forEach(r=>{
+    if(!r.querySelector('.pchk')?.checked)return;
+    const ins=r.querySelectorAll('.pi');const k=ins[0]?.value.trim(),v=ins[1]?.value.trim();
+    if(k)params.push(encodeURIComponent(k)+'='+encodeURIComponent(v||''));
+  });
+  if(params.length)url+=(url.includes('?')?'&':'?')+params.join('&');
+  return url;
+}
+
+async function sendReq(){
+  const btn=document.getElementById('req-send');
+  const method=document.getElementById('req-method').value;
+  const sship=document.getElementById('req-sship').value.trim();
+  const url=buildUrl();
+  if(!url){toast('Enter a URL first','warn');return;}
+
+  btn.disabled=true;
+  btn.innerHTML=`<div class="ld" style="color:#1a0800"><div class="ldd"></div><div class="ldd"></div><div class="ldd"></div></div>`;
+  document.getElementById('tunnel-status').textContent='Connecting via SSH…';
+  document.getElementById('resp-empty').style.display='flex';
+  document.getElementById('resp-json').style.display='none';
+  document.getElementById('resp-sbadge').innerHTML='';
+  document.getElementById('resp-meta').textContent='';
+  {const oldCb=document.getElementById('req-cache-block');if(oldCb)oldCb.remove();}
+  const reqPgh=apiProgressStart('req',['Connecting via SSH tunnel…','Sending request…','Waiting for response (TTFB)…','Receiving & relaying data…']);
+
+  const headers={};
+  // Add SSH routing header so backend can see the tunnel origin
+  if(sship) headers['X-SSH-Tunnel']= sship;
+  document.querySelectorAll('#ht tr').forEach(r=>{
+    if(!r.querySelector('.pchk')?.checked)return;
+    const ins=r.querySelectorAll('.pi');const k=ins[0]?.value.trim(),v=ins[1]?.value.trim();
+    if(k)headers[k]=v;
+  });
+  const at=document.getElementById('auth-type').value;
+  if(at==='bearer'){const t=document.querySelector('#auth-fields input')?.value;if(t)headers['Authorization']='Bearer '+t;}
+  else if(at==='basic'){const ins=document.querySelectorAll('#auth-fields input');if(ins[0]?.value)headers['Authorization']='Basic '+btoa(ins[0].value+':'+(ins[1]?.value||''));}
+  else if(at==='apikey'){const ins=document.querySelectorAll('#auth-fields input');if(ins[0]?.value&&ins[1]?.value)headers[ins[0].value]=ins[1].value;}
+
+  const bActive=document.querySelector('#btypes .on')?.textContent;
+  let parsedBody={};
+  if(!['GET','HEAD'].includes(method)&&bActive!=='none'){
+    const bt=document.getElementById('body-ed').value.trim();
+    if(bt){try { parsedBody = JSON.parse(bt); } catch { parsedBody = bt; };if(!headers['Content-Type'])headers['Content-Type']='application/json';}
+  }
+
+  const t0=performance.now();
+  try{
+    const headersArr = Object.entries(headers).map(([k,v]) => `${k}: ${v}`);
+    const backendUrl= 'http://10.177.44.29:4415/curl';
+    if(!backendUrl)throw new Error('Set the "via backend" field to your ssh-proxy-server URL — a browser cannot open SSH sockets on its own.');
+    const proxyResp=await fetch(backendUrl,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({sshIp:sship,url,method,headers: headersArr,body: parsedBody})
+    });
+
+    if(!proxyResp.ok){
+      const errText=await proxyResp.text().catch(()=>'');
+      throw new Error(`Backend proxy responded ${proxyResp.status}${errText?': '+errText.slice(0,200):''}`);
+    }
+    const elapsed=Math.round(performance.now()-t0);
+    const text = await proxyResp.text();
+    ST.lastResp=text;
+    const size=new TextEncoder().encode(text).length;
+
+   // const status=proxyJson.status||0;
+    const cat=Math.floor(proxyResp.status/100);
+    const bcls={2:'s-2xx',3:'s-2xx',4:'s-4xx',5:'s-5xx'}[cat]||'s-4xx';
+    const lbl={200:'OK',201:'Created',204:'No Content',301:'Moved',302:'Found',400:'Bad Request',401:'Unauthorized',403:'Forbidden',404:'Not Found',422:'Unprocessable',500:'Internal Error',502:'Bad Gateway',503:'Unavailable'};
+    document.getElementById('resp-sbadge').innerHTML=`<div class="sbadge ${bcls}"><span class="sdot"></span>${status} ${lbl[status]||proxyResp.statusText||''}</div>`;
+    document.getElementById('resp-meta').textContent=`${elapsed}ms · ${fmtSz(size)}`;
+    document.getElementById('tunnel-status').innerHTML=`<span style="color:var(--green)">✓ Via ${sship}</span>`;
+    document.getElementById('resp-empty').style.display='none';
+    document.getElementById('resp-json').style.display='';
+  const parsedJson = {};
+  
+  try{
+       parsedJson = JSON.parse(text);
+      document.getElementById('resp-json-c').innerHTML=jhl(JSON.stringify(parsedJson,null,2));
+    }
+    catch{
+      document.getElementById('resp-json-c').textContent=text;
+    }
+    const rhb=document.getElementById('rhb');
+    rhb.innerHTML='';
+   // Object.entries(parsedJson.headers||{}).forEach(([k,v])=>{rhb.innerHTML+=`<tr><td>${k}</td><td>${v}</td></tr>`;});
+   proxyResp.headers.forEach((v,k) => { rhb.innerHTML+=`<tr><td>${k}</td><td>${v}</td></tr>`; });
+    // Postman-style Cache summary within the same Body tab
+    const oldCb=document.getElementById('req-cache-block');if(oldCb)oldCb.remove();
+    document.getElementById('rr-b').appendChild(buildReqCacheBlock({headers:{get:h=>(proxyResp.headers||{})[h]||(proxyResp.headers||{})[h.toLowerCase()]}},parsedJson));
+    apiProgressFinish(reqPgh,true);
+    document.getElementById('rr-t').innerHTML=`<div style="color:var(--teal)">▸ Client → backend proxy …… initiated</div><div style="color:var(--sky)">▸ SSH connection to ${sship} ……… ${proxyResp.timings?.ssh??'~'+Math.floor(elapsed*.12)+'ms (est.)'}</div><div style="color:var(--blue)">▸ TCP connect to target ……… ${proxyResp.timings?.connect??'~'+Math.floor(elapsed*.18)+'ms (est.)'}</div><div style="color:var(--t2)">▸ Request forwarded via tunnel</div><div style="color:var(--purple)">▸ Waiting (TTFB) …………… ${proxyResp.timings?.ttfb??'~'+Math.floor(elapsed*.52)+'ms (est.)'}</div><div style="color:var(--green)">▸ Response received & relayed ${proxyResp.timings?.relay??'~'+Math.floor(elapsed*.08)+'ms (est.)'}</div><div style="margin-top:8px;border-top:1px solid var(--b1);padding-top:8px"><span style="color:var(--t1)">Total: <strong>${elapsed}ms</strong></span><span style="color:var(--t3);margin-left:12px">SSH: ${sship}</span><span style="color:var(--t3);margin-left:12px">Size: ${fmtSz(size)}</span></div>`;
+    
+    // Save to history
+    const hEntry={m:method,u:url,s:status,ms:elapsed,ssh:sship,ts:Date.now(),ok:cat===2};
+    ST.reqHist.unshift(hEntry);
+    if(ST.reqHist.length>50)ST.reqHist.pop();
+    localStorage.setItem('devSuiteHist',JSON.stringify(ST.reqHist));
+    renderHist();
+    toast(`${status} · ${elapsed}ms via ${sship}`);
+  }catch(err){
+    const elapsed=Math.round(performance.now()-t0);
+    document.getElementById('tunnel-status').innerHTML=`<span style="color:var(--red)">✗ Tunnel failed</span>`;
+    document.getElementById('resp-empty').style.display='none';
+    document.getElementById('resp-json').style.display='';
+    document.getElementById('resp-json-c').innerHTML=`<span style="color:var(--red)"><i class="fa-solid fa-triangle-exclamation"></i> ${err.message}</span>\n\n<span style="color:var(--t3)">This tool runs entirely in your browser, which cannot open raw SSH sockets.\nReal SSH routing needs the companion backend (ssh-proxy-server) running on a\nmachine with network access, e.g. on/near ${sship}.\n\nExpected flow:\n  Browser → POST ${$v('req-backend')||'<backend url>'}\n  Backend → SSH ${sship} (nginx) → onward SSH/HTTP → ${url}\n\nCheck that:\n1. ssh-proxy-server is running and reachable at the "via backend" URL above\n2. It has SSH access to ${sship}\n3. ${sship} can reach the final target host/port\n4. CORS is enabled on the backend for this page's origin</span>`;
+    document.getElementById('resp-sbadge').innerHTML=`<div class="sbadge s5"><span class="sdot"></span>Error</div>`;
+    apiProgressFinish(reqPgh,false);
+    const hEntry={m:method,u:url,s:'ERR',ms:elapsed,ssh:sship,ts:Date.now(),ok:false};
+    ST.reqHist.unshift(hEntry);
+    if(ST.reqHist.length>50)ST.reqHist.pop();
+    localStorage.setItem('devSuiteHist',JSON.stringify(ST.reqHist));
+    renderHist();
+    toast('Request failed','err');
+  }finally{
+    btn.disabled=false;
+    btn.innerHTML='<i class="fa-solid fa-paper-plane"></i> Send';
+  }
+}
+
+function renderHist(){
+  const h=document.getElementById('req-hist');
+  document.getElementById('hist-count').textContent=`(${ST.reqHist.length})`;
+  if(!ST.reqHist.length){h.innerHTML='<div style="padding:10px 13px;font-size:10.5px;color:var(--t3)">No requests yet</div>';return;}
+  h.innerHTML=ST.reqHist.slice(0,20).map((r,i)=>{
+    const age=Math.floor((Date.now()-r.ts)/1000);
+    const as=age<60?age+'s':age<3600?Math.floor(age/60)+'m':Math.floor(age/3600)+'h';
+    const mc={GET:'mg',POST:'mp',PUT:'mu',PATCH:'mpa',DELETE:'md'}[r.m]||'mg';
+    let path=r.u;try{path=new URL(r.u).pathname;}catch(e){}
+    const sc=r.ok?'ok':r.s==='ERR'?'err':'warn';
+    return `<div class="hi" onclick="loadFromHist(${i})" title="${r.u}">
+      <span class="mt ${mc}">${r.m}</span>
+      <span class="hi-url">${path}</span>
+      <span class="hi-s ${sc}">${r.s}</span>
+      <span class="hi-t">${as}</span>
+    </div>`;
+  }).join('');
+}
+
+function loadFromHist(i){
+  const r=ST.reqHist[i];if(!r)return;
+  document.getElementById('req-method').value=r.m;
+  document.getElementById('req-url').value=r.u;
+  if(r.ssh)document.getElementById('req-sship').value=r.ssh;
+  styleM();updateRouteDisplay();
+  toast('Loaded from history');
+}
+
+function saveReq(){
+  const m=document.getElementById('req-method').value;
+  const u=document.getElementById('req-url').value;
+  const b=document.getElementById('body-ed').value;
+  const ssh=document.getElementById('req-sship').value;
+  if(!u){toast('Enter a URL first','warn');return;}
+  const name=prompt('Save request as:',m+' '+new URL(u).pathname)||null;
+  if(!name)return;
+  ST.savedReqs.push({m,u,b,ssh,name,ts:Date.now()});
+  localStorage.setItem('devSuiteReqs',JSON.stringify(ST.savedReqs));
+  renderSavedReqs();
+  toast('Request saved: '+name);
+}
+
+function renderSavedReqs(){
+  const list=document.getElementById('saved-coll-list');
+  const wrap=document.getElementById('saved-coll-wrap');
+  if(!ST.savedReqs.length){wrap.style.display='none';return;}
+  wrap.style.display='';
+  const mc={GET:'mg',POST:'mp',PUT:'mu',PATCH:'mpa',DELETE:'md'};
+  list.innerHTML=ST.savedReqs.map((r,i)=>`
+    <div class="ci" onclick="loadSaved(${i})" style="justify-content:space-between">
+      <span class="mt ${mc[r.m]||'mg'}">${r.m}</span>
+      <span class="rn">${r.name}</span>
+      <button onclick="event.stopPropagation();deleteSaved(${i})" style="background:none;border:none;color:var(--t3);cursor:pointer;font-size:11px;padding:0 2px" title="Delete">×</button>
+    </div>`).join('');
+}
+
+function loadSaved(i){
+  const r=ST.savedReqs[i];if(!r)return;
+  document.getElementById('req-method').value=r.m;
+  document.getElementById('req-url').value=r.u;
+  document.getElementById('body-ed').value=r.b||'';
+  if(r.ssh)document.getElementById('req-sship').value=r.ssh;
+  styleM();updateRouteDisplay();
+  toast('Loaded: '+r.name);
+}
+function deleteSaved(i){
+  ST.savedReqs.splice(i,1);
+  localStorage.setItem('devSuiteReqs',JSON.stringify(ST.savedReqs));
+  renderSavedReqs();toast('Deleted');
+}
+function newReq(){
+  document.getElementById('req-url').value='';
+  document.getElementById('body-ed').value='';
+  document.getElementById('req-method').value='GET';
+  styleM();updateRouteDisplay();
+  document.querySelectorAll('.ci').forEach(c=>c.classList.remove('on'));
+}
+function filterReqs(v){document.querySelectorAll('.ci').forEach(el=>{el.style.display=el.querySelector('.rn')?.textContent.toLowerCase().includes(v.toLowerCase())?'':'none';});}
+function toggleColl(el){el.classList.toggle('op');}
+function copyResp(){if(ST.lastResp){navigator.clipboard.writeText(ST.lastResp);toast('Response copied');}else toast('No response yet','warn');}
+function dlResp(){if(!ST.lastResp){toast('No response','warn');return;}const a=document.createElement('a');a.href='data:application/json,'+encodeURIComponent(ST.lastResp);a.download='response.json';a.click();toast('Downloaded');}
+function fmtSz(b){return b<1024?b+' B':b<1048576?(b/1024).toFixed(1)+' KB':(b/1048576).toFixed(2)+' MB';}
+function jhl(json){return json.replace(/("(\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?|[{}\[\],:])/g,m=>{if(/^"/.test(m))return/:$/.test(m)?`<span class="jk">${m}</span>`:`<span class="js">${m}</span>`;if(/true|false/.test(m))return`<span class="jb">${m}</span>`;if(/null/.test(m))return`<span class="jp">${m}</span>`;if(/[{}\[\]]/.test(m))return`<span class="jp">${m}</span>`;return`<span class="jn">${m}</span>`;});}
+
+// ══════════ SWAGGER ══════════
+function dov(e,id){e.preventDefault();document.getElementById(id).classList.add('drag');}
+function dlv(id){document.getElementById(id).classList.remove('drag');}
+function dop(e,t){e.preventDefault();dlv(t+'-uz');const f=e.dataTransfer?.files[0];if(f)readSF(f,t);}
+function fsel(inp,t){if(inp.files[0])readSF(inp.files[0],t);}
+function readSF(f,t){
+  document.getElementById(t+'-fn').textContent=f.name;
+  document.getElementById(t+'-fn').classList.add('on');
+  const pf=document.getElementById(t+'-pf');pf.style.width='0%';
+  let p=0;const iv=setInterval(()=>{p+=14;pf.style.width=Math.min(p,90)+'%';if(p>=90)clearInterval(iv);},55);
+  const r=new FileReader();
+  r.onload=e=>{const ct=e.target.result;document.getElementById(t+'-ct').value=ct;if(t==='xsd')ST.xsd=ct;else ST.yaml=ct;clearInterval(iv);pf.style.width='100%';toast(f.name+' loaded');setTimeout(()=>pf.style.width='0%',700);};
+  r.readAsText(f);
+}
+function swReset(){
+  ['xsd','yaml'].forEach(t=>{document.getElementById(t+'-ct').value='';document.getElementById(t+'-fn').classList.remove('on');ST[t]='';document.getElementById(t+'-pf').style.width='0%';});
+  document.getElementById('sw-report').innerHTML=`<div style="color:var(--t3);text-align:center;padding:32px;font-size:11.5px"><i class="fa-solid fa-file-shield" style="font-size:26px;display:block;margin-bottom:8px;opacity:.25"></i>Upload files and click Compare & Validate</div>`;
+  document.getElementById('sw-out').innerHTML='<span style="color:var(--t3)">Corrected YAML will appear here…</span>';
+  document.getElementById('sw-sum').textContent='';
+  toast('Reset');
+}
+
+// Detect whether a DOM node in the XSD sits inside a Request (TX) or Response (RX)
+// definition, by walking up for the nearest ancestor name containing those hints.
+function xsdDirectionOfNode(el){
+  let node=el;
+  while(node&&node.getAttribute){
+    const name=node.getAttribute('name');
+    if(name){
+      if(/request|req\b|_req$|\btx\b/i.test(name))return'TX';
+      if(/response|resp\b|_resp$|\brx\b/i.test(name))return'RX';
+    }
+    node=node.parentElement;
+  }
+  return'TX';
+}
+// Same idea but for the regex-fallback path, where we only have raw text + an offset.
+function xsdDirectionAt(xsd,pos){
+  const head=xsd.slice(0,pos);
+  const rx=/<[\w]*:?(?:complexType|element)\b[^>]*name="([^"]+)"/g;
+  let m,last=null;
+  while((m=rx.exec(head))!==null)last=m[1];
+  if(last){
+    if(/request|req\b|_req$|\btx\b/i.test(last))return'TX';
+    if(/response|resp\b|_resp$|\brx\b/i.test(last))return'RX';
+  }
+  return'TX';
+}
+
+// Real XSD parser — uses the browser's DOMParser + real namespace resolution, so it works
+// no matter which prefix the schema uses (xs:, xsd:, a custom prefix, or no prefix at all).
+// Also extracts description (xs:documentation), maxLength, and the required cardinality
+// expressed as "minOccurs,maxOccurs" (e.g. "1,1" = required, "0,1" = not required).
+const XSD_NS='http://www.w3.org/2001/XMLSchema';
+function parseXSD(xsd){
+  if(!xsd||!xsd.trim())return[];
+  let doc=null;
+  try{
+    doc=new DOMParser().parseFromString(xsd,'application/xml');
+    if(doc.getElementsByTagName('parsererror').length)doc=null;
+  }catch(e){doc=null;}
+
+  if(doc){
+    const fields=[];
+    const seen=new Set();
+    const elements=doc.getElementsByTagNameNS(XSD_NS,'element');
+    for(let i=0;i<elements.length;i++){
+      const el=elements[i];
+      const name=el.getAttribute('name');
+      if(!name||seen.has(name))continue;
+      seen.add(name);
+      const type=el.getAttribute('type')||'xs:string';
+      const min=el.hasAttribute('minOccurs')?el.getAttribute('minOccurs'):'1';
+      const maxRaw=el.hasAttribute('maxOccurs')?el.getAttribute('maxOccurs'):'1';
+      const max=maxRaw==='unbounded'?'unbounded':maxRaw;
+      let description='';
+      const docEl=el.getElementsByTagNameNS(XSD_NS,'documentation')[0];
+      if(docEl)description=(docEl.textContent||'').trim();
+      let length='';
+      const restr=el.getElementsByTagNameNS(XSD_NS,'restriction')[0];
+      if(restr){
+        const ml=restr.getElementsByTagNameNS(XSD_NS,'maxLength')[0];
+        if(ml)length=ml.getAttribute('value')||'';
+      }
+      fields.push({
+        name,xsdType:type,oapiType:xsdToOapi(type),format:xsdFormat(type),
+        required:min!=='0',
+        minOccurs:min,maxOccurs:max,
+        cardinality:`${min},${max}`,
+        isArray:max==='unbounded'||parseInt(max||'1',10)>1,
+        description,
+        length,
+        direction:xsdDirectionOfNode(el)
+      });
+    }
+    const attrs=doc.getElementsByTagNameNS(XSD_NS,'attribute');
+    for(let i=0;i<attrs.length;i++){
+      const el=attrs[i];
+      const name=el.getAttribute('name');
+      if(!name||seen.has(name))continue;
+      seen.add(name);
+      const type=el.getAttribute('type')||'xs:string';
+      const use=el.getAttribute('use');
+      const required=use==='required';
+      let length='';
+      const restr=el.getElementsByTagNameNS(XSD_NS,'restriction')[0];
+      if(restr){
+        const ml=restr.getElementsByTagNameNS(XSD_NS,'maxLength')[0];
+        if(ml)length=ml.getAttribute('value')||'';
+      }
+      fields.push({
+        name,xsdType:type,oapiType:xsdToOapi(type),format:xsdFormat(type),
+        required,minOccurs:required?'1':'0',maxOccurs:'1',cardinality:required?'1,1':'0,1',
+        isArray:false,description:'',length,
+        direction:xsdDirectionOfNode(el)
+      });
+    }
+    if(fields.length)return fields;
+    // DOMParser succeeded but found zero elements/attributes (e.g. odd structure) —
+    // fall through to the regex fallback below just in case.
+  }
+
+  // ── Fallback tokenizer: only used if the XML failed to parse or DOMParser found nothing
+  // (e.g. minor well-formedness issues in a real-world enterprise XSD). This walks tags in a
+  // single linear pass with a real stack, so — unlike a naive regex — it correctly tells leaf
+  // fields (e.g. NEW_PARAM) apart from container/complexType elements that merely wrap other
+  // elements (e.g. an outer "AccountRequest" element), regardless of nesting depth or prefix.
+  return parseXSDTokenizer(xsd);
+}
+function parseXSDTokenizer(xsd){
+  const tagRe=/<(\/?)([\w.\-]+(?::[\w.\-]+)?)((?:\s+[\w.\-]+(?::[\w.\-]+)?\s*=\s*"[^"]*")*)\s*(\/?)\s*>/g;
+  const localName=t=>t.includes(':')?t.split(':').pop():t;
+  function attrsToObj(s){
+    const o={};const ar=/([\w.\-]+(?::[\w.\-]+)?)\s*=\s*"([^"]*)"/g;let am;
+    while((am=ar.exec(s))!==null)o[am[1].includes(':')?am[1].split(':').pop():am[1]]=am[2];
+    return o;
+  }
+  const fields=[];
+  const seen=new Set();
+  const stack=[]; // {tagName, local, attrs, hasElementChild, contentStart}
+  function dirFromStack(){
+    for(let i=stack.length-1;i>=0;i--){
+      const nm=stack[i].attrs.name;
+      if(nm){
+        if(/request|req\b|_req$|\btx\b/i.test(nm))return'TX';
+        if(/response|resp\b|_resp$|\brx\b/i.test(nm))return'RX';
+      }
+    }
+    return'TX';
+  }
+  function emit(local,attrs,innerText){
+    const name=attrs.name;
+    if(!name||seen.has(name))return;
+    if(local==='attribute'){
+      seen.add(name);
+      const type=attrs.type||'xs:string';
+      const required=attrs.use==='required';
+      fields.push({
+        name,xsdType:type,oapiType:xsdToOapi(type),format:xsdFormat(type),
+        required,minOccurs:required?'1':'0',maxOccurs:'1',cardinality:required?'1,1':'0,1',
+        isArray:false,description:'',length:attrs.maxLength||'',direction:dirFromStack()
+      });
+      return;
+    }
+    // local === 'element'
+    seen.add(name);
+    const type=attrs.type||'xs:string';
+    const min=attrs.minOccurs!==undefined?attrs.minOccurs:'1';
+    const maxRaw=attrs.maxOccurs!==undefined?attrs.maxOccurs:'1';
+    const max=maxRaw==='unbounded'?'unbounded':maxRaw;
+    const docMatch=innerText&&(innerText.match(/<[\w.\-]*:?documentation[^>]*>([\s\S]*?)<\/[\w.\-]*:?documentation>/)||[])[1];
+    const maxLen=innerText&&((innerText.match(/maxLength[^>]*value="([^"]+)"/)||[])[1])||attrs.maxLength||'';
+    fields.push({
+      name,xsdType:type,oapiType:xsdToOapi(type),format:xsdFormat(type),
+      required:min!=='0',minOccurs:min,maxOccurs:max,
+      cardinality:`${min},${max}`,
+      isArray:max==='unbounded'||parseInt(max||'1',10)>1,
+      description:docMatch?docMatch.trim():'',
+      length:maxLen,
+      direction:dirFromStack()
+    });
+  }
+  function markNearestElementAncestor(stack){
+    for(let i=stack.length-1;i>=0;i--){
+      if(stack[i].local==='element'){stack[i].hasElementChild=true;return;}
+    }
+  }
+  let m;
+  while((m=tagRe.exec(xsd))!==null){
+    const closing=m[1]==='/';
+    const tagName=m[2];
+    const local=localName(tagName);
+    const selfClose=m[4]==='/';
+    if(closing){
+      // Pop until we find the matching open tag (tolerant of any stray/mismatched tags).
+      for(let i=stack.length-1;i>=0;i--){
+        if(stack[i].tagName===tagName){
+          const node=stack.splice(i)[0];
+          if((local==='element'||local==='attribute')&&!node.hasElementChild){
+            emit(local,node.attrs,xsd.slice(node.contentStart,m.index));
+          }
+          break;
+        }
+      }
+      continue;
+    }
+    const attrs=attrsToObj(m[3]);
+    if(selfClose){
+      if(local==='element'||local==='attribute')emit(local,attrs,'');
+      if(local==='element')markNearestElementAncestor(stack);
+      continue;
+    }
+    // Regular opening tag
+    if(local==='element')markNearestElementAncestor(stack);
+    stack.push({tagName,local,attrs,hasElementChild:false,contentStart:tagRe.lastIndex});
+  }
+  return fields;
+}
+function xsdToOapi(t){
+  if(!t)return'string';
+  if(/int|integer|long|short|byte/.test(t))return'integer';
+  if(/decimal|float|double/.test(t))return'number';
+  if(/boolean/.test(t))return'boolean';
+  return'string';
+}
+function xsdFormat(t){
+  if(/dateTime/.test(t))return'date-time';
+  if(/date$/.test(t))return'date';
+  if(/time$/.test(t))return'time';
+  if(/email/.test(t))return'email';
+  if(/uri|url/.test(t))return'uri';
+  return null;
+}
+
+// Real YAML field extractor
+// Real Swagger/OpenAPI parser — parses actual JSON or YAML content (no more static/regex guessing).
+// Returns: fields (unique field names anywhere in schemas/bodies), paths (real path keys),
+// fieldDirs (map fieldName -> 'TX'|'RX'|'BOTH' based on where it was found), and the raw parsed object.
+function parseYAML(raw){
+  if(!raw||!raw.trim())return{fields:[],paths:[],fieldDirs:{},spec:null,parseError:null};
+  let spec=null,parseError=null;
+  const trimmed=raw.trim();
+  try{
+    if(trimmed[0]==='{'||trimmed[0]==='['){
+      spec=JSON.parse(raw);
+    }else if(typeof jsyaml!=='undefined'){
+      spec=jsyaml.load(raw);
+    }else{
+      // js-yaml failed to load (e.g. offline) — last resort JSON attempt
+      spec=JSON.parse(raw);
+    }
+  }catch(err){
+    parseError=err.message;
+  }
+  const fields=new Set();
+  const fieldDirs={};
+  const paths=[];
+  function mark(name,dir){
+    fields.add(name);
+    const lc=name.toLowerCase();
+    if(!fieldDirs[lc])fieldDirs[lc]=dir;
+    else if(fieldDirs[lc]!==dir)fieldDirs[lc]='BOTH';
+  }
+  // Recursively walk any node; when we hit a "properties" object, its keys are real schema fields.
+  // `dir` tracks whether we are currently inside a request-side or response-side branch.
+  function walk(node,dir){
+    if(!node||typeof node!=='object')return;
+    if(Array.isArray(node)){node.forEach(n=>walk(n,dir));return;}
+    Object.entries(node).forEach(([key,val])=>{
+      let nextDir=dir;
+      if(/^requestbody$/i.test(key))nextDir='TX';
+      else if(/^responses$/i.test(key))nextDir='RX';
+      if(key==='properties'&&val&&typeof val==='object'){
+        Object.keys(val).forEach(fname=>mark(fname,dir||'TX'));
+      }
+      walk(val,nextDir);
+    });
+  }
+  if(spec&&!parseError){
+    if(spec.paths&&typeof spec.paths==='object')paths.push(...Object.keys(spec.paths));
+    walk(spec,null);
+  }else{
+    // Fallback: spec failed to parse (malformed file) — degrade gracefully with the old
+    // indentation-based heuristic so the tool still returns *something* instead of nothing.
+    const pr=/^\s{2,4}(\/[\w\/{}_\-.*]+):/gm;let m;
+    while((m=pr.exec(raw))!==null)paths.push(m[1]);
+    const pr2=/^[ \t]*(["']?)([\w][\w_\-]*)\1\s*:\s*\n[ \t]+(?:type|\$ref)\s*:/gm;
+    while((m=pr2.exec(raw))!==null)mark(m[2],'TX');
+  }
+  return{fields:[...fields],paths:[...new Set(paths)],fieldDirs,spec,parseError};
+}
+
+async function runSw(){
+  const xsdRaw=document.getElementById('xsd-ct').value.trim()||ST.xsd;
+  const yamlRaw=document.getElementById('yaml-ct').value.trim()||ST.yaml;
+  if(!xsdRaw&&!yamlRaw){toast('Upload or paste at least one file','warn');return;}
+  const btn=document.getElementById('sw-btn');
+  btn.disabled=true;
+  btn.innerHTML=`<div class="ld" style="color:#0d0720"><div class="ldd"></div><div class="ldd"></div><div class="ldd"></div></div>`;
+  const steps=['sw-s1','sw-s2','sw-s3','sw-s4'];
+  steps.forEach((id,i)=>setTimeout(()=>{document.querySelectorAll('#psw .sb-it').forEach(e=>e.classList.remove('on'));document.getElementById(id)?.classList.add('on');},i*580));
+  await new Promise(r=>setTimeout(r,2500));
+
+  const xsdFields=parseXSD(xsdRaw);
+  ST.xsdFields=xsdFields;
+  ST.xsdFieldMap={};xsdFields.forEach(f=>ST.xsdFieldMap[f.name]=f);
+  ST.swFieldEdits=ST.swFieldEdits||{};
+  const yamlData=parseYAML(yamlRaw);
+  const issues=crossValidate(xsdFields,yamlData,xsdRaw,yamlRaw);
+  renderReport(issues);
+  // Generate fully corrected YAML
+  const correctedYaml=generateCorrectedYaml(xsdFields,yamlData,yamlRaw,xsdRaw);
+  document.getElementById('sw-out').innerHTML=`<button class="cbtn" onclick="navigator.clipboard.writeText(document.getElementById('sw-out').innerText.replace('Copy',''));toast('YAML copied')">Copy</button>${ehml(correctedYaml)}`;
+
+  btn.disabled=false;
+  btn.innerHTML='<i class="fa-solid fa-play"></i> Compare & Validate';
+  const e=issues.filter(i=>i.t==='err').length;
+  const w=issues.filter(i=>i.t==='warn').length;
+  toast(`Done — ${e} errors, ${w} warnings`);
+}
+
+function crossValidate(xsdFields,yamlData,xsdRaw,yamlRaw){
+  const issues=[];
+  const hasXsd=xsdRaw&&xsdRaw.length>10;
+  const hasYaml=yamlRaw&&yamlRaw.length>10;
+  if(!hasXsd)issues.push({t:'warn',title:'XSD not provided',sub:'Upload XSD for complete field cross-validation'});
+  if(!hasYaml)issues.push({t:'warn',title:'YAML not provided',sub:'Upload OpenAPI YAML for comparison'});
+  if(hasXsd){
+    const ns=xsdRaw.includes('xs:schema')||xsdRaw.includes('xsd:schema')||xsdRaw.includes('XMLSchema')||/<schema[\s>]/.test(xsdRaw);
+    if(ns)issues.push({t:'ok',title:'XSD namespace valid',sub:`Found ${xsdFields.length} elements/attributes defined`});
+    else issues.push({t:'warn',title:'Unusual XSD namespace',sub:'Expected xs: or xsd: prefix'});
+  }
+  if(hasYaml&&yamlData.parseError){
+    issues.push({t:'err',title:'YAML/JSON could not be parsed',sub:`Parser error: ${yamlData.parseError} — fix the syntax and re-validate for an accurate comparison.`});
+  }
+  if(hasYaml){
+    if(yamlRaw.includes('openapi: 3')||/"openapi"\s*:\s*"3/.test(yamlRaw))issues.push({t:'ok',title:'OpenAPI 3.x detected',sub:'Modern OpenAPI 3.0 format'});
+    else if(yamlRaw.includes('swagger:')||/"swagger"\s*:/.test(yamlRaw))issues.push({t:'warn',title:'Swagger 2.0 detected',sub:'Consider upgrading to OpenAPI 3.0 (not changed automatically — your file is only patched for missing fields)'});
+    else issues.push({t:'warn',title:'No openapi/swagger version field found',sub:'Not added automatically — only missing XSD fields are inserted, your file format is preserved as-is'});
+    if(!yamlRaw.includes('info:')&&!/"info"\s*:/.test(yamlRaw))issues.push({t:'warn',title:'No info block found',sub:'Not added automatically — informational only'});
+    else issues.push({t:'ok',title:'info block present',sub:'API metadata found'});
+    if(!yamlRaw.includes('paths:')&&!/"paths"\s*:/.test(yamlRaw))issues.push({t:'warn',title:'No paths block found',sub:'Informational only — not modified'});
+    else issues.push({t:'ok',title:'paths block found',sub:`${yamlData.paths.length} endpoint(s) detected`});
+    if(!yamlRaw.includes('components:')&&!/"components"\s*:/.test(yamlRaw))issues.push({t:'warn',title:'No components/schemas section found',sub:'Missing fields could not be merged into a properties block — they will be appended at the end instead'});
+    if(!yamlRaw.includes('securitySchemes')&&!/"securitySchemes"\s*:/.test(yamlRaw))issues.push({t:'warn',title:'No security schemes defined',sub:'Informational only — not added automatically'});
+  }
+  if(hasXsd&&hasYaml&&xsdFields.length>0){
+    const ySet=new Set(yamlData.fields.map(f=>f.toLowerCase()));
+    const missing=xsdFields.filter(f=>!ySet.has(f.name.toLowerCase()));
+    const present=xsdFields.filter(f=>ySet.has(f.name.toLowerCase()));
+    if(present.length){
+      const mismatched=present.filter(f=>{
+        const found=yamlData.fieldDirs[f.name.toLowerCase()];
+        return found&&found!=='BOTH'&&f.direction&&found!==f.direction;
+      });
+      issues.push({t:'ok',title:`${present.length} XSD field(s) already in YAML`,sub:present.slice(0,6).map(f=>f.name).join(', ')+(present.length>6?` +${present.length-6} more`:'')});
+      if(mismatched.length)issues.push({t:'warn',title:`${mismatched.length} field(s) found on the wrong side (TX/RX mismatch)`,sub:mismatched.map(f=>`${f.name} — XSD says ${f.direction}`).join(', ')});
+    }
+    if(missing.length){
+      issues.push({t:'err',title:`${missing.length} XSD field(s) MISSING from YAML — click a field below to update it`,sub:'',missingFields:missing});
+    } else{
+      issues.push({t:'ok',title:'All XSD fields present in YAML',sub:'No missing fields detected'});
+    }
+    const xSet=new Set(xsdFields.map(f=>f.name.toLowerCase()));
+    const extra=yamlData.fields.filter(f=>!xSet.has(f.toLowerCase()));
+    if(extra.length)issues.push({t:'warn',title:`${extra.length} YAML field(s) not in XSD`,sub:extra.slice(0,5).join(', ')+(extra.length>5?` +${extra.length-5} more`:'')});
+  }
+  return issues;
+}
+
+function fieldToPropObj(f){
+  const o={type:f.isArray?'array':f.oapiType};
+  if(f.isArray)o.items={type:f.oapiType};
+  if(f.format)o.format=f.format;
+  if(f.length)o.maxLength=isNaN(+f.length)?f.length:+f.length;
+  if(f.description)o.description=f.description;
+  return o;
+}
+function yamlPropLines(f,indent){
+  const lines=[`${indent}${f.name}:`,`${indent}  type: ${f.isArray?'array':f.oapiType}`];
+  if(f.isArray)lines.push(`${indent}  items:`,`${indent}    type: ${f.oapiType}`);
+  if(f.format)lines.push(`${indent}  format: ${f.format}`);
+  if(f.length)lines.push(`${indent}  maxLength: ${f.length}`);
+  if(f.description)lines.push(`${indent}  description: ${JSON.stringify(f.description)}`);
+  return lines.join('\n');
+}
+function detectSpecFormat(raw){
+  const t=raw.trim();
+  return(t[0]==='{'||t[0]==='[')?'json':'yaml';
+}
+// Nearest requestBody/responses keyword before `pos`, to know if a "properties" block
+// belongs to the request (TX) side or the response (RX) side.
+function specDirectionAt(raw,pos){
+  const head=raw.slice(0,pos);
+  const reqIdx=Math.max(head.lastIndexOf('requestBody'),head.lastIndexOf('"requestBody"'));
+  const respIdx=Math.max(head.lastIndexOf('responses'),head.lastIndexOf('"responses"'));
+  if(respIdx>reqIdx)return'RX';
+  if(reqIdx>-1)return'TX';
+  return'TX';
+}
+// Find every "properties" block in the RAW, un-reparsed text (works for both YAML and JSON),
+// so we can splice new sibling keys in without re-serializing/reformatting the rest of the file.
+function findPropertyBlocks(raw,fmt){
+  const blocks=[];
+  if(fmt==='yaml'){
+    // Match the WHOLE line (including its \r\n or \n) so CRLF (Windows) files work too.
+    const re=/^([ \t]*)properties:[ \t]*\r?\n/gm;
+    let m;
+    while((m=re.exec(raw))!==null){
+      const insertAt=re.lastIndex; // right at the start of the next line
+      const rest=raw.slice(insertAt);
+      const childMatch=rest.match(/^([ \t]+)\S/);
+      const childIndent=childMatch?childMatch[1]:m[1]+'  ';
+      blocks.push({insertAt,indent:childIndent,dir:specDirectionAt(raw,m.index)});
+    }
+  }else{
+    const re=/"properties"\s*:\s*\{/g;
+    let m;
+    while((m=re.exec(raw))!==null){
+      const insertAt=m.index+m[0].length;
+      const lineStart=raw.lastIndexOf('\n',m.index)+1;
+      const lineIndent=(raw.slice(lineStart,m.index).match(/^[ \t]*/)||[''])[0];
+      const afterWs=raw.slice(insertAt).match(/^\s*/)[0];
+      const isEmpty=raw[insertAt+afterWs.length]==='}';
+      blocks.push({insertAt,indent:lineIndent+'  ',dir:specDirectionAt(raw,m.index),isEmpty});
+    }
+  }
+  return blocks;
+}
+
+// Patches ONLY the missing XSD fields into the user's own YAML/JSON, exactly as they
+// uploaded it — same format, same indentation, same everything else. Nothing is
+// regenerated from scratch and nothing else is rewritten or hardcoded.
+function generateCorrectedYaml(xsdFields,yamlData,existingYaml,xsdRaw){
+  const addMissing=document.getElementById('sw-addmissing')?.checked!==false;
+
+  function effField(f){
+    const e=ST.swFieldEdits&&ST.swFieldEdits[f.name];
+    return e?{...f,...e}:f;
+  }
+
+  if(!existingYaml||!existingYaml.trim()){
+    return '# No swagger (YAML/JSON) file was provided.\n# Upload or paste your existing file — only the missing XSD fields will be\n# inserted into it, in its own original format. Nothing is generated from scratch.';
+  }
+  if(!xsdFields.length||!addMissing){
+    return existingYaml; // nothing to compare against / auto-update disabled — return untouched
+  }
+
+  const ySet=new Set(yamlData.fields.map(f=>f.toLowerCase()));
+  const missing=xsdFields.filter(f=>!ySet.has(f.name.toLowerCase()));
+  if(!missing.length)return existingYaml; // already in sync — return exactly as given, unchanged
+
+  const fmt=detectSpecFormat(existingYaml);
+  const blocks=findPropertyBlocks(existingYaml,fmt);
+
+  if(!blocks.length){
+    // No properties: / "properties": block exists anywhere to merge into —
+    // append a clearly-marked section rather than guessing at structure.
+    const note=fmt==='json'
+      ?'\n\n/* === MISSING FIELDS FROM XSD — no "properties" object found to merge into === */\n'+
+        JSON.stringify(Object.fromEntries(missing.map(f0=>{const f=effField(f0);return[f.name,fieldToPropObj(f)];})),null,2)
+      :'\n\n# === MISSING FIELDS FROM XSD — no "properties:" block found to merge into ===\n'+
+        missing.map(f0=>yamlPropLines(effField(f0),'  ')).join('\n');
+    return existingYaml+note;
+  }
+
+  // Route each missing field to the properties block matching its XSD direction (TX/RX);
+  // fall back to the first block found if there's no direction-matching block.
+  const txBlocks=blocks.filter(b=>b.dir==='TX');
+  const rxBlocks=blocks.filter(b=>b.dir==='RX');
+  const byInsertAt=new Map();
+  missing.forEach(f0=>{
+    const f=effField(f0);
+    const target=(f.direction==='RX'?rxBlocks[0]:txBlocks[0])||blocks[0];
+    if(!byInsertAt.has(target.insertAt))byInsertAt.set(target.insertAt,{blk:target,fields:[]});
+    byInsertAt.get(target.insertAt).fields.push(f);
+  });
+
+  // Apply insertions back-to-front so earlier offsets stay valid after each splice.
+  let out=existingYaml;
+  const inserts=[...byInsertAt.values()].sort((a,b)=>b.blk.insertAt-a.blk.insertAt);
+  inserts.forEach(({blk,fields})=>{
+    let chunk;
+    if(fmt==='json'){
+      const body=fields.map(f=>{
+        const objStr=JSON.stringify(fieldToPropObj(f),null,2).split('\n').join('\n'+blk.indent);
+        return `${blk.indent}"${f.name}": ${objStr}`;
+      }).join(',\n');
+      chunk='\n'+body+(blk.isEmpty?'':',');
+    }else{
+      chunk=fields.map(f=>yamlPropLines(f,blk.indent)).join('\n')+'\n';
+    }
+    out=out.slice(0,blk.insertAt)+chunk+out.slice(blk.insertAt);
+  });
+  return out;
+}
+function fieldChipHtml(f){
+  const edited=ST.swFieldEdits&&ST.swFieldEdits[f.name];
+  return `<span class="fld-chip${edited?' resolved':''}" onclick="openFieldEditor('${f.name.replace(/'/g,"\\'")}')" title="Click to update this field">
+    <i class="fa-solid ${edited?'fa-check':'fa-pen'}"></i>${esc(f.name)}${edited?` (${edited.direction}, ${edited.cardinality})`:''}
+  </span>`;
+}
+function openFieldEditor(name){
+  const f=(ST.swFieldEdits&&ST.swFieldEdits[name])||ST.xsdFieldMap[name];
+  if(!f){toast('Field not found','warn');return;}
+  document.querySelectorAll('.fld-editor').forEach(e=>e.remove());
+  const host=document.getElementById('fld-chip-'+cssSafe(name));
+  if(!host)return;
+  const div=document.createElement('div');
+  div.className='fld-editor';
+  div.id='fld-editor-active';
+  div.innerHTML=`
+    <div class="fe-title"><i class="fa-solid fa-pen-to-square" style="color:var(--purple)"></i>Update field: <span style="color:var(--purple);font-family:var(--fm)">${esc(name)}</span></div>
+    <div class="fe-row">
+      <div><div class="fe-lbl">Location (TX = Request / RX = Response)</div>
+        <select id="fe-dir">
+          <option value="TX" ${f.direction==='TX'?'selected':''}>TX — Request</option>
+          <option value="RX" ${f.direction==='RX'?'selected':''}>RX — Response</option>
+        </select>
+      </div>
+      <div><div class="fe-lbl">Required (XSD minOccurs,maxOccurs)</div>
+        <select id="fe-req">
+          <option value="1,1" ${(f.cardinality==='1,1')?'selected':''}>1,1 — Required</option>
+          <option value="0,1" ${(f.cardinality==='0,1'||!f.cardinality)?'selected':''}>0,1 — Optional</option>
+        </select>
+      </div>
+    </div>
+    <div class="fe-row">
+      <div><div class="fe-lbl">Length</div><input id="fe-len" type="text" value="${esc(f.length||'')}" placeholder="e.g. 50"/></div>
+      <div><div class="fe-lbl">Data type</div><input id="fe-type" type="text" value="${esc(f.oapiType||'string')}" placeholder="string / integer / number / boolean"/></div>
+    </div>
+    <div class="fe-row" style="grid-template-columns:1fr">
+      <div><div class="fe-lbl">Description</div><textarea id="fe-desc" placeholder="Describe this field…">${esc(f.description||'')}</textarea></div>
+    </div>
+    <div class="fe-actions">
+      <button class="btn btn-g btn-sm" onclick="closeFieldEditor()">Cancel</button>
+      <button class="btn btn-pu btn-sm" onclick="saveFieldEdit('${name.replace(/'/g,"\\'")}')"><i class="fa-solid fa-check"></i> Save & Add to Spec</button>
+    </div>`;
+  host.insertAdjacentElement('afterend',div);
+  div.scrollIntoView({block:'nearest',behavior:'smooth'});
+}
+function closeFieldEditor(){document.getElementById('fld-editor-active')?.remove();}
+function cssSafe(s){return s.replace(/[^a-zA-Z0-9_-]/g,'_');}
+function saveFieldEdit(name){
+  const base=ST.xsdFieldMap[name]||{name};
+  const edited={
+    ...base,
+    direction:$v('fe-dir'),
+    cardinality:$v('fe-req'),
+    required:$v('fe-req')==='1,1',
+    length:$v('fe-len'),
+    oapiType:$v('fe-type')||'string',
+    description:$v('fe-desc')
+  };
+  ST.swFieldEdits=ST.swFieldEdits||{};
+  ST.swFieldEdits[name]=edited;
+  closeFieldEditor();
+  // re-render chips to show resolved state
+  document.querySelectorAll('.fld-chip').forEach(ch=>{});
+  const chipHost=document.getElementById('fld-chip-'+cssSafe(name));
+  if(chipHost)chipHost.outerHTML=`<span id="fld-chip-${cssSafe(name)}">${fieldChipHtml(edited)}</span>`;
+  // regenerate corrected YAML with the new metadata applied
+  const xsdRaw=document.getElementById('xsd-ct').value.trim()||ST.xsd;
+  const yamlRaw=document.getElementById('yaml-ct').value.trim()||ST.yaml;
+  const yamlData=parseYAML(yamlRaw);
+  const correctedYaml=generateCorrectedYaml(ST.xsdFields||[],yamlData,yamlRaw,xsdRaw);
+  document.getElementById('sw-out').innerHTML=`<button class="cbtn" onclick="navigator.clipboard.writeText(document.getElementById('sw-out').innerText.replace('Copy',''));toast('YAML copied')">Copy</button>${ehml(correctedYaml)}`;
+  toast(`Updated "${name}" — ${edited.direction}, ${edited.cardinality}, length ${edited.length||'n/a'}`);
+}
+function renderReport(issues){
+  const e=issues.filter(i=>i.t==='err').length,w=issues.filter(i=>i.t==='warn').length,o=issues.filter(i=>i.t==='ok').length;
+  document.getElementById('sw-sum').innerHTML=`<span style="color:var(--red)">${e} err</span> · <span style="color:var(--yellow)">${w} warn</span> · <span style="color:var(--green)">${o} ok</span>`;
+  document.getElementById('sw-report').innerHTML=issues.map(i=>{
+    const chips=i.missingFields?i.missingFields.map(f=>`<span id="fld-chip-${cssSafe(f.name)}">${fieldChipHtml(f)}</span>`).join(''):'';
+    return `<div class="vi"><div class="vi-ic vi-${i.t}">${i.t==='ok'?'✓':i.t==='warn'?'!':'✕'}</div><div class="vi-b"><div class="vi-t">${i.title}</div><div class="vi-s">${i.sub}</div>${chips?`<div style="margin-top:6px;line-height:2.1">${chips}</div>`:''}</div></div>`;
+  }).join('');
+}
+function ehml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function dlYaml(){const c=document.getElementById('sw-out').innerText;const a=document.createElement('a');a.href='data:text/yaml,'+encodeURIComponent(c);a.download='corrected-swagger.yaml';a.click();toast('YAML downloaded');}
+
+// ══════════ TFS CI/CD ══════════
 function ciDov(e){e.preventDefault();document.getElementById('ci-uz').classList.add('drag');}
 function ciDlv(){document.getElementById('ci-uz').classList.remove('drag');}
 function ciDop(e){e.preventDefault();ciDlv();const f=e.dataTransfer?.files[0];if(f)ciSetFile(f);}
@@ -210,166 +2184,54 @@ function renderCiHistory(){
   }).join('');
 }
 
+// ══════════ AUTH (EIS DevSuite — by ANKIT) ══════════
+const EIS_CREDENTIALS={username:'ankit.eis',password:'EIS@Ankit2026'};
+function doLogin(){
+  const u=document.getElementById('login-user').value.trim();
+  const p=document.getElementById('login-pass').value;
+  const err=document.getElementById('login-err');
+  if(u===EIS_CREDENTIALS.username&&p===EIS_CREDENTIALS.password){
+    err.classList.remove('on');
+    sessionStorage.setItem('eisDevSuiteAuth','1');
+    document.getElementById('login-screen').classList.add('off');
+    document.getElementById('app').style.display='';
+  }else{
+    err.classList.add('on');
+    document.getElementById('login-pass').value='';
+    document.getElementById('login-pass').focus();
+  }
+}
+function doLogout(){
+  sessionStorage.removeItem('eisDevSuiteAuth');
+  document.getElementById('app').style.display='none';
+  document.getElementById('login-screen').classList.remove('off');
+  document.getElementById('login-user').value='';
+  document.getElementById('login-pass').value='';
+  document.getElementById('login-err').classList.remove('on');
+  document.getElementById('login-user').focus();
+}
+(function initAuth(){
+  if(sessionStorage.getItem('eisDevSuiteAuth')==='1'){
+    document.getElementById('login-screen').classList.add('off');
+    document.getElementById('app').style.display='';
+  }else{
+    document.getElementById('login-user').focus();
+  }
+})();
 
+// ══════════ INIT ══════════
+styleM();
+addP('pt');
+addP('ht','Content-Type','application/json','',true);
+updCnt();
+renderHist();
+renderSavedReqs();
+renderCiHistory();
+updateRouteDisplay();
+document.getElementById('req-sship').addEventListener('input',updateRouteDisplay);
+document.getElementById('req-url').addEventListener('input',updateRouteDisplay);
+document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter'&&ST.page==='req')sendReq();});
+</script>
+</body>
+</html>
 
-
-html:
-<div class="page" id="pci">
-  <div class="ws">
-    <div class="wsb">
-      <div class="sb-lbl">Pipeline Steps</div>
-      <div class="sb-it on" id="ci-s1"><i class="fa-solid fa-file-zipper"></i>1. Upload API Zip</div>
-      <div class="sb-it" id="ci-s2"><i class="fa-solid fa-sliders"></i>2. Configure Pipeline</div>
-      <div class="sb-it" id="ci-s3"><i class="fa-solid fa-code-branch"></i>3. Branch & Commit</div>
-      <div class="sb-it" id="ci-s4"><i class="fa-solid fa-upload"></i>4. TFS Check-In</div>
-      <div class="sb-it" id="ci-s5"><i class="fa-solid fa-circle-check"></i>5. Verify</div>
-      <div class="sb-lbl">TFS Server</div>
-      <div class="sb-it" style="cursor:default"><i class="fa-solid fa-server" style="color:var(--sky)"></i><span style="font-family:var(--fm);font-size:10px">10.177.44.29</span></div>
-      <div class="sb-lbl">Recent Check-ins</div>
-      <div id="ci-history" style="font-size:10.5px"></div>
-    </div>
-
-    <div class="wbm">
-      <div class="wtb">
-        <i class="fa-solid fa-code-branch" style="color:var(--sky);font-size:14px"></i>
-        <span style="font-family:var(--fd);font-size:13px;font-weight:600">TFS Code Check-In via CI/CD Pipeline</span>
-        <div class="t-space"></div>
-        <button class="btn btn-g btn-sm" onclick="ciReset()"><i class="fa-solid fa-rotate-left"></i> Reset</button>
-        <button class="btn btn-sky" id="ci-btn" onclick="ciSubmit()">
-          <i class="fa-solid fa-upload"></i> Check-In to TFS
-        </button>
-      </div>
-
-      <div class="wbd" style="padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:14px">
-
-        <!-- Left column: Upload + Config -->
-        <div style="display:flex;flex-direction:column;gap:14px">
-
-          <!-- ZIP Upload -->
-          <div class="panel">
-            <div class="pt"><i class="fa-solid fa-file-zipper" style="color:var(--sky)"></i>API Package (ZIP)</div>
-            <div class="tfs-uz" id="ci-uz" ondragover="ciDov(event)" ondragleave="ciDlv()" ondrop="ciDop(event)">
-              <input type="file" accept=".zip,.bar,.tar.gz" onchange="ciFileSelect(this)"/>
-              <i class="fa-solid fa-cloud-arrow-up"></i>
-              <div style="font-size:13px;color:var(--t2);margin-bottom:4px">Drop your API ZIP / BAR file here</div>
-              <div style="font-size:10.5px;color:var(--t3)">.zip · .bar · .tar.gz accepted</div>
-            </div>
-            <div class="pgbar" style="margin-top:8px"><div class="pgfill sky" id="ci-pf"></div></div>
-            <div class="tfs-file-info" id="ci-finfo">
-              <div class="tfs-fname" id="ci-fname"></div>
-              <div class="tfs-fsize" id="ci-fsize"></div>
-            </div>
-          </div>
-
-          <!-- TFS Connection -->
-          <div class="panel">
-            <div class="pt"><i class="fa-solid fa-server" style="color:var(--sky)"></i>TFS Server Connection</div>
-            <div class="fg"><div class="fl"><i class="fa-solid fa-globe"></i>TFS Server URL</div><input class="fi" id="ci-tfsurl" value="http://10.177.44.29:8080/tfs" placeholder="http://tfs-server:8080/tfs"/></div>
-            <div class="fg"><div class="fl"><i class="fa-solid fa-server"></i>Check-in Backend Service URL <span style="color:var(--red)">*</span></div><input class="fi" id="ci-backend" value="http://localhost:5000/api/tfs-checkin" placeholder="http://your-backend-host:5000/api/tfs-checkin"/>
-              <div style="font-size:9.5px;color:var(--t3);margin-top:4px;line-height:1.5"><i class="fa-solid fa-circle-info"></i> You upload the ZIP here in the UI. This backend service (Node.js, included in the companion code) unzips it and runs <code style="color:var(--teal);font-family:var(--fm)">git init/clone → add → commit → push</code> for you — no manual cmd needed.</div>
-            </div>
-            <div class="r2">
-              <div class="fg"><div class="fl"><i class="fa-solid fa-building"></i>Collection</div><input class="fi" id="ci-collection" value="DefaultCollection" placeholder="DefaultCollection"/></div>
-              <div class="fg"><div class="fl"><i class="fa-solid fa-diagram-project"></i>Project</div><input class="fi" id="ci-project" value="ACE_Services" placeholder="ProjectName"/></div>
-            </div>
-            <div class="r2">
-              <div class="fg"><div class="fl"><i class="fa-solid fa-user"></i>TFS Username</div><input class="fi" id="ci-user" placeholder="domain\username"/></div>
-              <div class="fg"><div class="fl"><i class="fa-solid fa-key"></i>Password / PAT</div><input class="fi" type="password" id="ci-pass" placeholder="Personal Access Token"/></div>
-            </div>
-          </div>
-
-          <!-- Clone Path -->
-          <div class="panel">
-            <div class="pt"><i class="fa-solid fa-folder-tree" style="color:var(--sky)"></i>Repository & Clone</div>
-            <div class="fg"><div class="fl"><i class="fa-solid fa-code-fork"></i>Repository Name <span style="color:var(--red)">*</span></div><input class="fi" id="ci-reponame" placeholder="e.g. ACE_Services.git / $/ACE_Services"/></div>
-            <div class="fg"><div class="fl"><i class="fa-solid fa-folder-open"></i>Clone / Workspace Path</div><input class="fi" id="ci-clonepath" placeholder="$/ProjectName/Branch/Path  or  C:\workspace\repo"/></div>
-            <div class="fg" style="margin-bottom:0"><div class="fl"><i class="fa-solid fa-copy"></i>Target Directory in TFS</div><input class="fi" id="ci-targetdir" placeholder="$/ACE_Services/Dev/APIs/MyFeature"/></div>
-          </div>
-        </div>
-
-        <!-- Right column: Branch + Commit + Log -->
-        <div style="display:flex;flex-direction:column;gap:14px">
-
-          <!-- Branch & Feature -->
-          <div class="panel">
-            <div class="pt"><i class="fa-solid fa-code-branch" style="color:var(--sky)"></i>Branch & Feature Details</div>
-            <div class="r2">
-              <div class="fg"><div class="fl"><i class="fa-solid fa-code-branch"></i>Branch Name</div><input class="fi" id="ci-branch" placeholder="e.g. dev, feature/JIRA-123, release/v2.1"/></div>
-              <div class="fg"><div class="fl"><i class="fa-solid fa-tag"></i>Feature Name</div><input class="fi" id="ci-feature" placeholder="e.g. DepositAccountShort"/></div>
-            </div>
-            <div class="fg"><div class="fl"><i class="fa-solid fa-ticket"></i>Work Item / Ticket ID</div><input class="fi" id="ci-workitem" placeholder="e.g. JIRA-4521 or TFS #1234"/></div>
-            <div class="fg"><div class="fl"><i class="fa-solid fa-user-tie"></i>Author / Developer</div><input class="fi" id="ci-author" placeholder="John Doe"/></div>
-          </div>
-
-          <!-- Commit Message -->
-          <div class="panel">
-            <div class="pt"><i class="fa-solid fa-message" style="color:var(--sky)"></i>Commit Message <span style="font-size:10px;color:var(--t3);font-weight:400">(-m "")</span></div>
-            <div class="fg" style="margin-bottom:8px">
-              <div class="fl">Message</div>
-              <textarea class="fta" id="ci-msg" style="min-height:80px" placeholder="[JIRA-4521] Add DepositAccountShort API — implements short deposit account query with EIS DMZ routing and ACE SQL generation"></textarea>
-            </div>
-            <div style="display:flex;gap:6px;flex-wrap:wrap" id="ci-msg-chips">
-              <button class="btn btn-g btn-sm" onclick="appendMsg('[Feature] ')"><i class="fa-solid fa-plus"></i>[Feature]</button>
-              <button class="btn btn-g btn-sm" onclick="appendMsg('[Bugfix] ')"><i class="fa-solid fa-bug"></i>[Bugfix]</button>
-              <button class="btn btn-g btn-sm" onclick="appendMsg('[Hotfix] ')"><i class="fa-solid fa-fire"></i>[Hotfix]</button>
-              <button class="btn btn-g btn-sm" onclick="appendMsg('[Refactor] ')"><i class="fa-solid fa-arrow-rotate-right"></i>[Refactor]</button>
-              <button class="btn btn-g btn-sm" onclick="appendMsg('[Config] ')"><i class="fa-solid fa-gear"></i>[Config]</button>
-              <button class="btn btn-g btn-sm" onclick="ciAutoMsg()"><i class="fa-solid fa-wand-magic-sparkles"></i>Auto-fill</button>
-            </div>
-          </div>
-
-          <!-- Pipeline Options -->
-          <div class="panel">
-            <div class="pt"><i class="fa-solid fa-sliders" style="color:var(--sky)"></i>Pipeline Options</div>
-            <div class="r2">
-              <div class="fg"><div class="fl"><i class="fa-solid fa-code-merge"></i>Check-in Type</div>
-                <select class="fs" id="ci-type">
-                  <option value="checkin">Direct Check-In</option>
-                  <option value="shelveset">Shelveset (Review)</option>
-                  <option value="gated">Gated Check-In</option>
-                </select>
-              </div>
-              <div class="fg"><div class="fl"><i class="fa-solid fa-robot"></i>CI Trigger</div>
-                <select class="fs" id="ci-trigger">
-                  <option value="auto">Auto Build on Check-in</option>
-                  <option value="manual">Manual Trigger</option>
-                  <option value="none">No Build</option>
-                </select>
-              </div>
-            </div>
-            <div class="r2">
-              <div class="fg"><div class="fl"><i class="fa-solid fa-rotate"></i>Overwrite Policy</div>
-                <select class="fs" id="ci-overwrite">
-                  <option value="merge">Merge</option>
-                  <option value="replace">Replace All</option>
-                  <option value="skip">Skip Existing</option>
-                </select>
-              </div>
-              <div class="fg"><div class="fl"><i class="fa-solid fa-boxes-stacked"></i>Build Config</div>
-                <select class="fs" id="ci-buildcfg">
-                  <option value="Debug">Debug</option>
-                  <option value="Release">Release</option>
-                  <option value="QA">QA</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          <!-- Pipeline Progress -->
-          <div class="panel" id="ci-progress-panel" style="display:none">
-            <div class="pt"><i class="fa-solid fa-gauge-high" style="color:var(--sky)"></i>Pipeline Progress</div>
-            <div class="progress-track"><div class="progress-fill-sky" id="ci-progress"></div></div>
-            <div style="margin-top:10px" id="ci-steps-list"></div>
-            <div class="ci-log" id="ci-log"></div>
-          </div>
-        </div>
-
-      </div>
-    </div>
-  </div>
-</div>
-
-</div><!-- /content -->
-</div><!-- /app -->
-
-<div id="toast"><span id="ti"></span><span id="tm"></span></div>
