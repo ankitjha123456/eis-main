@@ -209,3 +209,167 @@ function renderCiHistory(){
     </div>`;
   }).join('');
 }
+
+
+
+
+html:
+<div class="page" id="pci">
+  <div class="ws">
+    <div class="wsb">
+      <div class="sb-lbl">Pipeline Steps</div>
+      <div class="sb-it on" id="ci-s1"><i class="fa-solid fa-file-zipper"></i>1. Upload API Zip</div>
+      <div class="sb-it" id="ci-s2"><i class="fa-solid fa-sliders"></i>2. Configure Pipeline</div>
+      <div class="sb-it" id="ci-s3"><i class="fa-solid fa-code-branch"></i>3. Branch & Commit</div>
+      <div class="sb-it" id="ci-s4"><i class="fa-solid fa-upload"></i>4. TFS Check-In</div>
+      <div class="sb-it" id="ci-s5"><i class="fa-solid fa-circle-check"></i>5. Verify</div>
+      <div class="sb-lbl">TFS Server</div>
+      <div class="sb-it" style="cursor:default"><i class="fa-solid fa-server" style="color:var(--sky)"></i><span style="font-family:var(--fm);font-size:10px">10.177.44.29</span></div>
+      <div class="sb-lbl">Recent Check-ins</div>
+      <div id="ci-history" style="font-size:10.5px"></div>
+    </div>
+
+    <div class="wbm">
+      <div class="wtb">
+        <i class="fa-solid fa-code-branch" style="color:var(--sky);font-size:14px"></i>
+        <span style="font-family:var(--fd);font-size:13px;font-weight:600">TFS Code Check-In via CI/CD Pipeline</span>
+        <div class="t-space"></div>
+        <button class="btn btn-g btn-sm" onclick="ciReset()"><i class="fa-solid fa-rotate-left"></i> Reset</button>
+        <button class="btn btn-sky" id="ci-btn" onclick="ciSubmit()">
+          <i class="fa-solid fa-upload"></i> Check-In to TFS
+        </button>
+      </div>
+
+      <div class="wbd" style="padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:14px">
+
+        <!-- Left column: Upload + Config -->
+        <div style="display:flex;flex-direction:column;gap:14px">
+
+          <!-- ZIP Upload -->
+          <div class="panel">
+            <div class="pt"><i class="fa-solid fa-file-zipper" style="color:var(--sky)"></i>API Package (ZIP)</div>
+            <div class="tfs-uz" id="ci-uz" ondragover="ciDov(event)" ondragleave="ciDlv()" ondrop="ciDop(event)">
+              <input type="file" accept=".zip,.bar,.tar.gz" onchange="ciFileSelect(this)"/>
+              <i class="fa-solid fa-cloud-arrow-up"></i>
+              <div style="font-size:13px;color:var(--t2);margin-bottom:4px">Drop your API ZIP / BAR file here</div>
+              <div style="font-size:10.5px;color:var(--t3)">.zip · .bar · .tar.gz accepted</div>
+            </div>
+            <div class="pgbar" style="margin-top:8px"><div class="pgfill sky" id="ci-pf"></div></div>
+            <div class="tfs-file-info" id="ci-finfo">
+              <div class="tfs-fname" id="ci-fname"></div>
+              <div class="tfs-fsize" id="ci-fsize"></div>
+            </div>
+          </div>
+
+          <!-- TFS Connection -->
+          <div class="panel">
+            <div class="pt"><i class="fa-solid fa-server" style="color:var(--sky)"></i>TFS Server Connection</div>
+            <div class="fg"><div class="fl"><i class="fa-solid fa-globe"></i>TFS Server URL</div><input class="fi" id="ci-tfsurl" value="http://10.177.44.29:8080/tfs" placeholder="http://tfs-server:8080/tfs"/></div>
+            <div class="fg"><div class="fl"><i class="fa-solid fa-server"></i>Check-in Backend Service URL <span style="color:var(--red)">*</span></div><input class="fi" id="ci-backend" value="http://localhost:5000/api/tfs-checkin" placeholder="http://your-backend-host:5000/api/tfs-checkin"/>
+              <div style="font-size:9.5px;color:var(--t3);margin-top:4px;line-height:1.5"><i class="fa-solid fa-circle-info"></i> You upload the ZIP here in the UI. This backend service (Node.js, included in the companion code) unzips it and runs <code style="color:var(--teal);font-family:var(--fm)">git init/clone → add → commit → push</code> for you — no manual cmd needed.</div>
+            </div>
+            <div class="r2">
+              <div class="fg"><div class="fl"><i class="fa-solid fa-building"></i>Collection</div><input class="fi" id="ci-collection" value="DefaultCollection" placeholder="DefaultCollection"/></div>
+              <div class="fg"><div class="fl"><i class="fa-solid fa-diagram-project"></i>Project</div><input class="fi" id="ci-project" value="ACE_Services" placeholder="ProjectName"/></div>
+            </div>
+            <div class="r2">
+              <div class="fg"><div class="fl"><i class="fa-solid fa-user"></i>TFS Username</div><input class="fi" id="ci-user" placeholder="domain\username"/></div>
+              <div class="fg"><div class="fl"><i class="fa-solid fa-key"></i>Password / PAT</div><input class="fi" type="password" id="ci-pass" placeholder="Personal Access Token"/></div>
+            </div>
+          </div>
+
+          <!-- Clone Path -->
+          <div class="panel">
+            <div class="pt"><i class="fa-solid fa-folder-tree" style="color:var(--sky)"></i>Repository & Clone</div>
+            <div class="fg"><div class="fl"><i class="fa-solid fa-code-fork"></i>Repository Name <span style="color:var(--red)">*</span></div><input class="fi" id="ci-reponame" placeholder="e.g. ACE_Services.git / $/ACE_Services"/></div>
+            <div class="fg"><div class="fl"><i class="fa-solid fa-folder-open"></i>Clone / Workspace Path</div><input class="fi" id="ci-clonepath" placeholder="$/ProjectName/Branch/Path  or  C:\workspace\repo"/></div>
+            <div class="fg" style="margin-bottom:0"><div class="fl"><i class="fa-solid fa-copy"></i>Target Directory in TFS</div><input class="fi" id="ci-targetdir" placeholder="$/ACE_Services/Dev/APIs/MyFeature"/></div>
+          </div>
+        </div>
+
+        <!-- Right column: Branch + Commit + Log -->
+        <div style="display:flex;flex-direction:column;gap:14px">
+
+          <!-- Branch & Feature -->
+          <div class="panel">
+            <div class="pt"><i class="fa-solid fa-code-branch" style="color:var(--sky)"></i>Branch & Feature Details</div>
+            <div class="r2">
+              <div class="fg"><div class="fl"><i class="fa-solid fa-code-branch"></i>Branch Name</div><input class="fi" id="ci-branch" placeholder="e.g. dev, feature/JIRA-123, release/v2.1"/></div>
+              <div class="fg"><div class="fl"><i class="fa-solid fa-tag"></i>Feature Name</div><input class="fi" id="ci-feature" placeholder="e.g. DepositAccountShort"/></div>
+            </div>
+            <div class="fg"><div class="fl"><i class="fa-solid fa-ticket"></i>Work Item / Ticket ID</div><input class="fi" id="ci-workitem" placeholder="e.g. JIRA-4521 or TFS #1234"/></div>
+            <div class="fg"><div class="fl"><i class="fa-solid fa-user-tie"></i>Author / Developer</div><input class="fi" id="ci-author" placeholder="John Doe"/></div>
+          </div>
+
+          <!-- Commit Message -->
+          <div class="panel">
+            <div class="pt"><i class="fa-solid fa-message" style="color:var(--sky)"></i>Commit Message <span style="font-size:10px;color:var(--t3);font-weight:400">(-m "")</span></div>
+            <div class="fg" style="margin-bottom:8px">
+              <div class="fl">Message</div>
+              <textarea class="fta" id="ci-msg" style="min-height:80px" placeholder="[JIRA-4521] Add DepositAccountShort API — implements short deposit account query with EIS DMZ routing and ACE SQL generation"></textarea>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap" id="ci-msg-chips">
+              <button class="btn btn-g btn-sm" onclick="appendMsg('[Feature] ')"><i class="fa-solid fa-plus"></i>[Feature]</button>
+              <button class="btn btn-g btn-sm" onclick="appendMsg('[Bugfix] ')"><i class="fa-solid fa-bug"></i>[Bugfix]</button>
+              <button class="btn btn-g btn-sm" onclick="appendMsg('[Hotfix] ')"><i class="fa-solid fa-fire"></i>[Hotfix]</button>
+              <button class="btn btn-g btn-sm" onclick="appendMsg('[Refactor] ')"><i class="fa-solid fa-arrow-rotate-right"></i>[Refactor]</button>
+              <button class="btn btn-g btn-sm" onclick="appendMsg('[Config] ')"><i class="fa-solid fa-gear"></i>[Config]</button>
+              <button class="btn btn-g btn-sm" onclick="ciAutoMsg()"><i class="fa-solid fa-wand-magic-sparkles"></i>Auto-fill</button>
+            </div>
+          </div>
+
+          <!-- Pipeline Options -->
+          <div class="panel">
+            <div class="pt"><i class="fa-solid fa-sliders" style="color:var(--sky)"></i>Pipeline Options</div>
+            <div class="r2">
+              <div class="fg"><div class="fl"><i class="fa-solid fa-code-merge"></i>Check-in Type</div>
+                <select class="fs" id="ci-type">
+                  <option value="checkin">Direct Check-In</option>
+                  <option value="shelveset">Shelveset (Review)</option>
+                  <option value="gated">Gated Check-In</option>
+                </select>
+              </div>
+              <div class="fg"><div class="fl"><i class="fa-solid fa-robot"></i>CI Trigger</div>
+                <select class="fs" id="ci-trigger">
+                  <option value="auto">Auto Build on Check-in</option>
+                  <option value="manual">Manual Trigger</option>
+                  <option value="none">No Build</option>
+                </select>
+              </div>
+            </div>
+            <div class="r2">
+              <div class="fg"><div class="fl"><i class="fa-solid fa-rotate"></i>Overwrite Policy</div>
+                <select class="fs" id="ci-overwrite">
+                  <option value="merge">Merge</option>
+                  <option value="replace">Replace All</option>
+                  <option value="skip">Skip Existing</option>
+                </select>
+              </div>
+              <div class="fg"><div class="fl"><i class="fa-solid fa-boxes-stacked"></i>Build Config</div>
+                <select class="fs" id="ci-buildcfg">
+                  <option value="Debug">Debug</option>
+                  <option value="Release">Release</option>
+                  <option value="QA">QA</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Pipeline Progress -->
+          <div class="panel" id="ci-progress-panel" style="display:none">
+            <div class="pt"><i class="fa-solid fa-gauge-high" style="color:var(--sky)"></i>Pipeline Progress</div>
+            <div class="progress-track"><div class="progress-fill-sky" id="ci-progress"></div></div>
+            <div style="margin-top:10px" id="ci-steps-list"></div>
+            <div class="ci-log" id="ci-log"></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /content -->
+</div><!-- /app -->
+
+<div id="toast"><span id="ti"></span><span id="tm"></span></div>
