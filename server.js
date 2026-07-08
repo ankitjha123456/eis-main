@@ -1,526 +1,410 @@
-const express  = require("express");
-const { exec, spawn, execFile } = require("child_process");
-const cors     = require("cors");
-const path     = require("path");
-const fs = require('fs');
-const { randomUUID } = require('crypto');
-const app  = express();
-const PORT = 4423;
-const SSH_KEY = "/home/eisuser/.ssh/id_rsa";
-const SCP_USER = "eisuser";
-const REMOTE_DIR = "/tmp/";
-const SAVE_DIR = "/tmp/cert_uploads";
+request js
 
-const CERT_SAVE_DIR = "/tmp/cert_uploads";
 
-const ENV_RANGES = {
-  UAT: ["10.177.44.60","10.177.44.61","10.177.44.62","10.177.44.63",
-        "10.177.44.64","10.177.44.65","10.177.44.66","10.177.44.67"],
-  SIT: ["10.177.44.34","10.177.44.35","10.177.44.36","10.177.44.37",
-        "10.177.44.38","10.177.44.39","10.177.44.40","10.177.44.41"],
+
+
+
+
+// API Request Module
+const PRESETS = {
+  'get-health': { m: 'GET', u: 'http://10.177.44.29:4415/api/health', b: '' },
+  'get-users': { m: 'GET', u: 'http://10.177.44.29:4415/api/users', b: '' },
+  'post-user': { m: 'POST', u: 'http://10.177.44.29:4415/api/users', b: '{\n  "name": "John Doe",\n  "email": "john@example.com",\n  "role": "user"\n}' },
+  'put-user': { m: 'PUT', u: 'http://10.177.44.29:4415/api/users/1', b: '{\n  "name": "John Updated",\n  "status": "active"\n}' },
+  'del-user': { m: 'DELETE', u: 'http://10.177.44.29:4415/api/users/1', b: '' },
+  'post-ace': { m: 'POST', u: 'http://10.177.44.29:4415/api/depositAccShort/details/accounts', b: '{\n  "FETCH_FLAG": "Y",\n  "FIELD_NAME": "EIS_CONFIG",\n  "CACHE": "1800"\n}' },
+  'get-orders': { m: 'GET', u: 'http://10.177.44.29:4415/api/orders', b: '' },
+  'post-login': { m: 'POST', u: 'http://10.177.44.29:4415/auth/login', b: '{\n  "username": "admin",\n  "password": "secret"\n}' },
+  'post-refresh': { m: 'POST', u: 'http://10.177.44.29:4415/auth/refresh', b: '{\n  "refresh_token": "eyJhb..."\n}' },
 };
 
-const CERT_PATHS = {
-  RSAkeystore: "/opt/IBM/RSAKeystore",
-  Endpoint:    "/opt/IBM/EndPoint_Public",
-};
-
-const CERT_SSH_KEY  = "/home/eisuser/.ssh/id_rsa";
-const CERT_SCP_USER = "eisuser";
-
-// Path to check.sh — same folder as server.js
-const SCRIPT_PATH = path.join(__dirname, "check.sh");
-const SCRIPT_PATH1 = path.join(__dirname, "cache.sh");
-const DATA_FILE = path.join(__dirname, 'data.txt');
-
-app.use(cors());
-app.use(express.json());
-
-// Ensure cert upload dir exists
-if (!fs.existsSync(SAVE_DIR)) {
-  fs.mkdirSync(SAVE_DIR, { recursive: true });
+function loadReq(key, el) {
+  const p = PRESETS[key];
+  if (!p) return;
+  document.getElementById('req-method').value = p.m;
+  document.getElementById('req-url').value = p.u;
+  document.getElementById('body-ed').value = p.b;
+  styleM();
+  updateRouteDisplay();
+  document.querySelectorAll('.ci').forEach(c => c.classList.remove('on'));
+  el.classList.add('on');
 }
 
-// ── GET /health ───────────────────────────────────────────
-app.get("/health", (req, res) => {
-  res.json({
-    status: "ok",
-    main_server: "10.177.44.58",
-    script: SCRIPT_PATH,
-    time: new Date().toISOString(),
+function styleM() {
+  const s = document.getElementById('req-method');
+  const c = { GET: '#2ecc71', POST: '#fb923c', PUT: '#60a5fa', PATCH: '#a78bfa', DELETE: '#f87171', HEAD: '#94a3b8', OPTIONS: '#94a3b8' };
+  s.style.color = c[s.value] || '#e2e8f0';
+}
+
+function updateRouteDisplay() {
+  const ssh = document.getElementById('req-sship').value || '?';
+  const url = document.getElementById('req-url').value;
+  let target = '?';
+  try { const u = new URL(url); target = u.host; } catch (e) { target = url.replace(/^https?:\/\//, '').split('/')[0]; }
+  document.getElementById('route-display').textContent = `Client → ${ssh} (SSH) → ${target}`;
+  document.getElementById('route-hint').textContent = ssh;
+}
+
+function swRT(el, t) {
+  el.closest('.tabbar').querySelectorAll('.tabb').forEach(b => b.classList.remove('on'));
+  el.classList.add('on');
+  ['p', 'a', 'h', 'b', 's'].forEach(k => {
+    const c = document.getElementById('rt-' + k);
+    if (c) c.classList.toggle('on', k === t);
   });
-});
+}
 
-app.get('/cache', (req, res) => {
-    console.log(`[${new Date().toISOString()}] /cache called`);
-    exec(`bash ${SCRIPT_PATH1}`, (error, stdout, stderr) => {
-        if (error) {
-            console.error('Script error:', error.message);
-            return res.status(500).json({ status: 'ERROR', message: error.message });
-        }
-        try {
-            const result = JSON.parse(stdout.trim());
-            return res.status(200).json(result);
-        } catch (e) {
-            return res.status(500).json({ status: 'ERROR', message: 'Failed to parse script output', raw: stdout });
-        }
-    });
-});
+function swRespT(el, t) {
+  el.closest('.tabbar').querySelectorAll('.tabb').forEach(b => b.classList.remove('on'));
+  el.classList.add('on');
+  const m = { b: 'rr-b', h: 'rr-h', c: 'rr-c', t: 'rr-t' };
+  Object.values(m).forEach(id => { const e = document.getElementById(id); if (e) e.style.display = 'none'; });
+  document.getElementById(m[t]).style.display = '';
+}
 
-app.post("/api/validate", (req, res) => {
-    const { ip, brokerName, egName, apiName } = req.body;
-    if (!ip || !brokerName || !egName || !apiName) {
-        return res.status(400).json({ error: "Missing required fields: ip, brokerName, egName, apiName" });
+function addP(tbId, k = '', v = '', d = '', en = true) {
+  const tb = document.getElementById(tbId);
+  const tr = document.createElement('tr');
+  tr.innerHTML =
+    `<td><input type="checkbox" class="pchk" ${en ? 'checked' : ''} onchange="updCnt()"></td>
+     <td><input class="pi" placeholder="Key" value="${esc(k)}" oninput="updCnt()"></td>
+     <td><input class="pi" placeholder="Value" value="${esc(v)}"></td>
+     <td><input class="pi" placeholder="Desc" value="${esc(d)}" style="color:var(--t3)"></td>
+     <td><button class="dbtn" onclick="this.closest('tr').remove();updCnt()">×</button></td>`;
+  tb.appendChild(tr);
+  updCnt();
+}
+
+function updCnt() {
+  const pc = [...document.querySelectorAll('#pt tr')].filter(r => r.querySelector('.pchk')?.checked && r.querySelectorAll('.pi')[0]?.value).length;
+  const hc = [...document.querySelectorAll('#ht tr')].filter(r => r.querySelector('.pchk')?.checked && r.querySelectorAll('.pi')[0]?.value).length;
+  document.getElementById('pc').textContent = pc;
+  document.getElementById('hc').textContent = hc;
+}
+
+function setBody(t, btn) {
+  document.querySelectorAll('#btypes .tabb').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  document.getElementById('body-ed').style.display = t === 'none' ? 'none' : '';
+}
+
+function updAuth() {
+  const t = document.getElementById('auth-type').value;
+  const tpls = {
+    none: '',
+    bearer: `<div class="fg"><div class="fl">Token</div><input class="fi" placeholder="Enter bearer token"></div>`,
+    basic: `<div class="r2"><div class="fg"><div class="fl">Username</div><input class="fi" placeholder="Username"></div><div class="fg"><div class="fl">Password</div><input class="fi" type="password" placeholder="Password"></div></div>`,
+    apikey: `<div class="r2"><div class="fg"><div class="fl">Key Name</div><input class="fi" placeholder="X-API-Key"></div><div class="fg"><div class="fl">Key Value</div><input class="fi" placeholder="api-key"></div></div><div class="fg"><div class="fl">Add To</div><select class="fs" style="width:160px"><option>Header</option><option>Query Param</option></select></div>`,
+    oauth2: `<div class="fg"><div class="fl">Token URL</div><input class="fi" placeholder="https://auth.server/token"></div><div class="r2"><div class="fg"><div class="fl">Client ID</div><input class="fi" placeholder="client_id"></div><div class="fg"><div class="fl">Secret</div><input class="fi" type="password" placeholder="client_secret"></div></div>`
+  };
+  document.getElementById('auth-fields').innerHTML = tpls[t] || '';
+}
+
+function buildUrl() {
+  let url = document.getElementById('req-url').value.trim();
+  const params = [];
+  document.querySelectorAll('#pt tr').forEach(r => {
+    if (!r.querySelector('.pchk')?.checked) return;
+    const ins = r.querySelectorAll('.pi');
+    const k = ins[0]?.value.trim();
+    const v = ins[1]?.value.trim();
+    if (k) params.push(encodeURIComponent(k) + '=' + encodeURIComponent(v || ''));
+  });
+  if (params.length) url += (url.includes('?') ? '&' : '?') + params.join('&');
+  return url;
+}
+
+async function sendReq() {
+  const btn = document.getElementById('req-send');
+  const method = document.getElementById('req-method').value;
+  const sship = document.getElementById('req-sship').value.trim();
+  const url = buildUrl();
+  if (!url) { toast('Enter a URL first', 'warn'); return; }
+
+  btn.disabled = true;
+  btn.innerHTML = `<div class="ld" style="color:#1a0800"><div class="ldd"></div><div class="ldd"></div><div class="ldd"></div></div>`;
+  document.getElementById('tunnel-status').textContent = 'Connecting via SSH…';
+  document.getElementById('resp-empty').style.display = 'flex';
+  document.getElementById('resp-json').style.display = 'none';
+  document.getElementById('resp-sbadge').innerHTML = '';
+  document.getElementById('resp-meta').textContent = '';
+  
+  const oldCb = document.getElementById('req-cache-block');
+  if (oldCb) oldCb.remove();
+  
+  const reqPgh = apiProgressStart('req', ['Connecting via SSH tunnel…', 'Sending request…', 'Waiting for response (TTFB)…', 'Receiving & relaying data…']);
+
+  const headers = {};
+  if (sship) headers['X-SSH-Tunnel'] = sship;
+  
+  document.querySelectorAll('#ht tr').forEach(r => {
+    if (!r.querySelector('.pchk')?.checked) return;
+    const ins = r.querySelectorAll('.pi');
+    const k = ins[0]?.value.trim();
+    const v = ins[1]?.value.trim();
+    if (k) headers[k] = v;
+  });
+
+  const at = document.getElementById('auth-type').value;
+  if (at === 'bearer') {
+    const t = document.querySelector('#auth-fields input')?.value;
+    if (t) headers['Authorization'] = 'Bearer ' + t;
+  } else if (at === 'basic') {
+    const ins = document.querySelectorAll('#auth-fields input');
+    if (ins[0]?.value) headers['Authorization'] = 'Basic ' + btoa(ins[0].value + ':' + (ins[1]?.value || ''));
+  } else if (at === 'apikey') {
+    const ins = document.querySelectorAll('#auth-fields input');
+    if (ins[0]?.value && ins[1]?.value) headers[ins[0].value] = ins[1].value;
+  }
+
+  const bActive = document.querySelector('#btypes .on')?.textContent;
+  let parsedBody = {};
+  if (!['GET', 'HEAD'].includes(method) && bActive !== 'none') {
+    const bt = document.getElementById('body-ed').value.trim();
+    if (bt) {
+      try { parsedBody = JSON.parse(bt); } catch { parsedBody = bt; }
+      if (!headers['Content-Type']) headers['Content-Type'] = 'application/json';
     }
-    const sanitize = (str) => str.replace(/[^a-zA-Z0-9._-]/g, "");
-    const safeIp     = sanitize(ip);
-    const safeBroker = sanitize(brokerName);
-    const safeEg     = sanitize(egName);
-    const safeApi    = sanitize(apiName);
-    const scriptPath = path.join(__dirname, "valid.sh");
-    const command = `bash ${scriptPath} ${safeIp} ${safeBroker} ${safeEg} ${safeApi}`;
-    exec(command, { timeout: 30000 }, (error, stdout, stderr) => {
-        if (error) {
-            res.setHeader("Content-Type", "application/xml");
-            return res.status(500).send(`<error>${stderr || error.message}</error>`);
-        }
-        res.setHeader("Content-Type", "application/xml");
-        res.send(stdout);
-    });
-});
-
-app.post("/check", (req, res) => {
-  const { source_ip, target_ip, port } = req.body;
-  if (!source_ip || !target_ip || !port) {
-    return res.status(400).json({ error: "source_ip, target_ip and port are all required" });
   }
-  const ipRegex = /^[a-zA-Z0-9.\-]+$/;
-  if (!ipRegex.test(source_ip)) return res.status(400).json({ error: "Invalid source_ip format" });
-  if (!ipRegex.test(target_ip)) return res.status(400).json({ error: "Invalid target_ip format" });
-  const portNum = parseInt(port, 10);
-  if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
-    return res.status(400).json({ error: "Port must be between 1 and 65535" });
-  }
-  const shellCommand = `bash ${SCRIPT_PATH} ${source_ip} ${target_ip} ${portNum}`;
-  exec(shellCommand, { timeout: 15000 }, (error, stdout, stderr) => {
-    const rawOutput   = (stdout || "") + (stderr || "");
-    const outputLower = rawOutput.toLowerCase();
-    const isOpen = (error === null) || outputLower.includes("succeeded") || outputLower.includes(" open") || outputLower.includes("connected");
-    const timedOut = error && error.killed;
-    const cleanOutput = rawOutput.replace(/\x1b\[[0-9;]*m/g, "").trim();
-    res.json({
-      source_ip, target_ip, port: portNum,
-      command: `nc -vz -w 5 ${target_ip} ${portNum}`,
-      output: timedOut ? "Check timed out after 15 seconds" : cleanOutput || (error ? error.message : "No output received"),
-      success: isOpen,
-      timestamp: new Date().toISOString(),
-    });
-  });
-});
 
-app.post("/curl", (req, res) => {
-  const { method = "GET", url, sshIp, body, headers = [] } = req.body;
-  if (!url)   return res.status(400).json({ error: "url is required" });
-  if (!sshIp) return res.status(400).json({ error: "sshIp is required" });
-  const bodyStr = typeof body === "object" && body !== null ? JSON.stringify(body) : (body || "");
-  const scriptPath = path.join(__dirname, "curl.sh");
-  const args = [scriptPath, method.toUpperCase(), url, sshIp, bodyStr, ...headers.filter(h => h && h.trim())];
-  let output = "";
-  let done = false;
-  const proc = spawn("bash", args, { detached: false });
-  proc.stdout.on("data", (chunk) => { output += chunk.toString(); });
-  proc.stderr.on("data", (chunk) => { output += chunk.toString(); });
-  proc.on("close", (code) => {
-    if (done) return;
-    done = true;
-    const result = output.trim();
-    try { return res.json(JSON.parse(result)); }
-    catch { return res.send(result); }
-  });
-  proc.on("error", (err) => {
-    if (done) return;
-    done = true;
-    res.status(500).json({ error: err.message });
-  });
-});
-
-
-
-// Ensure local temp dir exists
-if (!fs.existsSync(CERT_SAVE_DIR)) {
-  fs.mkdirSync(CERT_SAVE_DIR, { recursive: true });
-}
-
-// ── Helper: run ssh command on remote host ────────────────────────────────────
-function sshExec(ip, command) {
-  return new Promise((resolve, reject) => {
-    execFile("ssh", [
-      "-i", CERT_SSH_KEY,
-      "-o", "StrictHostKeyChecking=no",
-      "-o", "ConnectTimeout=10",
-      `${CERT_SCP_USER}@${ip}`,
-      command
-    ], (err, stdout, stderr) => {
-      if (err) return reject(stderr || err.message);
-      resolve(stdout.trim());
-    });
-  });
-}
-
-// ── Helper: scp file to remote host ──────────────────────────────────────────
-function scpFile(localPath, ip, remotePath) {
-  return new Promise((resolve, reject) => {
-    execFile("scp", [
-      "-i", CERT_SSH_KEY,
-      "-o", "StrictHostKeyChecking=no",
-      "-o", "ConnectTimeout=10",
-      localPath,
-      `${CERT_SCP_USER}@${ip}:${remotePath}`
-    ], (err, stdout, stderr) => {
-      if (err) return reject(stderr || err.message);
-      resolve();
-    });
-  });
-}
-
-// ── Helper: deploy cert to ONE server ────────────────────────────────────────
-async function deployToServer(ip, localFilePath, fileName, remoteDirPath) {
-  const remoteFilePath = `${remoteDirPath}/${fileName}`;
-  const result = { ip, status: "pending", backup: null, error: null };
-
+  const t0 = performance.now();
   try {
-    // Step 1: Check if file already exists on remote
-    const checkCmd = `[ -f "${remoteFilePath}" ] && echo "EXISTS" || echo "NOT_FOUND"`;
-    const checkResult = await sshExec(ip, checkCmd);
+    const headersArr = Object.entries(headers).map(([k, v]) => `${k}: ${v}`);
+    const backendUrl = 'http://10.177.44.29:4415/curl';
+    if (!backendUrl) throw new Error('Set the "via backend" field to your ssh-proxy-server URL');
+    
+    const proxyResp = await fetch(backendUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sshIp: sship, url, method, headers: headersArr, body: parsedBody })
+    });
 
-    // Step 2: If exists, take backup with timestamp
-    if (checkResult === "EXISTS") {
-      const timestamp = new Date().toISOString()
-        .replace(/[-:T]/g, "")
-        .split(".")[0]; // e.g. 20260617143022
-      const backupPath = `${remoteFilePath}_$(date '+%Y-%m-%d').backup`;
-      await sshExec(ip, `cp "${remoteFilePath}" "${backupPath}"`);
-      result.backup = backupPath;
-      console.log(`[deploy] ${ip} — backup created: ${backupPath}`);
+    if (!proxyResp.ok) {
+      const errText = await proxyResp.text().catch(() => '');
+      throw new Error(`Backend proxy responded ${proxyResp.status}${errText ? ': ' + errText.slice(0, 200) : ''}`);
     }
 
-    // Step 3: SCP new cert to remote dir
-    await scpFile(localFilePath, ip, remoteFilePath);
-    result.status = "success";
-    console.log(`[deploy] ${ip} — cert deployed to ${remoteFilePath}`);
+    const elapsed = Math.round(performance.now() - t0);
+    const text = await proxyResp.text();
+    ST.lastResp = text;
+    const size = new TextEncoder().encode(text).length;
 
-  } catch (err) {
-    result.status = "failed";
-    result.error  = err;
-    console.error(`[deploy] ${ip} — FAILED: ${err}`);
-  }
+    const cat = Math.floor(proxyResp.status / 100);
+    const bcls = { 2: 's-2xx', 3: 's-2xx', 4: 's-4xx', 5: 's-5xx' }[cat] || 's-4xx';
+    const lbl = { 200: 'OK', 201: 'Created', 204: 'No Content', 301: 'Moved', 302: 'Found',
+                  400: 'Bad Request', 401: 'Unauthorized', 403: 'Forbidden', 404: 'Not Found',
+                  422: 'Unprocessable', 500: 'Internal Error', 502: 'Bad Gateway', 503: 'Unavailable' };
+    
+    document.getElementById('resp-sbadge').innerHTML =
+      `<div class="sbadge ${bcls}"><span class="sdot"></span>${proxyResp.status} ${lbl[proxyResp.status] || proxyResp.statusText || ''}</div>`;
+    document.getElementById('resp-meta').textContent = `${elapsed}ms · ${fmtSz(size)}`;
+    document.getElementById('tunnel-status').innerHTML = `<span style="color:var(--green)">✓ Via ${sship}</span>`;
+    document.getElementById('resp-empty').style.display = 'none';
+    document.getElementById('resp-json').style.display = '';
 
-  return result;
-}
-
-// ── POST /deploy ──────────────────────────────────────────────────────────────
-app.post("/deploy", (req, res) => {
-  const contentType = req.headers["content-type"] || "";
-  const boundary = contentType.split("boundary=")[1];
-
-  if (!boundary) {
-    return res.status(400).json({ error: "No boundary in content-type" });
-  }
-
-  let body = Buffer.alloc(0);
-  req.on("data", chunk => { body = Buffer.concat([body, chunk]); });
-
-  req.on("end", async () => {
+    let parsedJson = {};
     try {
-      const bodyStr = body.toString("binary");
-
-      // ── Parse file ──
-      const nameMatch = bodyStr.match(/filename="(.+?)"/);
-      if (!nameMatch) return res.status(400).json({ error: "No file in upload" });
-      const fileName = nameMatch[1];
-
-      const headerEnd   = bodyStr.indexOf("\r\n\r\n", bodyStr.indexOf("filename=")) + 4;
-      const footerStart = bodyStr.lastIndexOf(`\r\n--${boundary}`);
-      const fileBuffer  = body.slice(headerEnd, footerStart);
-
-      // ── Parse environment field ──
-      const envMatch = bodyStr.match(/name="environment"\r\n\r\n(.+?)\r\n--/);
-      const environment = envMatch ? envMatch[1].trim() : null;
-      if (!environment || !ENV_RANGES[environment]) {
-        return res.status(400).json({ error: "Invalid environment. Use UAT or SIT." });
-      }
-
-      // ── Parse certPath field ──
-      const pathMatch = bodyStr.match(/name="certPath"\r\n\r\n(.+?)\r\n--/);
-      const certPath = pathMatch ? pathMatch[1].trim() : null;
-      if (!certPath || !CERT_PATHS[certPath]) {
-        return res.status(400).json({ error: "Invalid certPath. Use RSAkeystore or Endpoint." });
-      }
-
-      const remoteDirPath = CERT_PATHS[certPath];
-      const ipList        = ENV_RANGES[environment];
-      const localFilePath = `${CERT_SAVE_DIR}/${fileName}`;
-
-      // ── Save file locally ──
-      fs.writeFileSync(localFilePath, fileBuffer);
-      console.log(`[deploy] Saved locally: ${localFilePath}`);
-      console.log(`[deploy] Environment: ${environment} → ${ipList.length} servers`);
-      console.log(`[deploy] Target path: ${remoteDirPath}`);
-
-      // ── Deploy to all IPs in parallel ──
-      const results = await Promise.all(
-        ipList.map(ip => deployToServer(ip, localFilePath, fileName, remoteDirPath))
-      );
-
-      // ── Cleanup local temp file ──
-      fs.unlink(localFilePath, () => {});
-
-      // ── Summary ──
-      const summary = {
-        total:   results.length,
-        success: results.filter(r => r.status === "success").length,
-        failed:  results.filter(r => r.status === "failed").length,
-      };
-
-      console.log(`[deploy] Done — ${summary.success}/${summary.total} succeeded`);
-
-      res.json({
-        success: summary.failed === 0,
-        environment,
-        certPath: remoteDirPath,
-        fileName,
-        summary,
-        results,
-      });
-
-    } catch (err) {
-      res.status(500).json({ error: err.message });
+      parsedJson = JSON.parse(text);
+      document.getElementById('resp-json-c').innerHTML = jhl(JSON.stringify(parsedJson, null, 2));
+    } catch {
+      document.getElementById('resp-json-c').textContent = text;
     }
-  });
-});
 
+    const rhb = document.getElementById('rhb');
+    rhb.innerHTML = '';
+    proxyResp.headers.forEach((v, k) => { rhb.innerHTML += `<tr><td>${k}</td><td>${v}</td></tr>`; });
 
+    const oldCb2 = document.getElementById('req-cache-block');
+    if (oldCb2) oldCb2.remove();
+    document.getElementById('rr-b').appendChild(buildReqCacheBlock(proxyResp, parsedJson));
 
+    apiProgressFinish(reqPgh, true);
+    document.getElementById('rr-t').innerHTML =
+      `<div style="color:var(--teal)">▸ Client → backend proxy …… initiated</div>
+       <div style="color:var(--sky)">▸ SSH connection to ${sship} ……… ~${Math.floor(elapsed * .12)}ms (est.)</div>
+       <div style="color:var(--blue)">▸ TCP connect to target ……… ~${Math.floor(elapsed * .18)}ms (est.)</div>
+       <div style="color:var(--t2)">▸ Request forwarded via tunnel</div>
+       <div style="color:var(--purple)">▸ Waiting (TTFB) …………… ~${Math.floor(elapsed * .52)}ms (est.)</div>
+       <div style="color:var(--green)">▸ Response received & relayed ~${Math.floor(elapsed * .08)}ms (est.)</div>
+       <div style="margin-top:8px;border-top:1px solid var(--b1);padding-top:8px">
+         <span style="color:var(--t1)">Total: <strong>${elapsed}ms</strong></span>
+         <span style="color:var(--t3);margin-left:12px">SSH: ${sship}</span>
+         <span style="color:var(--t3);margin-left:12px">Size: ${fmtSz(size)}</span>
+       </div>`;
 
-
-// ── POST /upload — cert upload via multipart, scp to target ──────────────────
-app.post("/upload", (req, res) => {
-  const contentType = req.headers["content-type"] || "";
-  const boundary = contentType.split("boundary=")[1];
-
-  if (!boundary) {
-    return res.status(400).json({ error: "No boundary found in content-type" });
-  }
-
-  let body = Buffer.alloc(0);
-  req.on("data", chunk => { body = Buffer.concat([body, chunk]); });
-
-  req.on("end", () => {
-    try {
-      const bodyStr = body.toString("binary");
-
-      // Extract filename
-      const nameMatch = bodyStr.match(/filename="(.+?)"/);
-      if (!nameMatch) return res.status(400).json({ error: "No file found in upload" });
-      const fileName = nameMatch[1];
-
-      // Extract file bytes
-      const headerEnd   = bodyStr.indexOf("\r\n\r\n", bodyStr.indexOf("filename=")) + 4;
-      const footerStart = bodyStr.lastIndexOf(`\r\n--${boundary}`);
-      const fileBuffer  = body.slice(headerEnd, footerStart);
-
-      // Extract targetServer field
-      const targetMatch  = bodyStr.match(/name="targetServer"\r\n\r\n(.+?)\r\n--/);
-      const targetServer = targetMatch ? targetMatch[1].trim() : null;
-      if (!targetServer) return res.status(400).json({ error: "targetServer not provided" });
-
-      const localPath  = `${SAVE_DIR}/${fileName}`;
-      const remotePath = `${SCP_USER}@${targetServer}:${REMOTE_DIR}`;
-
-      fs.writeFile(localPath, fileBuffer, (err) => {
-        if (err) return res.status(500).json({ error: "Failed to save file locally: " + err.message });
-
-        console.log(`[upload] Saved: ${localPath} → scp to ${remotePath}`);
-
-        execFile("scp", [
-          "-i", SSH_KEY,
-          "-o", "StrictHostKeyChecking=no",
-          localPath,
-          remotePath
-        ], (scpErr, stdout, stderr) => {
-          fs.unlink(localPath, () => {});
-
-          if (scpErr) {
-            console.error("[upload] SCP failed:", stderr || scpErr.message);
-            return res.status(500).json({ error: stderr || scpErr.message });
-          }
-
-          res.json({
-            success: true,
-            message: `${fileName} sent to ${targetServer}:${REMOTE_DIR}`,
-            size: fileBuffer.length
-          });
-        });
-      });
-    } catch (err) {
-      res.status(500).json({ error: "Parse error: " + err.message });
-    }
-  });
-});
-
-// ── Activities ────────────────────────────────────────────────────────────────
-
-function readActivities() {
-  try {
-    if (!fs.existsSync(DATA_FILE)) return [];
-    const raw = fs.readFileSync(DATA_FILE, 'utf-8').trim();
-    if (!raw) return [];
-    return JSON.parse(raw);
+    // Save to history
+    const hEntry = { m: method, u: url, s: proxyResp.status, ms: elapsed, ssh: sship, ts: Date.now(), ok: cat === 2 };
+    ST.reqHist.unshift(hEntry);
+    if (ST.reqHist.length > 50) ST.reqHist.pop();
+    localStorage.setItem('devSuiteHist', JSON.stringify(ST.reqHist));
+    renderHist();
+    toast(`${proxyResp.status} · ${elapsed}ms via ${sship}`);
   } catch (err) {
-    console.error('[readActivities] Parse error:', err.message);
-    return [];
+    const elapsed = Math.round(performance.now() - t0);
+    document.getElementById('tunnel-status').innerHTML = `<span style="color:var(--red)">✗ Tunnel failed</span>`;
+    document.getElementById('resp-empty').style.display = 'none';
+    document.getElementById('resp-json').style.display = '';
+    document.getElementById('resp-json-c').innerHTML =
+      `<span style="color:var(--red)"><i class="fa-solid fa-triangle-exclamation"></i> ${err.message}</span>
+       \n\n<span style="color:var(--t3)">This tool runs entirely in your browser, which cannot open raw SSH sockets.
+       Real SSH routing needs the companion backend (ssh-proxy-server) running on a
+       machine with network access, e.g. on/near ${sship}.
+       Check that:
+       1. ssh-proxy-server is running and reachable at the "via backend" URL above
+       2. It has SSH access to ${sship}
+       3. ${sship} can reach the final target host/port
+       4. CORS is enabled on the backend for this page's origin</span>`;
+    document.getElementById('resp-sbadge').innerHTML = `<div class="sbadge s5"><span class="sdot"></span>Error</div>`;
+    apiProgressFinish(reqPgh, false);
+    
+    const hEntry = { m: method, u: url, s: 'ERR', ms: elapsed, ssh: sship, ts: Date.now(), ok: false };
+    ST.reqHist.unshift(hEntry);
+    if (ST.reqHist.length > 50) ST.reqHist.pop();
+    localStorage.setItem('devSuiteHist', JSON.stringify(ST.reqHist));
+    renderHist();
+    toast('Request failed', 'err');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Send';
   }
 }
 
-function writeActivities(activities) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(activities, null, 2), 'utf-8');
-}
+function buildReqCacheBlock(resp, json) {
+  const entries = [];
+  ['cache-control', 'etag', 'age', 'expires', 'x-cache', 'x-cache-hits'].forEach(h => {
+    const v = resp.headers.get(h);
+    if (v) entries.push([h, v]);
+  });
 
-app.get('/api/activities', (req, res) => {
-  try {
-    const activities = readActivities();
-    const { status, search } = req.query;
-    let filtered = activities;
-    if (status && status !== 'All') filtered = filtered.filter(a => a.status === status);
-    if (search) {
-      const q = search.toLowerCase();
-      filtered = filtered.filter(a =>
-        a.name.toLowerCase().includes(q) ||
-        a.reason.toLowerCase().includes(q) ||
-        (a.assignee || '').toLowerCase().includes(q)
-      );
-    }
-    filtered.sort((a, b) => new Date(b.scheduledDate) - new Date(a.scheduledDate));
-    res.json({ success: true, total: activities.length, count: filtered.length, data: filtered });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-app.get('/api/activities/:id', (req, res) => {
-  try {
-    const activities = readActivities();
-    const activity = activities.find(a => a.id === req.params.id);
-    if (!activity) return res.status(404).json({ success: false, message: 'Activity not found' });
-    res.json({ success: true, data: activity });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-app.post('/api/activities', (req, res) => {
-  try {
-    const { name, reason, scheduledDate, status, assignee } = req.body;
-    if (!name || !name.trim()) return res.status(400).json({ success: false, message: 'Activity name is required' });
-    if (!reason || !reason.trim()) return res.status(400).json({ success: false, message: 'Reason is required' });
-    if (!scheduledDate) return res.status(400).json({ success: false, message: 'Scheduled date is required' });
-    const newActivity = {
-      id: randomUUID(), name: name.trim(), reason: reason.trim(),
-      scheduledDate, status: status || 'Pending',
-      assignee: (assignee || '').trim(),
-      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-    };
-    const activities = readActivities();
-    activities.push(newActivity);
-    writeActivities(activities);
-    res.status(201).json({ success: true, message: 'Activity created', data: newActivity });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-app.put('/api/activities/:id', (req, res) => {
-  try {
-    const activities = readActivities();
-    const index = activities.findIndex(a => a.id === req.params.id);
-    if (index === -1) return res.status(404).json({ success: false, message: 'Activity not found' });
-    const { name, reason, scheduledDate, status, assignee } = req.body;
-    const updated = {
-      ...activities[index],
-      ...(name          !== undefined && { name: name.trim() }),
-      ...(reason        !== undefined && { reason: reason.trim() }),
-      ...(scheduledDate !== undefined && { scheduledDate }),
-      ...(status        !== undefined && { status }),
-      ...(assignee      !== undefined && { assignee: assignee.trim() }),
-      updatedAt: new Date().toISOString(),
-    };
-    activities[index] = updated;
-    writeActivities(activities);
-    res.json({ success: true, message: 'Activity updated', data: updated });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-app.patch('/api/activities/:id/status', (req, res) => {
-  try {
-    const { status } = req.body;
-    const validStatuses = ['Pending', 'In Progress', 'Completed'];
-    if (!validStatuses.includes(status))
-      return res.status(400).json({ success: false, message: `Status must be one of: ${validStatuses.join(', ')}` });
-    const activities = readActivities();
-    const index = activities.findIndex(a => a.id === req.params.id);
-    if (index === -1) return res.status(404).json({ success: false, message: 'Activity not found' });
-    activities[index].status    = status;
-    activities[index].updatedAt = new Date().toISOString();
-    writeActivities(activities);
-    res.json({ success: true, message: 'Status updated', data: activities[index] });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-app.delete('/api/activities/:id', (req, res) => {
-  try {
-    const activities = readActivities();
-    const index = activities.findIndex(a => a.id === req.params.id);
-    if (index === -1) return res.status(404).json({ success: false, message: 'Activity not found' });
-    const deleted = activities.splice(index, 1)[0];
-    writeActivities(activities);
-    res.json({ success: true, message: 'Activity deleted', data: deleted });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-app.get('/api/stats', (req, res) => {
-  try {
-    const activities = readActivities();
-    res.json({
-      success: true,
-      data: {
-        total:      activities.length,
-        pending:    activities.filter(a => a.status === 'Pending').length,
-        inProgress: activities.filter(a => a.status === 'In Progress').length,
-        completed:  activities.filter(a => a.status === 'Completed').length,
-      },
+  function scan(obj, prefix) {
+    if (!obj || typeof obj !== 'object') return;
+    Object.entries(obj).forEach(([k, v]) => {
+      if (/cache/i.test(k)) entries.push([prefix + k, typeof v === 'object' ? JSON.stringify(v) : String(v)]);
+      else if (v && typeof v === 'object' && !Array.isArray(v)) scan(v, prefix + k + '.');
     });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
   }
-});
+  if (json) scan(json, '');
 
-app.use((req, res) => {
-  res.status(404).json({ success: false, message: `Route ${req.method} ${req.url} not found` });
-});
+  const wrap = document.createElement('div');
+  wrap.className = 'cache-block';
+  wrap.id = 'req-cache-block';
+  const body = entries.length ?
+    entries.map(([k, v]) => `  <span class="cb-key">-${esc(k)}</span>: <span class="cb-val">${esc(v)}</span>`).join(',\n') :
+    '  <span class="cb-val">no cache headers or fields found in this response</span>';
+  wrap.innerHTML =
+    `<div class="cb-h"><i class="fa-solid fa-layer-group"></i>Cache</div>
+     <div class="cb-body">Cache:{\n${body}\n}</div>`;
+  return wrap;
+}
 
-// ── Start ─────────────────────────────────────────────────
-app.listen(PORT, "0.0.0.0", () => {
-  console.log("================================================");
-  console.log("  NC Checker Backend");
-  console.log(`  Listening : http://0.0.0.0:${PORT}`);
-  console.log(`  Health    : http://10.177.44.58:${PORT}/health`);
-  console.log(`  Upload    : http://10.177.44.58:${PORT}/upload`);
-  console.log(`  Script    : ${SCRIPT_PATH}`);
-  console.log("================================================");
-});
+function renderHist() {
+  const h = document.getElementById('req-hist');
+  document.getElementById('hist-count').textContent = `(${ST.reqHist.length})`;
+  if (!ST.reqHist.length) {
+    h.innerHTML = '<div style="padding:10px 13px;font-size:10.5px;color:var(--t3)">No requests yet</div>';
+    return;
+  }
+  h.innerHTML = ST.reqHist.slice(0, 20).map((r, i) => {
+    const age = Math.floor((Date.now() - r.ts) / 1000);
+    const as = age < 60 ? age + 's' : age < 3600 ? Math.floor(age / 60) + 'm' : Math.floor(age / 3600) + 'h';
+    const mc = { GET: 'mg', POST: 'mp', PUT: 'mu', PATCH: 'mpa', DELETE: 'md' }[r.m] || 'mg';
+    let path = r.u;
+    try { path = new URL(r.u).pathname; } catch (e) {}
+    const sc = r.ok ? 'ok' : r.s === 'ERR' ? 'err' : 'warn';
+    return `<div class="hi" onclick="loadFromHist(${i})" title="${r.u}">
+      <span class="mt ${mc}">${r.m}</span>
+      <span class="hi-url">${path}</span>
+      <span class="hi-s ${sc}">${r.s}</span>
+      <span class="hi-t">${as}</span>
+    </div>`;
+  }).join('');
+}
+
+function loadFromHist(i) {
+  const r = ST.reqHist[i];
+  if (!r) return;
+  document.getElementById('req-method').value = r.m;
+  document.getElementById('req-url').value = r.u;
+  if (r.ssh) document.getElementById('req-sship').value = r.ssh;
+  styleM();
+  updateRouteDisplay();
+  toast('Loaded from history');
+}
+
+function saveReq() {
+  const m = document.getElementById('req-method').value;
+  const u = document.getElementById('req-url').value;
+  const b = document.getElementById('body-ed').value;
+  const ssh = document.getElementById('req-sship').value;
+  if (!u) { toast('Enter a URL first', 'warn'); return; }
+  const name = prompt('Save request as:', m + ' ' + new URL(u).pathname) || null;
+  if (!name) return;
+  ST.savedReqs.push({ m, u, b, ssh, name, ts: Date.now() });
+  localStorage.setItem('devSuiteReqs', JSON.stringify(ST.savedReqs));
+  renderSavedReqs();
+  toast('Request saved: ' + name);
+}
+
+function renderSavedReqs() {
+  const list = document.getElementById('saved-coll-list');
+  const wrap = document.getElementById('saved-coll-wrap');
+  if (!ST.savedReqs.length) { wrap.style.display = 'none'; return; }
+  wrap.style.display = '';
+  const mc = { GET: 'mg', POST: 'mp', PUT: 'mu', PATCH: 'mpa', DELETE: 'md' };
+  list.innerHTML = ST.savedReqs.map((r, i) =>
+    `<div class="ci" onclick="loadSaved(${i})" style="justify-content:space-between">
+      <span class="mt ${mc[r.m] || 'mg'}">${r.m}</span>
+      <span class="rn">${r.name}</span>
+      <button onclick="event.stopPropagation();deleteSaved(${i})" style="background:none;border:none;color:var(--t3);cursor:pointer;font-size:11px;padding:0 2px" title="Delete">×</button>
+    </div>`
+  ).join('');
+}
+
+function loadSaved(i) {
+  const r = ST.savedReqs[i];
+  if (!r) return;
+  document.getElementById('req-method').value = r.m;
+  document.getElementById('req-url').value = r.u;
+  document.getElementById('body-ed').value = r.b || '';
+  if (r.ssh) document.getElementById('req-sship').value = r.ssh;
+  styleM();
+  updateRouteDisplay();
+  toast('Loaded: ' + r.name);
+}
+
+function deleteSaved(i) {
+  ST.savedReqs.splice(i, 1);
+  localStorage.setItem('devSuiteReqs', JSON.stringify(ST.savedReqs));
+  renderSavedReqs();
+  toast('Deleted');
+}
+
+function newReq() {
+  document.getElementById('req-url').value = '';
+  document.getElementById('body-ed').value = '';
+  document.getElementById('req-method').value = 'GET';
+  styleM();
+  updateRouteDisplay();
+  document.querySelectorAll('.ci').forEach(c => c.classList.remove('on'));
+}
+
+function filterReqs(v) {
+  document.querySelectorAll('.ci').forEach(el => {
+    el.style.display = el.querySelector('.rn')?.textContent.toLowerCase().includes(v.toLowerCase()) ? '' : 'none';
+  });
+}
+
+function toggleColl(el) { el.classList.toggle('op'); }
+
+function copyResp() {
+  if (ST.lastResp) { navigator.clipboard.writeText(ST.lastResp); toast('Response copied'); } else toast('No response yet', 'warn');
+}
+
+function dlResp() {
+  if (!ST.lastResp) { toast('No response', 'warn'); return; }
+  const a = document.createElement('a');
+  a.href = 'data:application/json,' + encodeURIComponent(ST.lastResp);
+  a.download = 'response.json';
+  a.click();
+  toast('Downloaded');
+}
