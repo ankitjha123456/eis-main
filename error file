@@ -1,89 +1,84 @@
-<input class="url-bar-input" id="req-sship" placeholder="SSH IP" style="max-width:140px" value="10.177.44.52"/>
+// Utility functions
+function toast(msg, type = 'ok') {
+  const icons = {
+    ok: '<i class="fa-solid fa-check" style="color:var(--green)"></i>',
+    err: '<i class="fa-solid fa-xmark" style="color:var(--red)"></i>',
+    warn: '<i class="fa-solid fa-triangle-exclamation" style="color:var(--yellow)"></i>',
+    info: '<i class="fa-solid fa-circle-info" style="color:var(--sky)"></i>'
+  };
+  document.getElementById('ti').innerHTML = icons[type] || icons.ok;
+  document.getElementById('tm').textContent = msg;
+  const t = document.getElementById('toast');
+  t.classList.add('on');
+  setTimeout(() => t.classList.remove('on'), 2800);
+}
 
+function $v(id) {
+  const e = document.getElementById(id);
+  return e ? e.value : '';
+}
 
+function esc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
 
+function fmtSz(b) {
+  return b < 1024 ? b + ' B' : b < 1048576 ? (b / 1024).toFixed(1) + ' KB' : (b / 1048576).toFixed(2) + ' MB';
+}
 
+function jhl(json) {
+  return json.replace(
+    /("(\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?|[{}\[\],:])/g,
+    m => {
+      if (/^"/.test(m)) return /:$/.test(m) ? `<span class="jk">${m}</span>` : `<span class="js">${m}</span>`;
+      if (/true|false/.test(m)) return `<span class="jb">${m}</span>`;
+      if (/null/.test(m)) return `<span class="jp">${m}</span>`;
+      if (/[{}\[\]]/.test(m)) return `<span class="jp">${m}</span>`;
+      return `<span class="jn">${m}</span>`;
+    }
+  );
+}
 
+function cssSafe(s) {
+  return s.replace(/[^a-zA-Z0-9_-]/g, '_');
+}
 
-async function sendRequest() {
-  const btn = document.getElementById('req-send-btn');
-  const method = document.getElementById('req-method').value;
-  const url = buildFetchUrl();
-  const sshIp = document.getElementById('req-sship').value.trim();
-  if (!url) { toast('Enter a URL first','warn'); return; }
+function ehml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
 
-  btn.disabled = true;
-  btn.innerHTML = '<div class="loader" style="color:#1a0a00"><div class="ldot"></div><div class="ldot"></div><div class="ldot"></div></div>';
+function apiProgressStart(prefix, stages) {
+  const wrap = document.getElementById(prefix + '-pgwrap');
+  const fill = document.getElementById(prefix + '-pgfill');
+  const pct = document.getElementById(prefix + '-pgpct');
+  const lbl = document.getElementById(prefix + '-pglabel-txt');
+  if (!wrap) return null;
+  wrap.classList.add('on');
+  fill.style.background = '';
+  let p = 0;
+  lbl.textContent = stages[0];
+  pct.textContent = '0%';
+  fill.style.width = '0%';
+  const iv = setInterval(() => {
+    p = Math.min(p + Math.random() * 9 + 3, 92);
+    fill.style.width = p.toFixed(0) + '%';
+    pct.textContent = Math.round(p) + '%';
+    const si = Math.min(Math.floor(p / (100 / stages.length)), stages.length - 1);
+    lbl.textContent = stages[si];
+  }, 220);
+  return { iv, fill, pct, wrap, lbl };
+}
 
-  document.getElementById('resp-empty').style.display = 'flex';
-  document.getElementById('resp-json').style.display = 'none';
-  document.getElementById('resp-status-badge').innerHTML = '';
-  document.getElementById('resp-meta').textContent = '';
-
-  const headers = {};
-  document.querySelectorAll('#headers-body tr').forEach(r=>{
-    if (!r.querySelector('.p-chk')?.checked) return;
-    const ins = r.querySelectorAll('.p-input');
-    const k=ins[0]?.value.trim(),v=ins[1]?.value.trim();
-    if (k) headers[k]=v;
-  });
-  const authType = document.getElementById('auth-type').value;
-  if (authType==='bearer') { const t=document.querySelector('#auth-fields input')?.value; if(t) headers['Authorization']='Bearer '+t; }
-  else if (authType==='basic') { const ins=document.querySelectorAll('#auth-fields input'); if(ins[0]?.value) headers['Authorization']='Basic '+btoa(ins[0].value+':'+(ins[1]?.value||'')); }
-  else if (authType==='apikey') { const ins=document.querySelectorAll('#auth-fields input'); if(ins[0]?.value&&ins[1]?.value) headers[ins[0].value]=ins[1].value; }
-  if (!['GET','HEAD'].includes(method) && !headers['Content-Type']) headers['Content-Type']='application/json';
-
-  const bodyActive = document.querySelector('#body-types .active')?.textContent;
-  let parsedBody = {};
-  if (!['GET','HEAD'].includes(method) && bodyActive!=='none') {
-    const bt = document.getElementById('body-editor').value.trim();
-    if (bt) { try { parsedBody = JSON.parse(bt); } catch { parsedBody = bt; } }
-  }
-
-  const headersArr = Object.entries(headers).map(([k,v]) => `${k}: ${v}`);
-  const backendUrl = 'http://10.177.44.29:4415/curl';
-  const payload = { method, url, sshIp, body: parsedBody, headers: headersArr };
-
-  const t0 = performance.now();
-  try {
-    const resp = await fetch(backendUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    const elapsed = Math.round(performance.now()-t0);
-    const text = await resp.text();
-    S.lastResp = text;
-    const size = new TextEncoder().encode(text).length;
-
-    const cat = Math.floor(resp.status/100);
-    const badgeCls = {2:'s-2xx',3:'s-2xx',4:'s-4xx',5:'s-5xx'}[cat]||'s-4xx';
-    const labels = {200:'OK',201:'Created',204:'No Content',400:'Bad Request',401:'Unauthorized',403:'Forbidden',404:'Not Found',500:'Internal Server Error'};
-    document.getElementById('resp-status-badge').innerHTML = `<div class="status-badge ${badgeCls}"><span class="s-dot"></span>${resp.status} ${labels[resp.status]||resp.statusText}</div>`;
-    document.getElementById('resp-meta').textContent = `${elapsed}ms · ${fmtSize(size)}`;
-
-    document.getElementById('resp-empty').style.display = 'none';
-    document.getElementById('resp-json').style.display = '';
-    try {
-      const json = JSON.parse(text);
-      document.getElementById('resp-json-content').innerHTML = syntaxHL(JSON.stringify(json,null,2));
-    } catch { document.getElementById('resp-json-content').textContent = text; }
-
-    const rhb = document.getElementById('resp-headers-body');
-    rhb.innerHTML='';
-    resp.headers.forEach((v,k) => { rhb.innerHTML+=`<tr><td>${k}</td><td>${v}</td></tr>`; });
-
-    S.reqHistory.unshift({method, url, status:resp.status, time:elapsed, ts:new Date()});
-    renderHistory();
-    toast(`${resp.status} in ${elapsed}ms`);
-  } catch(err) {
-    document.getElementById('resp-empty').style.display='none';
-    document.getElementById('resp-json').style.display='';
-    document.getElementById('resp-json-content').innerHTML = `<span style="color:var(--acc-red)">⚠ Error: ${err.message}</span>\n\n<span style="color:var(--text-d)">Common causes:\n• Backend (10.177.44.29:4415) unreachable\n• sshIp unreachable from backend host\n• Invalid target URL</span>`;
-    document.getElementById('resp-status-badge').innerHTML = `<div class="status-badge s-5xx"><span class="s-dot"></span>Network Error</div>`;
-    toast('Request failed: '+err.message,'err');
-  } finally {
-    btn.disabled=false;
-    btn.innerHTML='<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M3 8h10M9 4l4 4-4 4"/></svg> Send';
-  }
+function apiProgressFinish(h, ok) {
+  if (!h) return;
+  clearInterval(h.iv);
+  h.fill.style.width = '100%';
+  h.pct.textContent = '100%';
+  h.lbl.textContent = ok ? 'Done' : 'Failed';
+  h.fill.style.background = ok ? 'linear-gradient(90deg,var(--teal),var(--green))' : 'linear-gradient(90deg,var(--red),#f87171)';
+  setTimeout(() => {
+    h.wrap.classList.remove('on');
+    h.fill.style.width = '0%';
+    h.fill.style.background = '';
+  }, 1000);
 }
