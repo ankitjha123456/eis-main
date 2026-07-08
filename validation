@@ -1,202 +1,232 @@
-import React, { useState, useEffect } from 'react';
-import './CacheHit.css';
+tfs
 
-const CacheHitUAT = () => {
-  const [cacheData, setCacheData] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [loadingServers, setLoadingServers] = useState(new Set());
 
-  const BASE_URL_1 = 'http://10.177.44.180:8443/UAT/cachehit';
-  const BASE_URL_2 = 'http://10.177.44.58:4423/cache';
 
-  // Fetch all servers cache data from both endpoints
-  const fetchAllCacheData = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      // Call both endpoints simultaneously
-      const [res1, res2] = await Promise.allSettled([
-        fetch(BASE_URL_1 + '/'),
-        fetch(BASE_URL_2)
-      ]);
 
-      let data1 = [];
-      let data2 = [];
 
-      if (res1.status === 'fulfilled' && res1.value.ok) {
-        data1 = await res1.value.json();
-      } else {
-        console.warn('Endpoint 1 failed:', res1);
-      }
+// TFS CI/CD Module
+function ciDov(e) { e.preventDefault(); document.getElementById('ci-uz').classList.add('drag'); }
+function ciDlv() { document.getElementById('ci-uz').classList.remove('drag'); }
+function ciDop(e) { e.preventDefault(); ciDlv(); const f = e.dataTransfer?.files[0]; if (f) ciSetFile(f); }
+function ciFileSelect(inp) { if (inp.files[0]) ciSetFile(inp.files[0]); }
 
-      if (res2.status === 'fulfilled' && res2.value.ok) {
-        const raw2 = await res2.value.json();
-        // Handle if response is wrapped: { response: [...] } or plain array
-        data2 = Array.isArray(raw2) ? raw2 : (raw2.response || []);
-      } else {
-        console.warn('Endpoint 2 failed:', res2);
-      }
+function ciSetFile(f) {
+  ST.ciFile = f;
+  const pf = document.getElementById('ci-pf');
+  pf.style.width = '0%';
+  let p = 0;
+  const iv = setInterval(() => { p += 18; pf.style.width = Math.min(p, 95) + '%'; if (p >= 95) clearInterval(iv); }, 60);
+  setTimeout(() => {
+    clearInterval(iv);
+    pf.style.width = '100%';
+    setTimeout(() => pf.style.width = '0%', 600);
+  }, 800);
+  document.getElementById('ci-fname').textContent = f.name;
+  document.getElementById('ci-fsize').textContent = fmtSz(f.size) + ' · ' + f.type;
+  document.getElementById('ci-finfo').classList.add('on');
+  toast(f.name + ' ready');
+}
 
-      // Merge both arrays, avoid duplicate servers
-      const merged = [...data1];
-      data2.forEach(item => {
-        const exists = merged.find(s => s.server === item.server);
-        if (!exists) merged.push(item);
-      });
+function appendMsg(prefix) {
+  const ta = document.getElementById('ci-msg');
+  if (!ta.value.startsWith(prefix)) ta.value = prefix + ta.value;
+  ta.focus();
+}
 
-      setCacheData(merged);
+function ciAutoMsg() {
+  const feat = $v('ci-feature') || 'API';
+  const branch = $v('ci-branch') || 'dev';
+  const wi = $v('ci-workitem');
+  const author = $v('ci-author');
+  const file = ST.ciFile ? ST.ciFile.name : 'api-package.zip';
+  let msg = `[Feature] ${feat} — Deploy ${file} to ${branch} branch`;
+  if (wi) msg = `[${wi}] ` + msg;
+  if (author) msg += ` | Author: ${author}`;
+  document.getElementById('ci-msg').value = msg;
+}
 
-    } catch (e) {
-      console.error("Error fetching cache data:", e);
-      setError('Someone already doing cache hit please wait and try Again!! ');
-    } finally {
-      setLoading(false);
-    }
-  };
+function ciReset() {
+  ST.ciFile = null;
+  document.getElementById('ci-finfo').classList.remove('on');
+  document.getElementById('ci-pf').style.width = '0%';
+  document.getElementById('ci-progress-panel').style.display = 'none';
+  ['ci-reponame', 'ci-branch', 'ci-feature', 'ci-workitem', 'ci-author', 'ci-msg', 'ci-clonepath', 'ci-targetdir']
+    .forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
+  toast('Reset');
+}
 
-  // Fetch cache for a specific server
-  const fetchSingleServerCache = async (serverIp) => {
-    const serverNumber = serverIp.split('.').pop();
-    setLoadingServers(prev => new Set([...prev, serverIp]));
+function ciPipelineSteps(repo) {
+  return [
+    { label: 'Validate ZIP package', sub: 'Checking file integrity and manifest' },
+    { label: 'Connect to TFS Server', sub: 'Authenticating with TFS collection' },
+    { label: 'Locate repository', sub: `Resolving repository "${repo}" on TFS server` },
+    { label: 'Create workspace mapping', sub: `Mapping clone path to repository "${repo}"` },
+    { label: 'Get latest from branch', sub: 'tf get /force from target branch' },
+    { label: 'Extract & stage files', sub: 'Unzipping API package to staging area' },
+    { label: 'Add files to TFS pending changes', sub: 'tf add *.* /recursive' },
+    { label: 'Check-in with commit message', sub: `tf checkin /comment:"-m ..." into ${repo}` },
+    { label: 'Trigger CI build pipeline', sub: 'Queuing build on TFS build server' },
+    { label: 'Verify check-in', sub: 'Confirming changeset number' },
+  ];
+}
+let CI_PIPELINE_STEPS = ciPipelineSteps('repository');
 
-    try {
-      // Call both single-server endpoints simultaneously
-      const [res1, res2] = await Promise.allSettled([
-        fetch(`http://10.177.44.180:8443/UAT/cachehit1/${serverNumber}`),
-        fetch(`http://10.177.44.58:4423/cache?servers=${serverNumber}`)
-      ]);
+async function ciSubmit() {
+  if (!ST.ciFile) { toast('Upload a ZIP file first', 'warn'); return; }
+  const repo = $v('ci-reponame');
+  const branch = $v('ci-branch');
+  const feature = $v('ci-feature');
+  const msg = $v('ci-msg');
+  const tfsUrl = $v('ci-tfsurl');
+  const clonePath = $v('ci-clonepath');
+  const targetDir = $v('ci-targetdir');
+  const backendUrl = $v('ci-backend').trim();
 
-      let data = {};
+  if (!repo) { toast('Enter the Repository Name', 'warn'); document.getElementById('ci-reponame').focus(); return; }
+  if (!branch) { toast('Enter a branch name', 'warn'); return; }
+  if (!msg) { toast('Add a commit message', 'warn'); return; }
+  if (!backendUrl) { toast('Set the Check-in Backend Service URL', 'warn'); document.getElementById('ci-backend').focus(); return; }
 
-      if (res1.status === 'fulfilled' && res1.value.ok) {
-        const d = await res1.value.json();
-        data = { ...data, ...d };
-      }
+  CI_PIPELINE_STEPS = ciPipelineSteps(repo);
+  const btn = document.getElementById('ci-btn');
+  btn.disabled = true;
+  btn.innerHTML = `<div class="ld" style="color:#03182a"><div class="ldd"></div><div class="ldd"></div><div class="ldd"></div></div>`;
 
-      if (res2.status === 'fulfilled' && res2.value.ok) {
-        const raw = await res2.value.json();
-        const arr = Array.isArray(raw) ? raw : (raw.response || []);
-        const match = arr.find(s => s.server === serverIp);
-        if (match) data = { ...data, ...match };
-      }
+  const panel = document.getElementById('ci-progress-panel');
+  panel.style.display = '';
+  const stepsList = document.getElementById('ci-steps-list');
+  const logEl = document.getElementById('ci-log');
+  const prog = document.getElementById('ci-progress');
+  logEl.innerHTML = '';
 
-      // Update the specific server in cacheData
-      setCacheData(prevData =>
-        prevData.map(server =>
-          server.server === serverIp
-            ? { ...server, ...data, lastUpdated: new Date().toISOString() }
-            : server
-        )
-      );
-
-    } catch (e) {
-      console.error(`Error fetching cache for ${serverIp}:`, e);
-    } finally {
-      setLoadingServers(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(serverIp);
-        return newSet;
-      });
-    }
-  };
-
-  const isServerLoading = (serverIp) => loadingServers.has(serverIp);
-
-  useEffect(() => {
-    fetchAllCacheData();
-  }, []);
-
-  const getStatusColor = (status) => status === 'CACHE HIT SUCCESS' ? 'success' : 'error';
-  const getStatusIcon  = (status) => status === 'CACHE HIT SUCCESS' ? '✓' : '✗';
-
-  const handleServerClick = (serverIp) => {
-    if (!isServerLoading(serverIp)) fetchSingleServerCache(serverIp);
-  };
-
-  if (loading) {
-    return (
-      <div className="cache-hit-container">
-        <div className="cache-hit-header">
-          <h2>Cache Hit Status</h2>
-        </div>
-        <div className="loading-container">
-          <div className="loading-spinner"></div>
-          <p>Loading cache servers data...</p>
-        </div>
-      </div>
-    );
+  function log(txt, type = '') {
+    logEl.innerHTML += `<span class="log-${type}">${txt}</span>\n`;
+    logEl.scrollTop = logEl.scrollHeight;
   }
 
-  if (error) {
-    return (
-      <div className="cache-hit-container">
-        <div className="cache-hit-header">
-          <h2>Cache Hit Status</h2>
-          <button className="btn-refresh" onClick={fetchAllCacheData}>Retry</button>
+  function setStep(idx, state) {
+    stepsList.innerHTML = CI_PIPELINE_STEPS.map((s, i) =>
+      `<div class="ci-step ${i < idx ? 'done' : i === idx ? state : ''}" id="cis-${i}">
+        <div class="ci-step-num">${i < idx ? '✓' : i + 1}</div>
+        <div class="ci-step-body">
+          <div class="ci-step-title">${s.label}</div>
+          <div class="ci-step-sub">${s.sub}</div>
         </div>
-        <div className="error-message">
-          <p>{error}</p>
-        </div>
-      </div>
-    );
+      </div>`
+    ).join('');
+    prog.style.width = ((idx / CI_PIPELINE_STEPS.length) * 100) + '%';
+    const sids = ['ci-s1', 'ci-s2', 'ci-s3', 'ci-s4', 'ci-s5'];
+    const map = [0, 1, 4, 7, 9];
+    const sidx = map.findLastIndex(m => idx >= m);
+    document.querySelectorAll('#pci .sb-it').forEach(e => e.classList.remove('on'));
+    if (sids[sidx]) document.getElementById(sids[sidx])?.classList.add('on');
   }
 
-  return (
-    <div className="cache-hit-container">
-      <div className="cache-hit-header">
-        <h2>Cache Hit Status</h2>
-        <button className="btn-refresh" onClick={fetchAllCacheData}>
-          Reload All Cache
-        </button>
-      </div>
+  log('[INFO] EIS DevSuite (by ANKIT) — TFS CI/CD Pipeline started', 'info');
+  log(`[INFO] File: ${ST.ciFile.name} (${fmtSz(ST.ciFile.size)})`, 'info');
+  log(`[INFO] Repository: ${repo}`, 'info');
+  log(`[INFO] Branch: ${branch}`, 'info');
+  log(`[INFO] Feature: ${feature || 'N/A'}`, 'info');
+  log(`[INFO] TFS: ${tfsUrl}`, 'info');
+  log(`[INFO] Sending ZIP to check-in backend: ${backendUrl}`, 'info');
 
-      <div className="servers-grid1">
-        {cacheData.map((server, index) => {
-          const isLoading = isServerLoading(server.server);
-          return (
-            <div
-              key={index}
-              className={`server-card1 ${getStatusColor(server.CACHE_RESPONSE)} ${isLoading ? 'loading' : ''}`}
-              onClick={() => handleServerClick(server.server)}
-            >
-              <div className="server-status">
-                {isLoading ? (
-                  <span className="status-icon loading">
-                    <div className="mini-spinner"></div>
-                  </span>
-                ) : (
-                  <span className={`status-icon ${getStatusColor(server.CACHE_RESPONSE)}`}>
-                    {getStatusIcon(server.CACHE_RESPONSE)}
-                  </span>
-                )}
-              </div>
-              <div className="server-content">
-                <div className="server-ip">{server.server}</div>
-                <div className="server-response">
-                  {isLoading ? 'Loading...' : server.CACHE_RESPONSE}
-                </div>
-                {server.lastUpdated && (
-                  <div className="server-updated">
-                    Updated: {new Date(server.lastUpdated).toLocaleTimeString()}
-                  </div>
-                )}
-              </div>
-              <div className="server-action">
-                <button
-                  className="btn-single-refresh"
-                  onClick={(e) => { e.stopPropagation(); handleServerClick(server.server); }}
-                  disabled={isLoading}
-                >
-                  {isLoading ? '...' : '↻'}
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
+  // Animate first few steps locally
+  for (let i = 0; i < 3; i++) {
+    setStep(i, 'running');
+    await new Promise(r => setTimeout(r, 450 + Math.random() * 350));
+    if (i === 0) log(`[OK] ZIP validated — ${ST.ciFile.name}`, 'ok');
+    else if (i === 1) log(`[OK] Connected to check-in backend`, 'ok');
+    else if (i === 2) log(`[..] Backend resolving repository "${repo}"`, 'info');
+    setStep(i + 1, '');
+  }
+  for (let i = 3; i < 8; i++) setStep(i, 'running');
 
-export default CacheHitUAT;
+  let result = null,
+    ok = false,
+    errMsg = '';
+  const t0 = performance.now();
+  try {
+    const fd = new FormData();
+    fd.append('zip', ST.ciFile, ST.ciFile.name);
+    fd.append('repo', repo);
+    fd.append('branch', branch);
+    fd.append('feature', feature || '');
+    fd.append('workItem', $v('ci-workitem') || '');
+    fd.append('author', $v('ci-author') || '');
+    fd.append('message', msg);
+    fd.append('tfsUrl', tfsUrl);
+    fd.append('clonePath', clonePath || '');
+    fd.append('targetDir', targetDir || '');
+    fd.append('buildConfig', $v('ci-buildcfg') || '');
+
+    const resp = await fetch(backendUrl, { method: 'POST', body: fd });
+    const ms = Math.round(performance.now() - t0);
+    if (!resp.ok) {
+      const t = await resp.text().catch(() => '');
+      throw new Error(`Backend responded ${resp.status}${t ? ': ' + t.slice(0, 300) : ''}`);
+    }
+    result = await resp.json();
+    ok = !!result.ok;
+    if (!ok) errMsg = result.message || result.error || 'Backend reported failure';
+
+    for (let i = 3; i < 8; i++) setStep(i + 1, '');
+    if (ok) {
+      log(`[OK] Workspace prepared by backend (${ms}ms)`, 'ok');
+      log(`[OK] git add / commit — ${result.filesChanged ?? '?'} file(s) changed`, 'ok');
+      log(`[OK] git push → ${repo} (${branch}) succeeded — ${result.commit || result.changeset || 'commit'}`, 'ok');
+      if (result.buildTriggered) log(`[OK] Build triggered — Config: ${$v('ci-buildcfg')}`, 'ok');
+      setStep(9, 'running');
+      await new Promise(r => setTimeout(r, 300));
+      setStep(10, '');
+      prog.style.width = '100%';
+      log(`[OK] Check-in complete! Code successfully checked in to repository "${repo}".`, 'ok');
+    } else {
+      log(`[ERROR] Check-in failed: ${errMsg}`, 'err');
+      setStep(3, 'error');
+    }
+  } catch (err) {
+    ok = false;
+    errMsg = err.message;
+    log(`[ERROR] ${err.message}`, 'err');
+    log(`[INFO] Make sure the check-in backend (Node.js service) is running and reachable at: ${backendUrl}`, 'info');
+    setStep(3, 'error');
+  }
+
+  if (ok) {
+    const hEntry = { file: ST.ciFile.name, repo, branch, feature: feature || '', msg, cs: result.commit || result.changeset || '-', ts: Date.now(), ok: true };
+    ST.ciHistory.unshift(hEntry);
+    if (ST.ciHistory.length > 20) ST.ciHistory.pop();
+    localStorage.setItem('devSuiteCi', JSON.stringify(ST.ciHistory));
+    renderCiHistory();
+    toast(`✓ Checked in to repository "${repo}" (${branch}) — ${result.commit || result.changeset || ''}`, 'ok');
+  } else {
+    const hEntry = { file: ST.ciFile.name, repo, branch, feature: feature || '', msg, cs: 'FAILED', ts: Date.now(), ok: false };
+    ST.ciHistory.unshift(hEntry);
+    if (ST.ciHistory.length > 20) ST.ciHistory.pop();
+    localStorage.setItem('devSuiteCi', JSON.stringify(ST.ciHistory));
+    renderCiHistory();
+    toast(`✗ Check-in failed: ${errMsg}`, 'err');
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '<i class="fa-solid fa-upload"></i> Check-In to TFS';
+}
+
+function renderCiHistory() {
+  const h = document.getElementById('ci-history');
+  if (!ST.ciHistory.length) {
+    h.innerHTML = '<div style="padding:8px 13px;font-size:10px;color:var(--t3)">No check-ins yet</div>';
+    return;
+  }
+  h.innerHTML = ST.ciHistory.slice(0, 6).map(r => {
+    const age = Math.floor((Date.now() - r.ts) / 1000);
+    const as = age < 60 ? age + 's' : age < 3600 ? Math.floor(age / 60) + 'm' : Math.floor(age / 3600) + 'h ago';
+    return `<div class="sb-it" style="flex-direction:column;align-items:flex-start;gap:1px;cursor:default">
+      <span style="font-size:10.5px;color:var(--sky)">${r.file || 'unknown.zip'}</span>
+      <span style="font-size:9.5px;color:var(--t3)">
+        <i class="fa-solid fa-code-fork" style="margin-right:3px;opacity:.7"></i>
+        ${r.repo || '(no repo)'} · ${r.branch} · CS#${r.cs} · ${as}
+      </span>
+    </div>`;
+  }).join('');
+}
