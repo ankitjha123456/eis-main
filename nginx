@@ -1,193 +1,33 @@
-import { useState, useRef } from "react";
+// Main application logic
+const PAGES = { db: 'pdb', req: 'preq', sw: 'psw', ci: 'pci' };
+const LABELS = { db: 'DB Query', req: 'Request Hit', sw: 'Swagger Validation', ci: 'TFS Check-In' };
+const COLORS = { db: 'var(--teal)', req: 'var(--coral)', sw: 'var(--purple)', ci: 'var(--sky)' };
 
-// ── CHANGE THIS to your .58 server + port ──
-const API_URL = "http://10.177.44.58:4418/upload";
-
-export default function Activities() {
-  const [file, setFile] = useState(null);
-  const [status, setStatus] = useState("idle"); // idle | uploading | success | error
-  const [message, setMessage] = useState("");
-  const [dragging, setDragging] = useState(false);
-  const inputRef = useRef();
-
-  const handleFile = (f) => {
-    setFile(f);
-    setStatus("idle");
-    setMessage("");
-  };
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    setDragging(false);
-    const f = e.dataTransfer.files[0];
-    if (f) handleFile(f);
-  };
-
-  const handleUpload = async () => {
-    if (!file) return;
-    setStatus("uploading");
-    setMessage("");
-
-    const formData = new FormData();
-    formData.append("certificate", file);
-
-    try {
-      const res = await fetch(API_URL, { method: "POST", body: formData });
-      const data = await res.json();
-
-      if (res.ok) {
-        setStatus("success");
-        setMessage(data.message || "Uploaded successfully!");
-      } else {
-        setStatus("error");
-        setMessage(data.error || "Upload failed.");
-      }
-    } catch (err) {
-      setStatus("error");
-      setMessage("Cannot reach server: " + err.message);
-    }
-  };
-
-  const reset = () => {
-    setFile(null);
-    setStatus("idle");
-    setMessage("");
-  };
-
-  return (
-    <div style={styles.page}>
-      <div style={styles.card}>
-        <h2 style={styles.title}>🔐 Certificate Upload</h2>
-        <p style={styles.sub}>Drop your certificate file to send it to the server</p>
-
-        <div
-          style={{
-            ...styles.dropzone,
-            borderColor: dragging ? "#4f8ef7" : file ? "#22c55e" : "#444",
-            background: dragging ? "#1a2a3a" : "#161b22",
-          }}
-          onClick={() => inputRef.current.click()}
-          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={handleDrop}
-        >
-          <input
-            ref={inputRef}
-            type="file"
-            style={{ display: "none" }}
-            onChange={(e) => e.target.files[0] && handleFile(e.target.files[0])}
-          />
-          {file ? (
-            <>
-              <div style={styles.icon}>📄</div>
-              <div style={styles.filename}>{file.name}</div>
-              <div style={styles.filesize}>{(file.size / 1024).toFixed(1)} KB</div>
-            </>
-          ) : (
-            <>
-              <div style={styles.icon}>📂</div>
-              <div style={styles.droptext}>Drop certificate here</div>
-              <div style={styles.dropsub}>or click to browse</div>
-            </>
-          )}
-        </div>
-
-        <div style={styles.row}>
-          <button
-            style={{
-              ...styles.btn,
-              background: status === "uploading" ? "#333" : "#4f8ef7",
-              cursor: status === "uploading" || !file ? "not-allowed" : "pointer",
-              opacity: !file ? 0.5 : 1,
-            }}
-            onClick={handleUpload}
-            disabled={!file || status === "uploading"}
-          >
-            {status === "uploading" ? "Uploading..." : "Upload"}
-          </button>
-
-          {file && (
-            <button style={styles.resetBtn} onClick={reset}>
-              Clear
-            </button>
-          )}
-        </div>
-
-        {message && (
-          <div
-            style={{
-              ...styles.statusBox,
-              background: status === "success" ? "#0d2d1a" : "#2d0d0d",
-              borderColor: status === "success" ? "#22c55e" : "#ef4444",
-              color: status === "success" ? "#22c55e" : "#ef4444",
-            }}
-          >
-            {status === "success" ? "✅ " : "❌ "}{message}
-          </div>
-        )}
-      </div>
-    </div>
-  );
+function openPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('on'));
+  document.getElementById(PAGES[id]).classList.add('on');
+  ST.page = id;
+  document.getElementById('bb').classList.add('on');
+  document.getElementById('bread').innerHTML =
+    `<span style="color:var(--t3)">Dashboard</span><span style="color:var(--t3);margin:0 5px">›</span><span class="active" style="color:${COLORS[id]}">${LABELS[id]}</span>`;
+  document.getElementById('env-lbl').textContent = id === 'db' ? 'IBM ACE DB' : 'IBM ACE Server';
+  if (id === 'req') { renderHist(); renderSavedReqs(); updateRouteDisplay(); }
+  if (id === 'ci') { renderCiHistory(); }
 }
 
-const styles = {
-  page: {
-    minHeight: "100vh",
-    background: "#0d1117",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontFamily: "monospace",
-  },
-  card: {
-    background: "#161b22",
-    border: "1px solid #30363d",
-    borderRadius: "12px",
-    padding: "40px",
-    width: "380px",
-    boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
-  },
-  title: { color: "#e6edf3", margin: "0 0 6px", fontSize: "20px" },
-  sub: { color: "#8b949e", margin: "0 0 24px", fontSize: "13px" },
-  dropzone: {
-    border: "2px dashed",
-    borderRadius: "10px",
-    padding: "36px 20px",
-    textAlign: "center",
-    cursor: "pointer",
-    transition: "all 0.2s",
-    marginBottom: "20px",
-  },
-  icon: { fontSize: "36px", marginBottom: "8px" },
-  filename: { color: "#e6edf3", fontSize: "15px", fontWeight: "bold", wordBreak: "break-all" },
-  filesize: { color: "#8b949e", fontSize: "12px", marginTop: "4px" },
-  droptext: { color: "#e6edf3", fontSize: "15px" },
-  dropsub: { color: "#8b949e", fontSize: "12px", marginTop: "6px" },
-  row: { display: "flex", gap: "10px" },
-  btn: {
-    flex: 1,
-    padding: "12px",
-    border: "none",
-    borderRadius: "8px",
-    color: "#fff",
-    fontSize: "14px",
-    fontWeight: "bold",
-  },
-  resetBtn: {
-    padding: "12px 18px",
-    border: "1px solid #444",
-    borderRadius: "8px",
-    background: "transparent",
-    color: "#8b949e",
-    fontSize: "14px",
-    cursor: "pointer",
-  },
-  statusBox: {
-    marginTop: "16px",
-    padding: "12px 16px",
-    borderRadius: "8px",
-    border: "1px solid",
-    fontSize: "13px",
-    fontWeight: "bold",
-  },
-};
+function goHome() {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('on'));
+  document.getElementById('ph').classList.add('on');
+  ST.page = 'home';
+  document.getElementById('bb').classList.remove('on');
+  document.getElementById('bread').innerHTML = '<span>Dashboard</span>';
+  document.getElementById('env-lbl').textContent = 'IBM ACE Server';
+}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && ST.page === 'req') {
+    e.preventDefault();
+    sendReq();
+  }
+});
