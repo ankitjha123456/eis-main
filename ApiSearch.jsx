@@ -1,3 +1,33 @@
+https://10.177.56.207/tfs/SBIEIS/EISGITREPO/_git/misc-thirdpartyepay-sys-sapi
+this is a correct URL
+
+this is my nginx:
+   location /tfs/ {
+        rewrite ^/tfs/(.*)$ /$1 break;
+
+        proxy_pass https://10.177.56.207:443/tfs/SBIEIS/EISGITREPO/_git/;
+
+        # --- required for NTLM to work through the proxy ---
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";     # let the keepalive upstream manage it
+
+        # --- TLS between nginx and the real TFS server ---
+        proxy_ssl_server_name on;
+
+
+        # --- preserve headers TFS needs to build correct URLs in responses ---
+        proxy_set_header Host 10.177.56.207;
+        proxy_set_header X-Forwarded-Host $host:$server_port;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        include snippets/cors_proxy_ssl.conf;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+this is my server.js:
+
+
+
 /**
  * EIS DevSuite — TFS Check-in Backend (companion service)
  * ---------------------------------------------------------
@@ -306,18 +336,3 @@ server.listen(PORT, () => {
   console.log(`Using git executable: ${GIT}`);
   console.log(`Platform: ${process.platform}`);
 });
-
-
-
-
-
-giving this response:
-
-
-{ok: false, message: "spawn git ENOENT"}
-message
-: 
-"spawn git ENOENT"
-ok
-: 
-false
