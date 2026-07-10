@@ -1,330 +1,280 @@
-/**
- * EIS DevSuite — TFS Check-in Backend (companion service)
- * ---------------------------------------------------------
- * ZERO NPM DEPENDENCIES. Uses only Node's built-in modules (http, fs, path,
- * os, child_process) plus the `git` command-line client that's already on
- * your machine. Nothing to `npm install` — if your environment blocks
- * package installs, this still runs.
- *
- * AUTH CHANGE (this version): credentials are now sent to git as an
- * explicit `Authorization: Basic ...` header via `-c http.extraheader=...`
- * instead of being embedded in the remote URL (`user:pass@host`). This
- * matches the exact mechanism confirmed working with:
- *
- *   curl -k --basic -u <user>:<PAT> http://10.177.44.29:4415/tfs/...   -> 200 OK
- *
- * Embedding creds in the URL was intermittently triggering git's own
- * credential-prompt/negotiation path (and could get intercepted by a
- * credential.helper), which is what caused "Authentication failed" even
- * though the same credentials worked fine via curl. Pre-building the
- * Basic header ourselves bypasses that entirely — git never has to guess
- * which auth scheme to use.
- *
- * IMPORTANT: password/PAT should be a TFS Personal Access Token (PAT),
- * not your AD/domain password — Basic auth with a PAT is what's enabled
- * on this on-prem TFS server; the AD password was confirmed to fail here.
- *
- *   Browser (final07072026_fixed.html)
- *        │  POST JSON { zipBase64, repo, branch, credentials, ... }
- *        ▼
- *   THIS SERVICE   (run: node server.js)
- *        │  git clone/push  (plain HTTP, Authorization header via -c http.extraheader)
- *        ▼
- *   nginx  10.177.44.29:4415   ──proxy_pass──▶   TFS  10.177.56.207:443
- *
- * PREREQUISITES:
- *   1. Node.js 18+ (for fs.cpSync / fs.rmSync — both built in, no install)
- *   2. `git` on PATH on THIS machine (the server, not your desktop)
- *   3. Network access from this machine to http://10.177.44.29:4415
- *
- * RUN:
- *   node server.js
- * (No `npm install` step at all.)
- *
- * Listens on port 4416 by default — must match the "Check-in Backend
- * Service URL" field in the frontend, e.g. http://<this-host>:4416/api/tfs-checkin
- */
+parameters:
+  - name: applicationName
+    type: string
+    default: ''
 
-const http = require('http');
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
-const { execFile } = require('child_process');
+stages:
+# ============== VALIDATION STAGE ==============
+- stage: Validation_Stage
+  displayName: Validation and Initialization
+  pool:
+    name: TFS-RH-1
+  jobs:
+    - job: Validation_Job
+      displayName: Validation
+      workspace:
+        clean: all
+      steps:
 
-const PORT = process.env.PORT || 4416;
-const GIT = process.env.GIT_EXE || 'git'; // override if git isn't on PATH
+        - checkout: self
+          path: s/app
 
-// ─────────────────────────────────────────────────────────────────────────
-// tiny helpers (no libraries)
-// ─────────────────────────────────────────────────────────────────────────
+        - checkout: git://EISGITREPO/eis-configuration@refs/heads/config
+          path: s/eis-configurations
 
-function sendJson(res, code, obj) {
-  const body = JSON.stringify(obj);
-  res.writeHead(code, {
-    'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS'
-  });
-  res.end(body);
-}
+        - task: CmdLine@2
+          name: val_task
+          env:
+            BRANCH: $(Build.SourceBranchName)
+          displayName: Validating repository
+          inputs:
+            script: |
+              set -e
 
-function readJsonBody(req, maxBytes) {
-  return new Promise((resolve, reject) => {
-    let size = 0;
-    const chunks = [];
-    req.on('data', (c) => {
-      size += c.length;
-      if (size > maxBytes) {
-        req.destroy();
-        reject(new Error('Payload too large'));
-        return;
-      }
-      chunks.push(c);
-    });
-    req.on('end', () => {
-      try {
-        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'));
-      } catch (e) {
-        reject(new Error('Invalid JSON body'));
-      }
-    });
-    req.on('error', reject);
-  });
-}
+              # ── Resolve application name ──────────────────────────────────────
+              if [ -z "${{ parameters.applicationName }}" ]; then
+                applicationName=$(ls -1 $(Build.SourcesDirectory)/app \
+                  | grep -vE "Config|README.md|azure-pipelines.yml" \
+                  | tail -n 1)
+              else
+                applicationName="${{ parameters.applicationName }}"
+              fi
+              echo "Application name : $applicationName"
+              echo "Branch           : $BRANCH"
 
-// Builds the "-c http.extraheader=Authorization: Basic <base64>" args that
-// must be prepended to EVERY git subcommand that talks to the remote
-// (ls-remote, clone, fetch, push, remote set-url doesn't need it but the
-// operations that actually hit the network do).
-function authArgs(username, password) {
-  if (!password) return [];
-  const token = Buffer.from(`${username || 'pat'}:${password}`).toString('base64');
-  return ['-c', `http.extraheader=Authorization: Basic ${token}`];
-}
+              # ── Skip deploy logic for main branch ────────────────────────────
+              if [ "$BRANCH" = "main" ]; then
+                echo "Branch is 'main' — skipping deploy"
+                echo "##vso[task.setvariable variable=DeployFlag;isOutput=true]false"
+                exit 0
+              fi
 
-// Runs `git <authArgs> <args>` in cwd. authArgs (if any) are inserted
-// BEFORE the subcommand, exactly like: git -c http.extraheader=... ls-remote ...
-function run(args, cwd, timeoutMs, creds) {
-  const extra = creds ? authArgs(creds.username, creds.password) : [];
-  const fullArgs = [...extra, ...args];
-  return new Promise((resolve, reject) => {
-    execFile(
-      GIT,
-      fullArgs,
-      { cwd, maxBuffer: 1024 * 1024 * 50, timeout: timeoutMs || 60000 },
-      (err, stdout, stderr) => {
-        const out = (stdout || '').toString();
-        const errOut = (stderr || '').toString();
-        if (err) return reject(new Error(errOut.trim() || out.trim() || err.message));
-        resolve((out + errOut).trim());
-      }
-    );
-  });
-}
+              # ── Ensure Config directory exists ───────────────────────────────
+              if [ ! -e $(Build.SourcesDirectory)/app/Config ]; then
+                mkdir -p $(Build.SourcesDirectory)/app/Config
+              fi
 
-// Runs a raw OS command (used only for zip extraction, not git).
-function runCmd(cmd, args, cwd, timeoutMs) {
-  return new Promise((resolve, reject) => {
-    execFile(cmd, args, { cwd, maxBuffer: 1024 * 1024 * 50, timeout: timeoutMs || 60000 }, (err, stdout, stderr) => {
-      if (err) return reject(new Error((stderr || stdout || err.message || '').toString().trim()));
-      resolve((stdout || '').toString());
-    });
-  });
-}
+              # ── Pull config from eis-configurations for this branch ──────────
+              EIS_CONFIG=$(Build.SourcesDirectory)/eis-configurations/"$BRANCH"_config.yml
+              CONFIG_OUT=$(Build.SourcesDirectory)/app/Config/config.yml
 
-// Extracts a zip using tools already on the OS — no unzip library needed.
-//   Windows: PowerShell's Expand-Archive (built into Windows 10+/Server 2016+)
-//   Linux/Mac: the `unzip` command (near-universally preinstalled)
-async function extractZip(zipPath, destDir) {
-  fs.mkdirSync(destDir, { recursive: true });
-  if (process.platform === 'win32') {
-    const safe = (s) => s.replace(/'/g, "''");
-    const psCmd = `Expand-Archive -LiteralPath '${safe(zipPath)}' -DestinationPath '${safe(destDir)}' -Force`;
-    await runCmd('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', psCmd], undefined, 120000);
-  } else {
-    await runCmd('unzip', ['-o', zipPath, '-d', destDir], undefined, 120000);
-  }
-}
+              echo "Reading from EIS config: $EIS_CONFIG"
+              yq e ".$applicationName | select(. != null)" "$EIS_CONFIG" > "$CONFIG_OUT"
 
-// Builds the plain TFS Git remote URL — NO credentials embedded anymore.
-// Auth is now carried entirely via the Authorization header (see authArgs).
-function buildRemoteUrl({ tfsUrl, collection, project, repo }) {
-  let base = (tfsUrl || '').replace(/\/+$/, '');
-  base = base.replace(/\/tfs$/i, '') + '/tfs'; // normalize trailing /tfs once
-  const col = encodeURIComponent(collection || 'DefaultCollection');
-  const proj = project ? `/${encodeURIComponent(project)}` : '';
-  const repoEnc = encodeURIComponent(repo);
-  return `${base}/${col}${proj}/_git/${repoEnc}`;
-}
+              if [ ! -s "$CONFIG_OUT" ]; then
+                echo "ERROR: No entry found for '$applicationName' in $EIS_CONFIG"
+                exit 1
+              fi
 
-function safeName(s) {
-  return String(s || '').replace(/[^a-zA-Z0-9_.-]/g, '_');
-}
+              echo "--- Resolved config ---"
+              cat "$CONFIG_OUT"
+              echo "-----------------------"
 
-// ─────────────────────────────────────────────────────────────────────────
-// route: POST /api/tfs-test — quick auth/connectivity check (git ls-remote)
-// ─────────────────────────────────────────────────────────────────────────
-async function handleTest(body, res) {
-  const { tfsUrl, collection, project, repo, username, password } = body;
-  if (!tfsUrl) return sendJson(res, 200, { ok: false, message: 'tfsUrl is required' });
-  if (!repo) return sendJson(res, 200, { ok: false, message: 'repo (repository name) is required to build the git URL' });
-  if (!password) return sendJson(res, 200, { ok: false, message: 'password/PAT is required' });
+              # ── Validate required fields ─────────────────────────────────────
+              for field in IntegrationNode IntegrationServer; do
+                value=$(yq e ".$field // \"\"" "$CONFIG_OUT" | tr -d '[:space:]')
+                # IntegrationServer is allowed to be empty (deploy everywhere)
+                if [ "$field" = "IntegrationNode" ] && [ -z "$value" ]; then
+                  echo "ERROR: $field is missing or empty"
+                  exit 1
+                fi
+              done
 
-  const remote = buildRemoteUrl({ tfsUrl, collection, project, repo });
-  const creds = { username, password };
-  try {
-    const out = await run(['ls-remote', remote], undefined, 15000, creds);
-    const refCount = out.split('\n').filter(Boolean).length;
-    return sendJson(res, 200, { ok: true, message: `Connected — found ${refCount} ref(s) on the remote` });
-  } catch (err) {
-    return sendJson(res, 200, { ok: false, message: err.message });
-  }
-}
+              # ── Resolve Deploy flag (default = true) ─────────────────────────
+              DEPLOY=$(yq e ".Deploy" "$CONFIG_OUT" | tr -d '[:space:]')
+              if [[ "$DEPLOY" =~ ^(false|False)$ ]]; then
+                DEPLOY="false"
+              else
+                DEPLOY="true"
+              fi
 
-// ─────────────────────────────────────────────────────────────────────────
-// route: POST /api/tfs-checkin — the real pipeline (git clone/add/commit/push)
-// ─────────────────────────────────────────────────────────────────────────
-async function handleCheckin(body, res) {
-  const {
-    zipBase64, zipName, repo, branch, feature, workItem, author, message,
-    tfsUrl, clonePath, targetDir, collection, project, username, password
-  } = body;
+              echo "Deploy flag: $DEPLOY"
+              echo "##vso[task.setvariable variable=DeployFlag;isOutput=true]$DEPLOY"
 
-  if (!zipBase64) return sendJson(res, 200, { ok: false, message: 'No zip data received' });
-  if (!repo) return sendJson(res, 200, { ok: false, message: 'repo is required' });
-  if (!branch) return sendJson(res, 200, { ok: false, message: 'branch is required' });
-  if (!password) return sendJson(res, 200, { ok: false, message: 'password/PAT is required' });
 
-  const plainRemote = buildRemoteUrl({ tfsUrl, collection, project, repo });
-  const creds = { username, password };
+# ============== BUILD STAGE ==============
+- stage: Build
+  displayName: Build Stage
+  dependsOn: Validation_Stage
+  pool:
+    name: TFS-RH-1
+  condition: succeeded('Validation_Stage')
+  jobs:
+    - job: Build_Job
+      displayName: Agent Build Job
+      workspace:
+        clean: all
+      steps:
 
-  const workDir = clonePath && path.isAbsolute(clonePath)
-    ? clonePath
-    : path.join(os.tmpdir(), 'tfs-ci', safeName(repo));
+        - checkout: self
+          path: s/app
 
-  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tfs-ci-zip-'));
-  const zipPath = path.join(tmpRoot, zipName || 'package.zip');
-  const extractDir = path.join(tmpRoot, 'extracted');
+        - checkout: git://EISGITREPO/eis-configuration@refs/heads/config
+          path: s/eis-configurations
 
-  const log = [];
-  const step = (s) => log.push(s);
+        - task: CmdLine@2
+          displayName: Building BAR file
+          env:
+            BRANCH: $(Build.SourceBranchName)
+          inputs:
+            script: |
+              set -e
+              . /opt/IBM/ace/server/bin/mqsiprofile
 
-  try {
-    // 1. Decode & extract the uploaded zip
-    step('Decoding uploaded zip...');
-    fs.writeFileSync(zipPath, Buffer.from(zipBase64, 'base64'));
-    step('Extracting zip (Expand-Archive / unzip)...');
-    await extractZip(zipPath, extractDir);
+              # ── Resolve application name ──────────────────────────────────────
+              if [ -z "${{ parameters.applicationName }}" ]; then
+                applicationName=$(ls -1 $(Build.SourcesDirectory)/app \
+                  | grep -vE "Config|README.md|azure-pipelines.yml" \
+                  | tail -n 1)
+              else
+                applicationName="${{ parameters.applicationName }}"
+              fi
 
-    // 2. Ensure we have a local clone pointed at the (nginx-proxied) remote.
-    //    NOTE: the remote URL itself carries NO credentials now — the
-    //    Authorization header is passed fresh on every git invocation via
-    //    authArgs(), so `remote set-url`/`remote add` just store the plain URL.
-    fs.mkdirSync(path.dirname(workDir), { recursive: true });
-    if (fs.existsSync(path.join(workDir, '.git'))) {
-      step(`Reusing existing clone at ${workDir}`);
-      await run(['remote', 'set-url', 'origin', plainRemote], workDir);
-      await run(['fetch', 'origin'], workDir, undefined, creds);
-    } else {
-      step(`git clone ${plainRemote} -> ${workDir}`);
-      try {
-        await run(['clone', plainRemote, workDir], undefined, 120000, creds);
-      } catch (e) {
-        // Repo might be empty / brand new on the server — init locally instead
-        step('clone failed (likely an empty new repo) — falling back to git init');
-        fs.mkdirSync(workDir, { recursive: true });
-        await run(['init'], workDir);
-        await run(['remote', 'add', 'origin', plainRemote], workDir);
-        await run(['fetch', 'origin'], workDir, undefined, creds).catch(() => {});
-      }
-    }
+              if [ ! -e $(Build.SourcesDirectory)/app/Config ]; then
+                mkdir -p $(Build.SourcesDirectory)/app/Config
+              fi
 
-    // 3. Checkout (or create) the target branch
-    step(`Checking out branch "${branch}"`);
-    try {
-      await run(['checkout', branch], workDir);
-      await run(['reset', '--hard', `origin/${branch}`], workDir).catch(() => {});
-    } catch (e) {
-      try {
-        await run(['checkout', '-b', branch, `origin/${branch}`], workDir);
-      } catch (e2) {
-        await run(['checkout', '-b', branch], workDir);
-      }
-    }
+              # ── For main branch: build only, no config ────────────────────────
+              if [ "$BRANCH" = "main" ]; then
+                echo "Branch is 'main' — building without config"
+                ibmint package \
+                  --input-path $(Build.SourcesDirectory)/app \
+                  --output-bar-file $(Build.BinariesDirectory)/$applicationName.bar \
+                  --java-version 8
+                exit 0
+              fi
 
-    // 4. Copy extracted files into the working copy (optionally under targetDir)
-    const dest = targetDir ? path.join(workDir, targetDir) : workDir;
-    fs.mkdirSync(dest, { recursive: true });
-    step(`Copying extracted files into ${dest}`);
-    fs.cpSync(extractDir, dest, { recursive: true, force: true });
+              # ── Pull config from eis-configurations ──────────────────────────
+              EIS_CONFIG=$(Build.SourcesDirectory)/eis-configurations/"$BRANCH"_config.yml
+              CONFIG_OUT=$(Build.SourcesDirectory)/app/Config/config.yml
 
-    // 5. Stage, commit, push
-    await run(['add', '-A'], workDir);
-    const statusOut = await run(['status', '--porcelain'], workDir);
-    if (!statusOut.trim()) {
-      return sendJson(res, 200, { ok: false, message: 'Nothing to commit — no file changes detected after copying the zip', log });
-    }
+              yq e ".$applicationName | select(. != null)" "$EIS_CONFIG" > "$CONFIG_OUT"
+              yq -i ".ApplicationName = \"$applicationName\"" "$CONFIG_OUT"
 
-    step('Committing...');
-    const commitMsg = message || `[${workItem || feature || 'CI'}] Automated check-in for ${feature || repo}`;
-    const commitArgs = ['commit', '-m', commitMsg];
-    if (author) commitArgs.push('--author', `${author} <${safeName(author).toLowerCase()}@local>`);
-    await run(commitArgs, workDir);
+              echo "--- Config used for build ---"
+              cat "$CONFIG_OUT"
+              echo "-----------------------------"
 
-    step(`Pushing to origin/${branch}...`);
-    await run(['push', 'origin', `HEAD:${branch}`], workDir, 120000, creds);
+              # ── Build BAR (no overrides) ──────────────────────────────────────
+              ibmint package \
+                --input-path $(Build.SourcesDirectory)/app \
+                --output-bar-file $(Build.BinariesDirectory)/$applicationName.bar \
+                --java-version 8
 
-    const shortHash = await run(['rev-parse', '--short', 'HEAD'], workDir);
-    const filesChanged = statusOut.split('\n').filter(Boolean).length;
+              cp "$CONFIG_OUT" $(Build.BinariesDirectory)/config.yml
 
-    return sendJson(res, 200, {
-      ok: true,
-      commit: shortHash,
-      branch,
-      filesChanged,
-      message: `Checked in as commit ${shortHash}`,
-      buildTriggered: false,
-      log
-    });
-  } catch (err) {
-    return sendJson(res, 200, { ok: false, message: err.message, log });
-  } finally {
-    fs.rmSync(tmpRoot, { recursive: true, force: true });
-  }
-}
+        - task: CopyFiles@2
+          inputs:
+            SourceFolder: $(Build.BinariesDirectory)
+            TargetFolder: $(Build.ArtifactStagingDirectory)
+            OverWrite: true
 
-// ─────────────────────────────────────────────────────────────────────────
-// server
-// ─────────────────────────────────────────────────────────────────────────
-const server = http.createServer(async (req, res) => {
-  if (req.method === 'OPTIONS') {
-    return sendJson(res, 200, {});
-  }
-  if (req.method === 'GET' && req.url === '/api/health') {
-    return sendJson(res, 200, { ok: true, git: GIT, platform: process.platform });
-  }
-  if (req.method === 'POST' && req.url === '/api/tfs-test') {
-    try {
-      const body = await readJsonBody(req, 1 * 1024 * 1024);
-      return handleTest(body, res);
-    } catch (e) {
-      return sendJson(res, 400, { ok: false, message: e.message });
-    }
-  }
-  if (req.method === 'POST' && req.url === '/api/tfs-checkin') {
-    try {
-      const body = await readJsonBody(req, 300 * 1024 * 1024); // allow up to ~300MB zip (base64-inflated)
-      return handleCheckin(body, res);
-    } catch (e) {
-      return sendJson(res, 400, { ok: false, message: e.message });
-    }
-  }
-  sendJson(res, 404, { ok: false, message: 'Not found' });
-});
+        - task: PublishBuildArtifacts@1
+          inputs:
+            PathtoPublish: $(Build.ArtifactStagingDirectory)
+            ArtifactName: drop
 
-server.listen(PORT, () => {
-  console.log(`TFS check-in backend (zero-dependency) listening on http://0.0.0.0:${PORT}`);
-  console.log(`Using git executable: ${GIT}`);
-  console.log(`Platform: ${process.platform}`);
-});
+
+# ============== RELEASE STAGE ==============
+- stage: Release
+  displayName: Deploy Stage
+  pool:
+    name: TFS-RH-1
+  dependsOn: [Validation_Stage, Build]
+  condition: |
+    and(
+      succeeded('Build'),
+      eq(dependencies.Validation_Stage.outputs['Validation_Job.val_task.DeployFlag'], 'true'),
+      ne(variables['Build.SourceBranchName'], 'main')
+    )
+  jobs:
+    - deployment: DeployApp
+      displayName: Deployment Job
+      environment: $(Build.SourceBranchName)
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+              - download: current
+                artifact: drop
+
+              - task: CmdLine@2
+                displayName: Dynamic Multi-Node Deployment
+                env:
+                  BRANCH: $(Build.SourceBranchName)
+                inputs:
+                  workingDirectory: $(Pipeline.Workspace)/drop
+                  script: |
+                    set -e
+                    . /opt/IBM/ace/server/bin/mqsiprofile
+
+                    # ── 1. Load Data ──────────────────────────────────────────
+                    ApplicationName=$(yq e ".ApplicationName" config.yml)
+                    # Convert comma-separated strings to space-separated arrays
+                    NODES_RAW=$(yq e ".IntegrationNode" config.yml | tr -d ',' | sed 's/null//g')
+                    SERVERS_RAW=$(yq e ".IntegrationServer // \"\"" config.yml | tr -d ',' | sed 's/null//g')
+
+                    IFS=' ' read -r -a NODES <<< "$NODES_RAW"
+                    BROKER_BASE="/home/devops/broker/$BRANCH"
+
+                    # ── 2. Node Loop ──────────────────────────────────────────
+                    for IntegrationNode in "${NODES[@]}"; do
+                      echo -e "\n===================================================="
+                      echo " NODE: $IntegrationNode"
+                      echo "===================================================="
+
+                      # Find .broker connection files
+                      BROKER_FILES=("$BROKER_BASE"/${IntegrationNode}*.broker)
+                      if [ ! -e "${BROKER_FILES[0]}" ]; then
+                        echo "!! Warning: No broker connection files found for $IntegrationNode"
+                        continue
+                      fi
+
+                      for broker_file in "${BROKER_FILES[@]}"; do
+                        fname=$(basename "$broker_file")
+                        echo "--- Connection: $fname ---"
+
+                        # ── 3. Dynamic Discovery (The Ground Truth) ───────────
+                        # Extracts only the server names from the node file
+                        MQSI_DISCOVERED=$(mqsilist -n "$broker_file" | awk -F"'" '{print $2}' | grep -v '^$' | tail -n +2)
+                        
+                        if [ -z "$MQSI_DISCOVERED" ]; then
+                          echo "!! Error: No active servers found on $fname via mqsilist."
+                          exit 1
+                        fi
+                        mapfile -t ALL_ACTIVE_SERVERS <<< "$MQSI_DISCOVERED"
+
+                        # ── 4. Determine Targets ──────────────────────────────
+                        TARGET_SERVERS=()
+
+                        if [ -n "$SERVERS_RAW" ]; then
+                          # SCENARIO: Config has a list. We must VALIDATE before deploying.
+                          echo "Logic: Manual List Provided. Validating against live node..."
+                          for s in "${ALL_ACTIVE_SERVERS[@]}"; do
+                            if [[ " $SERVERS_RAW " =~ " $s " ]]; then
+                              TARGET_SERVERS+=("$s")
+                              echo "  [VALIDATED] Server '$s' is active and in config."
+                            else
+                              echo "  [IGNORED]   Server '$s' is active but NOT in config."
+                            fi
+                          done
+                        else
+                          # SCENARIO: Config is empty. Deploy to everything active.
+                          echo "Logic: No list provided. Deploying to ALL discovered servers..."
+                          TARGET_SERVERS=("${ALL_ACTIVE_SERVERS[@]}")
+                        fi
+
+                        # ── 5. Execution ──────────────────────────────────────
+                        if [ ${#TARGET_SERVERS[@]} -eq 0 ]; then
+                          echo "!! Result: No servers matched the configuration for this node."
+                        else
+                          for server in "${TARGET_SERVERS[@]}"; do
+                            echo ">>> DEPLOYING -> $server"
+                            ibmint deploy \
+                              --input-bar-file "$ApplicationName.bar" \
+                              --integration-node-file "$broker_file" \
+                              --output-server "$server"
+                          done
+                        fi
+                      done
+                    done
