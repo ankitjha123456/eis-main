@@ -1,475 +1,330 @@
-/* ── Page ──────────────────────────────────────────────────── */
-.cert-page {
-  min-height: 100vh;
-  background: #0a0e1a;
-  padding: 32px 16px 64px;
-  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+/**
+ * EIS DevSuite — TFS Check-in Backend (companion service)
+ * ---------------------------------------------------------
+ * ZERO NPM DEPENDENCIES. Uses only Node's built-in modules (http, fs, path,
+ * os, child_process) plus the `git` command-line client that's already on
+ * your machine. Nothing to `npm install` — if your environment blocks
+ * package installs, this still runs.
+ *
+ * AUTH CHANGE (this version): credentials are now sent to git as an
+ * explicit `Authorization: Basic ...` header via `-c http.extraheader=...`
+ * instead of being embedded in the remote URL (`user:pass@host`). This
+ * matches the exact mechanism confirmed working with:
+ *
+ *   curl -k --basic -u <user>:<PAT> http://10.177.44.29:4415/tfs/...   -> 200 OK
+ *
+ * Embedding creds in the URL was intermittently triggering git's own
+ * credential-prompt/negotiation path (and could get intercepted by a
+ * credential.helper), which is what caused "Authentication failed" even
+ * though the same credentials worked fine via curl. Pre-building the
+ * Basic header ourselves bypasses that entirely — git never has to guess
+ * which auth scheme to use.
+ *
+ * IMPORTANT: password/PAT should be a TFS Personal Access Token (PAT),
+ * not your AD/domain password — Basic auth with a PAT is what's enabled
+ * on this on-prem TFS server; the AD password was confirmed to fail here.
+ *
+ *   Browser (final07072026_fixed.html)
+ *        │  POST JSON { zipBase64, repo, branch, credentials, ... }
+ *        ▼
+ *   THIS SERVICE   (run: node server.js)
+ *        │  git clone/push  (plain HTTP, Authorization header via -c http.extraheader)
+ *        ▼
+ *   nginx  10.177.44.29:4415   ──proxy_pass──▶   TFS  10.177.56.207:443
+ *
+ * PREREQUISITES:
+ *   1. Node.js 18+ (for fs.cpSync / fs.rmSync — both built in, no install)
+ *   2. `git` on PATH on THIS machine (the server, not your desktop)
+ *   3. Network access from this machine to http://10.177.44.29:4415
+ *
+ * RUN:
+ *   node server.js
+ * (No `npm install` step at all.)
+ *
+ * Listens on port 4416 by default — must match the "Check-in Backend
+ * Service URL" field in the frontend, e.g. http://<this-host>:4416/api/tfs-checkin
+ */
+
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+const { execFile } = require('child_process');
+
+const PORT = process.env.PORT || 4416;
+const GIT = process.env.GIT_EXE || 'git'; // override if git isn't on PATH
+
+// ─────────────────────────────────────────────────────────────────────────
+// tiny helpers (no libraries)
+// ─────────────────────────────────────────────────────────────────────────
+
+function sendJson(res, code, obj) {
+  const body = JSON.stringify(obj);
+  res.writeHead(code, {
+    'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS'
+  });
+  res.end(body);
 }
 
-.cert-container {
-  max-width: 780px;
-  margin: 0 auto;
+function readJsonBody(req, maxBytes) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on('data', (c) => {
+      size += c.length;
+      if (size > maxBytes) {
+        req.destroy();
+        reject(new Error('Payload too large'));
+        return;
+      }
+      chunks.push(c);
+    });
+    req.on('end', () => {
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'));
+      } catch (e) {
+        reject(new Error('Invalid JSON body'));
+      }
+    });
+    req.on('error', reject);
+  });
 }
 
-/* ── Header ────────────────────────────────────────────────── */
-.cert-header {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 28px;
+// Builds the "-c http.extraheader=Authorization: Basic <base64>" args that
+// must be prepended to EVERY git subcommand that talks to the remote
+// (ls-remote, clone, fetch, push, remote set-url doesn't need it but the
+// operations that actually hit the network do).
+function authArgs(username, password) {
+  if (!password) return [];
+  const token = Buffer.from(`${username || 'pat'}:${password}`).toString('base64');
+  return ['-c', `http.extraheader=Authorization: Basic ${token}`];
 }
 
-.cert-header-icon {
-  font-size: 36px;
-  background: linear-gradient(135deg, #1e3a5f, #0d2137);
-  border: 1px solid #1e4070;
-  border-radius: 12px;
-  width: 60px;
-  height: 60px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
+// Runs `git <authArgs> <args>` in cwd. authArgs (if any) are inserted
+// BEFORE the subcommand, exactly like: git -c http.extraheader=... ls-remote ...
+function run(args, cwd, timeoutMs, creds) {
+  const extra = creds ? authArgs(creds.username, creds.password) : [];
+  const fullArgs = [...extra, ...args];
+  return new Promise((resolve, reject) => {
+    execFile(
+      GIT,
+      fullArgs,
+      { cwd, maxBuffer: 1024 * 1024 * 50, timeout: timeoutMs || 60000 },
+      (err, stdout, stderr) => {
+        const out = (stdout || '').toString();
+        const errOut = (stderr || '').toString();
+        if (err) return reject(new Error(errOut.trim() || out.trim() || err.message));
+        resolve((out + errOut).trim());
+      }
+    );
+  });
 }
 
-.cert-title {
-  color: #e2e8f0;
-  font-size: 22px;
-  font-weight: 700;
-  margin: 0 0 4px;
-  letter-spacing: -0.3px;
+// Runs a raw OS command (used only for zip extraction, not git).
+function runCmd(cmd, args, cwd, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    execFile(cmd, args, { cwd, maxBuffer: 1024 * 1024 * 50, timeout: timeoutMs || 60000 }, (err, stdout, stderr) => {
+      if (err) return reject(new Error((stderr || stdout || err.message || '').toString().trim()));
+      resolve((stdout || '').toString());
+    });
+  });
 }
 
-.cert-subtitle {
-  color: #64748b;
-  font-size: 13px;
-  margin: 0;
-}
-
-/* ── Card ──────────────────────────────────────────────────── */
-.cert-card {
-  background: #111827;
-  border: 1px solid #1e293b;
-  border-radius: 16px;
-  padding: 32px;
-  margin-bottom: 24px;
-}
-
-/* ── Section ───────────────────────────────────────────────── */
-.cert-section {
-  margin-bottom: 28px;
-}
-
-.cert-step-label {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: #94a3b8;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.8px;
-  text-transform: uppercase;
-  margin-bottom: 12px;
-}
-
-.cert-step-num {
-  background: #1e293b;
-  color: #4f8ef7;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 2px 7px;
-  border-radius: 4px;
-  font-family: monospace;
-}
-
-/* ── Environment Buttons ───────────────────────────────────── */
-.cert-env-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-
-.cert-env-btn {
-  background: #0d1117;
-  border: 1.5px solid #1e293b;
-  border-radius: 10px;
-  padding: 16px 20px;
-  cursor: pointer;
-  text-align: left;
-  transition: all 0.15s ease;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.cert-env-btn:hover {
-  border-color: #2d4a7a;
-  background: #0f1e30;
-}
-
-.cert-env-btn.active {
-  border-color: #4f8ef7;
-  background: #0d2040;
-  box-shadow: 0 0 0 1px #4f8ef740;
-}
-
-.cert-env-name {
-  color: #e2e8f0;
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-}
-
-.cert-env-range {
-  color: #64748b;
-  font-size: 12px;
-  font-family: monospace;
-}
-
-.cert-env-count {
-  color: #4f8ef7;
-  font-size: 11px;
-  font-weight: 600;
-  margin-top: 2px;
-}
-
-/* ── Path Buttons ──────────────────────────────────────────── */
-.cert-path-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-
-.cert-path-btn {
-  background: #0d1117;
-  border: 1.5px solid #1e293b;
-  border-radius: 10px;
-  padding: 14px 18px;
-  cursor: pointer;
-  text-align: left;
-  transition: all 0.15s ease;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.cert-path-btn:hover {
-  border-color: #2d4a7a;
-  background: #0f1e30;
-}
-
-.cert-path-btn.active {
-  border-color: #22c55e;
-  background: #0a2010;
-  box-shadow: 0 0 0 1px #22c55e30;
-}
-
-.cert-path-name {
-  color: #e2e8f0;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.cert-path-val {
-  color: #64748b;
-  font-size: 11px;
-  font-family: monospace;
-  word-break: break-all;
-}
-
-/* ── Drop Zone ─────────────────────────────────────────────── */
-.cert-dropzone {
-  border: 2px dashed #1e293b;
-  border-radius: 10px;
-  padding: 32px 20px;
-  text-align: center;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  background: #0d1117;
-}
-
-.cert-dropzone:hover {
-  border-color: #2d4a7a;
-  background: #0f1e30;
-}
-
-.cert-dropzone.dragging {
-  border-color: #4f8ef7;
-  background: #0d2040;
-}
-
-.cert-dropzone.has-file {
-  border-color: #22c55e;
-  border-style: solid;
-  background: #0a2010;
-}
-
-.cert-drop-prompt {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-}
-
-.cert-drop-icon { font-size: 32px; }
-.cert-drop-text { color: #94a3b8; font-size: 14px; font-weight: 500; }
-.cert-drop-hint { color: #475569; font-size: 12px; font-family: monospace; }
-
-.cert-file-info {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 0 8px;
-}
-
-.cert-file-icon { font-size: 28px; }
-
-.cert-file-name {
-  color: #e2e8f0;
-  font-size: 14px;
-  font-weight: 600;
-  word-break: break-all;
-  text-align: left;
-}
-
-.cert-file-size {
-  color: #64748b;
-  font-size: 12px;
-  margin-top: 3px;
-}
-
-.cert-file-clear {
-  margin-left: auto;
-  background: #1e293b;
-  border: none;
-  color: #94a3b8;
-  border-radius: 6px;
-  width: 28px;
-  height: 28px;
-  cursor: pointer;
-  font-size: 12px;
-  flex-shrink: 0;
-}
-
-.cert-file-clear:hover { background: #ef4444; color: #fff; }
-
-/* ── Summary Bar ───────────────────────────────────────────── */
-.cert-summary-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: #0f1e30;
-  border: 1px solid #1e3a5f;
-  border-radius: 8px;
-  padding: 12px 16px;
-  margin-bottom: 20px;
-  color: #94a3b8;
-  font-size: 13px;
-}
-
-.cert-summary-bar b { color: #e2e8f0; }
-
-/* ── Deploy Button ─────────────────────────────────────────── */
-.cert-deploy-btn {
-  width: 100%;
-  padding: 14px;
-  background: linear-gradient(135deg, #1d4ed8, #4f8ef7);
-  border: none;
-  border-radius: 10px;
-  color: #fff;
-  font-size: 15px;
-  font-weight: 700;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  transition: all 0.2s ease;
-  letter-spacing: 0.2px;
-}
-
-.cert-deploy-btn:hover:not(.disabled):not(.deploying) {
-  background: linear-gradient(135deg, #2563eb, #60a5fa);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 16px #4f8ef740;
-}
-
-.cert-deploy-btn.disabled {
-  background: #1e293b;
-  color: #475569;
-  cursor: not-allowed;
-}
-
-.cert-deploy-btn.deploying {
-  background: #1e293b;
-  cursor: not-allowed;
-}
-
-.cert-spinner {
-  width: 16px;
-  height: 16px;
-  border: 2px solid #475569;
-  border-top-color: #4f8ef7;
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
-  display: inline-block;
-}
-
-@keyframes spin { to { transform: rotate(360deg); } }
-
-/* ── Alert ─────────────────────────────────────────────────── */
-.cert-alert {
-  margin-top: 16px;
-  padding: 12px 16px;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.cert-alert.error {
-  background: #2d0d0d;
-  border: 1px solid #ef4444;
-  color: #f87171;
-}
-
-/* ── Results Card ──────────────────────────────────────────── */
-.cert-results-card {
-  background: #111827;
-  border: 1px solid #1e293b;
-  border-radius: 16px;
-  overflow: hidden;
-}
-
-.cert-results-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  padding: 24px 28px 20px;
-  border-bottom: 1px solid #1e293b;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.cert-results-title {
-  color: #e2e8f0;
-  font-size: 16px;
-  font-weight: 700;
-  margin: 0 0 4px;
-}
-
-.cert-results-meta {
-  color: #64748b;
-  font-size: 12px;
-  font-family: monospace;
-  margin: 0;
-}
-
-.cert-summary-pills {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.pill {
-  padding: 4px 12px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.pill.success { background: #0a2010; border: 1px solid #22c55e; color: #22c55e; }
-.pill.failed  { background: #2d0d0d; border: 1px solid #ef4444; color: #f87171; }
-
-/* ── Results Table ─────────────────────────────────────────── */
-.cert-results-table { padding: 0 28px 8px; }
-
-.cert-table-head {
-  display: grid;
-  grid-template-columns: 140px 120px 1fr 1fr;
-  gap: 12px;
-  padding: 12px 0 8px;
-  color: #475569;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  border-bottom: 1px solid #1e293b;
-}
-
-.cert-table-row {
-  display: grid;
-  grid-template-columns: 140px 120px 1fr 1fr;
-  gap: 12px;
-  padding: 12px 0;
-  border-bottom: 1px solid #0f172a;
-  align-items: center;
-  transition: background 0.1s;
-}
-
-.cert-table-row:hover { background: #0d1117; }
-.cert-table-row:last-child { border-bottom: none; }
-
-.cert-ip {
-  color: #94a3b8;
-  font-size: 13px;
-  font-family: monospace;
-}
-
-.cert-status-badge {
-  font-size: 12px;
-  font-weight: 600;
-  padding: 3px 10px;
-  border-radius: 6px;
-  display: inline-block;
-}
-
-.cert-status-badge.success { background: #0a2010; color: #22c55e; }
-.cert-status-badge.failed  { background: #2d0d0d; color: #f87171; }
-
-.cert-backup-name {
-  color: #fbbf24;
-  font-size: 11px;
-  font-family: monospace;
-  word-break: break-all;
-}
-
-.cert-no-backup { color: #334155; font-size: 12px; }
-
-.cert-error-msg {
-  color: #f87171;
-  font-size: 11px;
-  font-family: monospace;
-  word-break: break-all;
-}
-
-/* ── Results Footer ────────────────────────────────────────── */
-.cert-results-footer {
-  padding: 20px 28px 24px;
-  border-top: 1px solid #1e293b;
-}
-
-.cert-reset-btn {
-  background: transparent;
-  border: 1px solid #1e293b;
-  border-radius: 8px;
-  color: #64748b;
-  font-size: 13px;
-  padding: 10px 20px;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.cert-reset-btn:hover {
-  border-color: #4f8ef7;
-  color: #4f8ef7;
-}
-
-/* ── Responsive ────────────────────────────────────────────── */
-@media (max-width: 600px) {
-  .cert-card { padding: 20px 16px; }
-  .cert-env-grid, .cert-path-grid { grid-template-columns: 1fr; }
-  .cert-table-head, .cert-table-row {
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: auto auto;
+// Extracts a zip using tools already on the OS — no unzip library needed.
+//   Windows: PowerShell's Expand-Archive (built into Windows 10+/Server 2016+)
+//   Linux/Mac: the `unzip` command (near-universally preinstalled)
+async function extractZip(zipPath, destDir) {
+  fs.mkdirSync(destDir, { recursive: true });
+  if (process.platform === 'win32') {
+    const safe = (s) => s.replace(/'/g, "''");
+    const psCmd = `Expand-Archive -LiteralPath '${safe(zipPath)}' -DestinationPath '${safe(destDir)}' -Force`;
+    await runCmd('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', psCmd], undefined, 120000);
+  } else {
+    await runCmd('unzip', ['-o', zipPath, '-d', destDir], undefined, 120000);
   }
 }
+
+// Builds the plain TFS Git remote URL — NO credentials embedded anymore.
+// Auth is now carried entirely via the Authorization header (see authArgs).
+function buildRemoteUrl({ tfsUrl, collection, project, repo }) {
+  let base = (tfsUrl || '').replace(/\/+$/, '');
+  base = base.replace(/\/tfs$/i, '') + '/tfs'; // normalize trailing /tfs once
+  const col = encodeURIComponent(collection || 'DefaultCollection');
+  const proj = project ? `/${encodeURIComponent(project)}` : '';
+  const repoEnc = encodeURIComponent(repo);
+  return `${base}/${col}${proj}/_git/${repoEnc}`;
+}
+
+function safeName(s) {
+  return String(s || '').replace(/[^a-zA-Z0-9_.-]/g, '_');
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// route: POST /api/tfs-test — quick auth/connectivity check (git ls-remote)
+// ─────────────────────────────────────────────────────────────────────────
+async function handleTest(body, res) {
+  const { tfsUrl, collection, project, repo, username, password } = body;
+  if (!tfsUrl) return sendJson(res, 200, { ok: false, message: 'tfsUrl is required' });
+  if (!repo) return sendJson(res, 200, { ok: false, message: 'repo (repository name) is required to build the git URL' });
+  if (!password) return sendJson(res, 200, { ok: false, message: 'password/PAT is required' });
+
+  const remote = buildRemoteUrl({ tfsUrl, collection, project, repo });
+  const creds = { username, password };
+  try {
+    const out = await run(['ls-remote', remote], undefined, 15000, creds);
+    const refCount = out.split('\n').filter(Boolean).length;
+    return sendJson(res, 200, { ok: true, message: `Connected — found ${refCount} ref(s) on the remote` });
+  } catch (err) {
+    return sendJson(res, 200, { ok: false, message: err.message });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// route: POST /api/tfs-checkin — the real pipeline (git clone/add/commit/push)
+// ─────────────────────────────────────────────────────────────────────────
+async function handleCheckin(body, res) {
+  const {
+    zipBase64, zipName, repo, branch, feature, workItem, author, message,
+    tfsUrl, clonePath, targetDir, collection, project, username, password
+  } = body;
+
+  if (!zipBase64) return sendJson(res, 200, { ok: false, message: 'No zip data received' });
+  if (!repo) return sendJson(res, 200, { ok: false, message: 'repo is required' });
+  if (!branch) return sendJson(res, 200, { ok: false, message: 'branch is required' });
+  if (!password) return sendJson(res, 200, { ok: false, message: 'password/PAT is required' });
+
+  const plainRemote = buildRemoteUrl({ tfsUrl, collection, project, repo });
+  const creds = { username, password };
+
+  const workDir = clonePath && path.isAbsolute(clonePath)
+    ? clonePath
+    : path.join(os.tmpdir(), 'tfs-ci', safeName(repo));
+
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tfs-ci-zip-'));
+  const zipPath = path.join(tmpRoot, zipName || 'package.zip');
+  const extractDir = path.join(tmpRoot, 'extracted');
+
+  const log = [];
+  const step = (s) => log.push(s);
+
+  try {
+    // 1. Decode & extract the uploaded zip
+    step('Decoding uploaded zip...');
+    fs.writeFileSync(zipPath, Buffer.from(zipBase64, 'base64'));
+    step('Extracting zip (Expand-Archive / unzip)...');
+    await extractZip(zipPath, extractDir);
+
+    // 2. Ensure we have a local clone pointed at the (nginx-proxied) remote.
+    //    NOTE: the remote URL itself carries NO credentials now — the
+    //    Authorization header is passed fresh on every git invocation via
+    //    authArgs(), so `remote set-url`/`remote add` just store the plain URL.
+    fs.mkdirSync(path.dirname(workDir), { recursive: true });
+    if (fs.existsSync(path.join(workDir, '.git'))) {
+      step(`Reusing existing clone at ${workDir}`);
+      await run(['remote', 'set-url', 'origin', plainRemote], workDir);
+      await run(['fetch', 'origin'], workDir, undefined, creds);
+    } else {
+      step(`git clone ${plainRemote} -> ${workDir}`);
+      try {
+        await run(['clone', plainRemote, workDir], undefined, 120000, creds);
+      } catch (e) {
+        // Repo might be empty / brand new on the server — init locally instead
+        step('clone failed (likely an empty new repo) — falling back to git init');
+        fs.mkdirSync(workDir, { recursive: true });
+        await run(['init'], workDir);
+        await run(['remote', 'add', 'origin', plainRemote], workDir);
+        await run(['fetch', 'origin'], workDir, undefined, creds).catch(() => {});
+      }
+    }
+
+    // 3. Checkout (or create) the target branch
+    step(`Checking out branch "${branch}"`);
+    try {
+      await run(['checkout', branch], workDir);
+      await run(['reset', '--hard', `origin/${branch}`], workDir).catch(() => {});
+    } catch (e) {
+      try {
+        await run(['checkout', '-b', branch, `origin/${branch}`], workDir);
+      } catch (e2) {
+        await run(['checkout', '-b', branch], workDir);
+      }
+    }
+
+    // 4. Copy extracted files into the working copy (optionally under targetDir)
+    const dest = targetDir ? path.join(workDir, targetDir) : workDir;
+    fs.mkdirSync(dest, { recursive: true });
+    step(`Copying extracted files into ${dest}`);
+    fs.cpSync(extractDir, dest, { recursive: true, force: true });
+
+    // 5. Stage, commit, push
+    await run(['add', '-A'], workDir);
+    const statusOut = await run(['status', '--porcelain'], workDir);
+    if (!statusOut.trim()) {
+      return sendJson(res, 200, { ok: false, message: 'Nothing to commit — no file changes detected after copying the zip', log });
+    }
+
+    step('Committing...');
+    const commitMsg = message || `[${workItem || feature || 'CI'}] Automated check-in for ${feature || repo}`;
+    const commitArgs = ['commit', '-m', commitMsg];
+    if (author) commitArgs.push('--author', `${author} <${safeName(author).toLowerCase()}@local>`);
+    await run(commitArgs, workDir);
+
+    step(`Pushing to origin/${branch}...`);
+    await run(['push', 'origin', `HEAD:${branch}`], workDir, 120000, creds);
+
+    const shortHash = await run(['rev-parse', '--short', 'HEAD'], workDir);
+    const filesChanged = statusOut.split('\n').filter(Boolean).length;
+
+    return sendJson(res, 200, {
+      ok: true,
+      commit: shortHash,
+      branch,
+      filesChanged,
+      message: `Checked in as commit ${shortHash}`,
+      buildTriggered: false,
+      log
+    });
+  } catch (err) {
+    return sendJson(res, 200, { ok: false, message: err.message, log });
+  } finally {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// server
+// ─────────────────────────────────────────────────────────────────────────
+const server = http.createServer(async (req, res) => {
+  if (req.method === 'OPTIONS') {
+    return sendJson(res, 200, {});
+  }
+  if (req.method === 'GET' && req.url === '/api/health') {
+    return sendJson(res, 200, { ok: true, git: GIT, platform: process.platform });
+  }
+  if (req.method === 'POST' && req.url === '/api/tfs-test') {
+    try {
+      const body = await readJsonBody(req, 1 * 1024 * 1024);
+      return handleTest(body, res);
+    } catch (e) {
+      return sendJson(res, 400, { ok: false, message: e.message });
+    }
+  }
+  if (req.method === 'POST' && req.url === '/api/tfs-checkin') {
+    try {
+      const body = await readJsonBody(req, 300 * 1024 * 1024); // allow up to ~300MB zip (base64-inflated)
+      return handleCheckin(body, res);
+    } catch (e) {
+      return sendJson(res, 400, { ok: false, message: e.message });
+    }
+  }
+  sendJson(res, 404, { ok: false, message: 'Not found' });
+});
+
+server.listen(PORT, () => {
+  console.log(`TFS check-in backend (zero-dependency) listening on http://0.0.0.0:${PORT}`);
+  console.log(`Using git executable: ${GIT}`);
+  console.log(`Platform: ${process.platform}`);
+});
