@@ -40,46 +40,7 @@
                     IFS=' ' read -r -a NODES <<< "$NODES_RAW"
                     BROKER_BASE="/home/devops/broker/$BRANCH"
 
-                    # ── 2. LB Mapper Pre-check (Node: HEART_BEAT / EG: lbMapper) ──
-                    echo -e "\n===================================================="
-                    echo " LB MAPPER: Pre-deployment check"
-                    echo "===================================================="
-
-                    set +e
-                    LBMAPPER_STATUS=$(mqsilist HEART_BEAT -e lbMapper 2>&1)
-                    LBMAPPER_RC=$?
-                    set -e
-                    echo "$LBMAPPER_STATUS"
-
-                    if [ "$LBMAPPER_RC" -ne 0 ] && ! echo "$LBMAPPER_STATUS" | grep -qE "is running|is stopped"; then
-                      echo "!! Error: mqsilist command failed (exit code $LBMAPPER_RC). Aborting."
-                      exit 1
-                    fi
-
-                    if echo "$LBMAPPER_STATUS" | grep -q "is running"; then
-                      echo "lbMapper is running. Stopping it before release..."
-
-                      set +e
-                      STOP_OUTPUT=$(mqsistopmsgflow HEART_BEAT -e lbMapper 2>&1)
-                      STOP_RC=$?
-                      set -e
-                      echo "$STOP_OUTPUT"
-
-                      if [ "$STOP_RC" -eq 0 ] && echo "$STOP_OUTPUT" | grep -q "Successful command completion"; then
-                        echo "lbMapper stopped successfully."
-                      else
-                        echo "!! Error: lbMapper stop command failed. Aborting deployment."
-                        exit 1
-                      fi
-
-                    elif echo "$LBMAPPER_STATUS" | grep -q "is stopped"; then
-                      echo "lbMapper is already stopped. Continuing."
-                    else
-                      echo "!! Error: Unable to determine lbMapper status. Aborting."
-                      exit 1
-                    fi
-
-                    # ── 3. Node Loop ──────────────────────────────────────────
+                    # ── 2. Node Loop ──────────────────────────────────────────
                     for IntegrationNode in "${NODES[@]}"; do
                       echo -e "\n===================================================="
                       echo " NODE: $IntegrationNode"
@@ -105,6 +66,57 @@
                           exit 1
                         fi
                         mapfile -t ALL_ACTIVE_SERVERS <<< "$MQSI_DISCOVERED"
+
+                        # ── 4b. LB Mapper Pre-check (only if lbMapper exists on THIS node) ──
+                        LBMAPPER_ON_NODE=false
+                        for s in "${ALL_ACTIVE_SERVERS[@]}"; do
+                          if [ "$s" = "lbMapper" ]; then
+                            LBMAPPER_ON_NODE=true
+                            break
+                          fi
+                        done
+
+                        LBMAPPER_WAS_RUNNING=false
+                        if [ "$LBMAPPER_ON_NODE" = true ]; then
+                          echo -e "\n---------------------------------------------------"
+                          echo " LB MAPPER: Pre-deployment check for $fname"
+                          echo "---------------------------------------------------"
+
+                          set +e
+                          LBMAPPER_STATUS=$(mqsilist -n "$broker_file" -e lbMapper 2>&1)
+                          LBMAPPER_RC=$?
+                          set -e
+                          echo "$LBMAPPER_STATUS"
+
+                          if [ "$LBMAPPER_RC" -ne 0 ] && ! echo "$LBMAPPER_STATUS" | grep -qE "is running|is stopped"; then
+                            echo "!! Error: mqsilist for lbMapper failed on $fname (exit code $LBMAPPER_RC). Aborting."
+                            exit 1
+                          fi
+
+                          if echo "$LBMAPPER_STATUS" | grep -q "is running"; then
+                            echo "lbMapper is running on $fname. Stopping it before release..."
+                            LBMAPPER_WAS_RUNNING=true
+
+                            set +e
+                            STOP_OUTPUT=$(mqsistopmsgflow -n "$broker_file" -e lbMapper 2>&1)
+                            STOP_RC=$?
+                            set -e
+                            echo "$STOP_OUTPUT"
+
+                            if [ "$STOP_RC" -eq 0 ] && echo "$STOP_OUTPUT" | grep -q "Successful command completion"; then
+                              echo "lbMapper stopped successfully on $fname."
+                            else
+                              echo "!! Error: lbMapper stop command failed on $fname. Aborting deployment."
+                              exit 1
+                            fi
+
+                          elif echo "$LBMAPPER_STATUS" | grep -q "is stopped"; then
+                            echo "lbMapper is already stopped on $fname. Continuing."
+                          else
+                            echo "!! Error: Unable to determine lbMapper status on $fname. Aborting."
+                            exit 1
+                          fi
+                        fi
 
                         # ── 5. Determine Targets ──────────────────────────────
                         TARGET_SERVERS=()
@@ -138,20 +150,25 @@
                               --output-server "$server"
                           done
                         fi
+
+                        # ── 7. Restart lbMapper on this node (only if we stopped it) ──
+                        if [ "$LBMAPPER_WAS_RUNNING" = true ]; then
+                          echo "Restarting lbMapper message flow on $fname..."
+                          set +e
+                          START_OUTPUT=$(mqsistartmsgflow -n "$broker_file" -e lbMapper 2>&1)
+                          START_RC=$?
+                          set -e
+                          echo "$START_OUTPUT"
+
+                          if [ "$START_RC" -eq 0 ] && echo "$START_OUTPUT" | grep -q "Successful command completion"; then
+                            echo "✅ lbMapper started successfully on $fname."
+                          else
+                            echo "!! Warning: lbMapper start command did not report success on $fname."
+                          fi
+                        fi
                       done
                     done
 
-                    # ── 7. Restart lbMapper after all deployments ──────────────
                     echo -e "\n===================================================="
-                    echo "Restarting lbMapper message flow on HEART_BEAT..."
-                    set +e
-                    START_OUTPUT=$(mqsistartmsgflow HEART_BEAT -e lbMapper 2>&1)
-                    START_RC=$?
-                    set -e
-                    echo "$START_OUTPUT"
-
-                    if [ "$START_RC" -eq 0 ] && echo "$START_OUTPUT" | grep -q "Successful command completion"; then
-                      echo "✅ lbMapper started successfully. Deployment cycle complete for all nodes/servers."
-                    else
-                      echo "!! Warning: lbMapper start command did not report success."
-                    fi
+                    echo "Deployment cycle complete for all nodes/servers."
+                    echo "===================================================="
