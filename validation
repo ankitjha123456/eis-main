@@ -1,17 +1,10 @@
-[azagent@az-rh-uat-01 ~]$ isql UAT  "$DB_USER" "$DB_PASS"
-+---------------------------------------+
-| Connected!                            |
-|                                       |
-| sql-statement                         |
-| help [tablename]                      |
-| echo [string]                         |
-| quit                                  |
-|                                       |
-+---------------------------------------+
-SQL> INSERT into EISAPP.CACHE_DETAILS (FIELD_NAME, FIELD_VALUE, REQUEST_ACTION, PROCESSING_ACTION, RESPONSE_ACTION, SOURCE_ID, BACKEND_TYPE, BACKEND_SUB_TYPE, TRAN_CODE, SERVICE_NAME,CREATION_TIME)('HUNTER_DECISION_ANALYTICS_GETMATCHES_CONTENT_CHECK','Y','CONTENT_CHECK','NULL','NULL','MULTIPLE','DECISION_ANALYTICS','GETMATCHES','HUNTER','thirdPartyGenericHunterDecisionAnalytics_sys',TRUNC(SYSDATE));
-[ISQL]ERROR: Could not SQLExecute
-SQL>
-[azagent@az-rh-uat-01 ~]$ isql UAT  "$DB_USER" "$DB_PASS"
-
-isql is giving this error 
-its taking time to connect
+[azagent@az-rh-uat-02 ~]$ isql -v UAT "$DB_USER" "$DB_PASS" -b
+[01000][unixODBC][Driver Manager]Can't open lib '/opt/IBM/ace/server/ODBC/drivers/lib/UKora95.so' : file not found
+[ISQL]ERROR: Could not SQLConnect
+[azagent@az-rh-uat-02 ~]$ isql -v SIT "$DB_USER" "$DB_PASS" -b
+[01000][unixODBC][Driver Manager]Can't open lib '/opt/IBM/ace/server/ODBC/drivers/lib/UKora95.so' : file not found
+[ISQL]ERROR: Could not SQLConnect
+[azagent@az-rh-uat-02 ~]$ isql -v DEV "$DB_USER" "$DB_PASS" -b
+[01000][unixODBC][Driver Manager]Can't open lib '/opt/IBM/ace/server/ODBC/drivers/lib/UKora95.so' : file not found
+[ISQL]ERROR: Could not SQLConnect
+[azagent@az-rh-uat-02 ~]$
