@@ -1,10 +1,207 @@
-[azagent@az-rh-uat-02 ~]$ isql -v UAT "$DB_USER" "$DB_PASS" -b
-[01000][unixODBC][Driver Manager]Can't open lib '/opt/IBM/ace/server/ODBC/drivers/lib/UKora95.so' : file not found
-[ISQL]ERROR: Could not SQLConnect
-[azagent@az-rh-uat-02 ~]$ isql -v SIT "$DB_USER" "$DB_PASS" -b
-[01000][unixODBC][Driver Manager]Can't open lib '/opt/IBM/ace/server/ODBC/drivers/lib/UKora95.so' : file not found
-[ISQL]ERROR: Could not SQLConnect
-[azagent@az-rh-uat-02 ~]$ isql -v DEV "$DB_USER" "$DB_PASS" -b
-[01000][unixODBC][Driver Manager]Can't open lib '/opt/IBM/ace/server/ODBC/drivers/lib/UKora95.so' : file not found
-[ISQL]ERROR: Could not SQLConnect
-[azagent@az-rh-uat-02 ~]$
+[eisuser@az-rh-uat-02 IBM]$ file /opt/IBM/Broker_Properties/ODBC/drivers/lib/UKora95.so 2>/dev/null
+/opt/IBM/Broker_Properties/ODBC/drivers/lib/UKora95.so: ELF 64-bit LSB shared object, x86-64, version 1 (SYSV), dynamically linked, stripped
+[eisuser@az-rh-uat-02 IBM]$ cat $ODBCINI
+;##########################################################################
+;# ODBC database driver manager initialisation file.                      #
+;##########################################################################
+;# It is recommended that you take a copy of this file and then edit the  #
+;# copy.                                                                  #
+;#                                                                        #
+;# 1. For each data source, add the name of the data source into          #
+;# the 'List of data sources stanza' section.                             #
+;#                                                                        #
+;# 2. For each data source, create a stanza in the                        #
+;# 'Individual data source stanzas' section.                              #
+;#                                                                        #
+;##########################################################################
+
+;#######################################
+;#### List of data sources stanza ######
+;#######################################
+[UAT]
+Driver= /opt/IBM/ace/server/ODBC/drivers/lib/UKora95.so
+Description=DataDirect ODBC Oracle Wire Protocol
+CatalogOptions=0
+EnableStaticCursorsForLongData=0
+ApplicationUsingThreads=1
+EnableDescribeParam=1
+OptimizePrepare=1
+WorkArounds=536870912
+ProcedureRetResults=1
+ColumnSizeAsCharacter=1
+LoginTimeout=1
+QueryTimeout=3
+################################################  TLSV1.2 ODBC CONFIGURATION ########################################
+HostName=eissiuat-scan1.sbi.co.in
+PortNumber=1786
+ServiceName=UATIIB_SRV
+#AuthenticationMethod=1
+#KeyPassword=password
+#KeyStore=/opt/IBM/Broker_Properties/TLS/ewallet.p12
+#KeyStorePassword=welcome1
+#TrustStore=/opt/IBM/Broker_Properties/TLS/ewallet.p12
+#TrustStorePassword=welcome1
+#EncryptionMethod=1
+#CryptoProtocolVersion=TLSv1.2
+#ValidateServerCertificate=1
+#EnableNcharSupport=0
+#####################################################################################################################
+
+[PRE-PROD]
+Driver= /opt/IBM/ace/server/ODBC/drivers/lib/UKora95.so
+Description=DataDirect ODBC Oracle Wire Protocol
+HostName=eissiuat-scan1.sbi.co.in
+PortNumber=1786
+ServiceName=PREPROD_SRV
+CatalogOptions=0
+EnableStaticCursorsForLongData=0
+ApplicationUsingThreads=1
+EnableDescribeParam=1
+OptimizePrepare=1
+WorkArounds=536870912
+ProcedureRetResults=1
+ColumnSizeAsCharacter=1
+LoginTimeout=1
+QueryTimeout=3
+
+
+
+
+
+
+[DEV]
+Driver= /opt/IBM/ace/server/ODBC/drivers/lib/UKora95.so
+Description=DataDirect ODBC Oracle Wire Protocol
+HostName=eissiuat-scan1.sbi.co.in
+PortNumber=1786
+ServiceName=UATIIB_SRV
+CatalogOptions=0
+EnableStaticCursorsForLongData=0
+ApplicationUsingThreads=1
+EnableDescribeParam=1
+OptimizePrepare=1
+WorkArounds=536870912
+ProcedureRetResults=1
+ColumnSizeAsCharacter=1
+
+
+[SIT]
+Driver= /opt/IBM/ace/server/ODBC/drivers/lib/UKora95.so
+Description=DataDirect ODBC Oracle Wire Protocol
+HostName=eissiuat-scan1.sbi.co.in
+PortNumber=1786
+ServiceName=UATIIB_SRV
+CatalogOptions=0
+EnableStaticCursorsForLongData=0
+ApplicationUsingThreads=1
+EnableDescribeParam=1
+OptimizePrepare=1
+WorkArounds=536870912
+ProcedureRetResults=1
+ColumnSizeAsCharacter=1
+
+;##########################################
+;###### Mandatory information stanza ######
+;##########################################
+
+[ODBC]
+InstallDir=/opt/IBM/ace/server/ODBC/drivers
+UseCursorLib=0
+IANAAppCodePage=4
+UNICODE=UTF-8
+
+[SIGNATUREZ]
+Driver= /opt/IBM/Broker_Properties/ODBC/drivers/lib/UKora95.so
+Description=DataDirect ODBC Oracle Wire Protocol
+HostName=10.189.15.239
+PortNumber=1558
+SID=f1db_n
+CatalogOptions=0
+EnableStaticCursorsForLongData=0
+ApplicationUsingThreads=1
+EnableDescribeParam=1
+OptimizePrepare=1
+WorkArounds=536870912
+ProcedureRetResults=1
+ColumnSizeAsCharacter=1
+LoginTimeout=0
+[eisuser@az-rh-uat-02 IBM]$  cat $ODBCINST
+^C
+[eisuser@az-rh-uat-02 IBM]$ cat /etc/odbcinst.ini
+# Example driver definitions
+
+# Driver from the postgresql-odbc package
+# Setup from the unixODBC package
+[PostgreSQL]
+Description     = ODBC for PostgreSQL
+Driver          = /usr/lib/psqlodbcw.so
+Setup           = /usr/lib/libodbcpsqlS.so
+Driver64        = /usr/lib64/psqlodbcw.so
+Setup64         = /usr/lib64/libodbcpsqlS.so
+FileUsage       = 1
+
+
+# Driver from the mysql-connector-odbc package in Fedora >=29
+# Setup from the unixODBC package
+[MySQL]
+Description     = ODBC for MySQL 8
+# mysql-connector-odbc package provides shared libraries with "w" or "a" suffix.
+# 'w' stands for 'wide' or 'unicode' character set, 'a' stands for 'ANSI'
+# Symlinks used in the configuration below lead to the 'w' variant by default
+Driver          = /usr/lib/libmyodbc8.so
+Driver64        = /usr/lib64/libmyodbc8.so
+FileUsage       = 1
+
+
+# Driver from the mysql-connector-odbc package in Fedora <=28
+# Setup from the unixODBC package
+[MySQL-5]
+Description     = ODBC for MySQL 5
+# mysql-connector-odbc package provides shared libraries with "w" or "a" suffix.
+# 'w' stands for 'wide' or 'unicode' character set, 'a' stands for 'ANSI'
+# Symlinks used in the configuration below lead to the 'w' variant by default
+Driver          = /usr/lib/libmyodbc5.so
+Driver64        = /usr/lib64/libmyodbc5.so
+Setup           = /usr/lib/libodbcmyS.so
+Setup64         = /usr/lib64/libodbcmyS.so
+FileUsage       = 1
+
+
+# Driver from the freetds-libs package
+# Setup from the unixODBC package
+[FreeTDS]
+Description     = Free Sybase & MS SQL Driver
+Driver          = /usr/lib/libtdsodbc.so
+Setup           = /usr/lib/libtdsS.so
+Driver64        = /usr/lib64/libtdsodbc.so
+Setup64         = /usr/lib64/libtdsS.so
+Port            = 1433
+
+
+# Driver from the mariadb-connector-odbc package
+# Setup from the unixODBC package
+[MariaDB]
+Description     = ODBC for MariaDB
+Driver          = /usr/lib/libmaodbc.so
+Driver64        = /usr/lib64/libmaodbc.so
+FileUsage       = 1
+[eisuser@az-rh-uat-02 IBM]$ ls -la /opt/IBM/ace/server/ODBC/drivers/lib
+total 86976
+drwxr-xr-x 2 root root     4096 Mar 26 18:44 .
+drwxr-xr-x 5 root root       60 Mar 26 18:44 ..
+-rw-r--r-- 1 root root  2581024 Mar 26 18:44 UKase95.so
+-rw-r--r-- 1 root root     8272 Mar 26 18:44 UKasedtc95.so
+-rw-r--r-- 1 root root  5351800 Mar 26 18:44 UKopenssl30.so
+-rw-r--r-- 1 root root  2834720 Mar 26 18:44 UKora95.so
+-rw-r--r-- 1 root root     6128 Mar 26 18:44 UKoradtc95.so
+-rw-r--r-- 1 root root  2280032 Mar 26 18:44 UKpsql95.so
+-rw-r--r-- 1 root root  2707072 Mar 26 18:44 UKsqls95.so
+-rw-r--r-- 1 root root  1368952 Mar 26 18:44 UKtrc95.so
+-rw-r--r-- 1 root root  1439088 Mar 26 18:44 fips.so
+-rw-r--r-- 1 root root  6020520 Mar 26 18:44 libUKcurl95.so
+-rw-r--r-- 1 root root 40685560 Mar 26 18:44 libUKicu.so
+-rw-r--r-- 1 root root 14682952 Mar 26 18:44 libUKicu95.so
+-rw-r--r-- 1 root root  6076912 Mar 26 18:44 libUKldap95.so
+-rw-r--r-- 1 root root  2982184 Mar 26 18:44 libUKtls95.so
+-rw-r--r-- 1 root root      614 Mar 26 18:44 openssl.cnf
+[eisuser@az-rh-uat-02 IBM]$
