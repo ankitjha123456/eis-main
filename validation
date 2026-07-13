@@ -1,30 +1,145 @@
-[eisuser@az-rh-uat-01 ~]$ sudo systemctl status vsts.agent.*
-● vsts.agent.10.TFS\x2dRH\x2d1.TFS\x2dRHAGENTPOOL\x2d1.service - Azure Pipelines Agent (10.TFS-RH-1.TFS-RHAGENTPOOL-1)
-     Loaded: loaded (/etc/systemd/system/vsts.agent.10.TFS\x2dRH\x2d1.TFS\x2dRHAGENTPOOL\x2d1.service; enabled; preset: disabled)
-     Active: active (running) since Fri 2026-07-10 20:32:32 IST; 2 days ago
-   Main PID: 1340 (runsvc.sh)
-      Tasks: 21 (limit: 99159)
-     Memory: 830.2M (peak: 1.0G)
-        CPU: 1min 56.771s
-     CGroup: /system.slice/vsts.agent.10.TFS\x2dRH\x2d1.TFS\x2dRHAGENTPOOL\x2d1.service
-             ├─1340 /bin/bash /opt/azagent/runsvc.sh
-             ├─2011 ./externals/node20_1/bin/node ./bin/AgentService.js
-             └─2322 /opt/azagent/bin/Agent.Listener run --startuptype service
+# ============== RELEASE STAGE ==============
+- stage: Release
+  displayName: Deploy Stage
+  pool:
+    name: TFS-RH-1
+  dependsOn: [Validation_Stage, Build]
+  condition: |
+    and(
+      succeeded('Build'),
+      eq(dependencies.Validation_Stage.outputs['Validation_Job.val_task.DeployFlag'], 'true'),
+      ne(variables['Build.SourceBranchName'], 'main')
+    )
+  jobs:
+    - deployment: DeployApp
+      displayName: Deployment Job
+      environment: $(Build.SourceBranchName)
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+              - download: current
+                artifact: drop
 
-Jul 13 12:40:20 az-rh-uat-01 runsvc.sh[2011]: 2026-07-13 07:10:20Z: Job Agent Build job completed with result: Succeeded
-Jul 13 12:42:33 az-rh-uat-01 runsvc.sh[2011]: Downgrading agent to a lower version. This is usually due to a rollback of the currently published agent for a bug fix. To disable this behavior, set environment variable AZP_AGENT_DOWNGRADE>
-Jul 13 12:42:33 az-rh-uat-01 runsvc.sh[2011]: Agent update in progress, do not shutdown agent.
-Jul 13 12:42:33 az-rh-uat-01 runsvc.sh[2011]: Downloading 3.238.0 agent
-Jul 13 12:42:48 az-rh-uat-01 runsvc.sh[2011]: 2026-07-13 07:12:48Z: Running job: Agent Build job
-Jul 13 12:43:53 az-rh-uat-01 runsvc.sh[2011]: 2026-07-13 07:13:53Z: Job Agent Build job completed with result: Succeeded
-Jul 13 12:43:55 az-rh-uat-01 runsvc.sh[2011]: 2026-07-13 07:13:55Z: Running job: Validation
-Jul 13 12:44:34 az-rh-uat-01 runsvc.sh[2011]: 2026-07-13 07:14:34Z: Job Validation completed with result: Succeeded
-Jul 13 12:44:37 az-rh-uat-01 runsvc.sh[2011]: 2026-07-13 07:14:37Z: Running job: CACHE UPDATE
-Jul 13 12:46:15 az-rh-uat-01 runsvc.sh[2011]: 2026-07-13 07:16:15Z: Job CACHE UPDATE completed with result: Failed
+              - task: CmdLine@2
+                displayName: Dynamic Multi-Node Deployment
+                env:
+                  BRANCH: $(Build.SourceBranchName)
+                inputs:
+                  workingDirectory: $(Pipeline.Workspace)/drop
+                  script: |
+                    set -e
+                    . /opt/IBM/ace/server/bin/mqsiprofile
 
-[eisuser@az-rh-uat-01 ~]$ sudo journalctl -u vsts.agent.* --since "10 min ago"
-Jul 13 13:07:45 az-rh-uat-01 runsvc.sh[2011]: Downgrading agent to a lower version. This is usually due to a rollback of the currently published agent for a bug fix. To disable this behavior, set environment variable AZP_AGENT_DOWNGRADE>
-Jul 13 13:07:45 az-rh-uat-01 runsvc.sh[2011]: Agent update in progress, do not shutdown agent.
-Jul 13 13:07:45 az-rh-uat-01 runsvc.sh[2011]: Downloading 3.238.0 agent
-Jul 13 13:08:00 az-rh-uat-01 runsvc.sh[2011]: 2026-07-13 07:38:00Z: Running job: Deployment Job
-Jul 13 13:08:23 az-rh-uat-01 runsvc.sh[2011]: 2026-07-13 07:38:23Z: Job Deployment Job completed with result: Failed
+                    # ── 1. Load Data ──────────────────────────────────────────
+                    ApplicationName=$(yq e ".ApplicationName" config.yml)
+                    # Convert comma-separated strings to space-separated arrays
+                    NODES_RAW=$(yq e ".IntegrationNode" config.yml | tr -d ',' | sed 's/null//g')
+                    SERVERS_RAW=$(yq e ".IntegrationServer // \"\"" config.yml | tr -d ',' | sed 's/null//g')
+
+                    IFS=' ' read -r -a NODES <<< "$NODES_RAW"
+                    BROKER_BASE="/home/devops/broker/$BRANCH"
+
+                    # ── 2. LB Mapper Pre-check (Node: HEART_BEAT / EG: lbMapper) ──
+                    echo -e "\n===================================================="
+                    echo " LB MAPPER: Pre-deployment check"
+                    echo "===================================================="
+
+                    LBMAPPER_STATUS=$(mqsilist HEART_BEAT -e lbMapper 2>&1)
+                    echo "$LBMAPPER_STATUS"
+
+                    if echo "$LBMAPPER_STATUS" | grep -q "is running"; then
+                      echo "lbMapper is running. Stopping it before release..."
+
+                      STOP_OUTPUT=$(mqsistopmsgflow HEART_BEAT -e lbMapper 2>&1)
+                      STOP_RC=$?
+                      echo "$STOP_OUTPUT"
+
+                      if [ "$STOP_RC" -eq 0 ] && echo "$STOP_OUTPUT" | grep -q "Successful command completion"; then
+                        echo "lbMapper stopped successfully."
+                      else
+                        echo "!! Error: lbMapper stop command failed. Aborting deployment."
+                        exit 1
+                      fi
+
+                    elif echo "$LBMAPPER_STATUS" | grep -q "is stopped"; then
+                      echo "lbMapper is already stopped. Continuing."
+                    else
+                      echo "!! Error: Unable to determine lbMapper status. Aborting."
+                      exit 1
+                    fi
+
+                    # ── 3. Node Loop ──────────────────────────────────────────
+                    for IntegrationNode in "${NODES[@]}"; do
+                      echo -e "\n===================================================="
+                      echo " NODE: $IntegrationNode"
+                      echo "===================================================="
+
+                      # Find .broker connection files
+                      BROKER_FILES=("$BROKER_BASE"/${IntegrationNode}*.broker)
+                      if [ ! -e "${BROKER_FILES[0]}" ]; then
+                        echo "!! Warning: No broker connection files found for $IntegrationNode"
+                        continue
+                      fi
+
+                      for broker_file in "${BROKER_FILES[@]}"; do
+                        fname=$(basename "$broker_file")
+                        echo "--- Connection: $fname ---"
+
+                        # ── 4. Dynamic Discovery (The Ground Truth) ───────────
+                        # Extracts only the server names from the node file
+                        MQSI_DISCOVERED=$(mqsilist -n "$broker_file" | awk -F"'" '{print $2}' | grep -v '^$' | tail -n +2)
+
+                        if [ -z "$MQSI_DISCOVERED" ]; then
+                          echo "!! Error: No active servers found on $fname via mqsilist."
+                          exit 1
+                        fi
+                        mapfile -t ALL_ACTIVE_SERVERS <<< "$MQSI_DISCOVERED"
+
+                        # ── 5. Determine Targets ──────────────────────────────
+                        TARGET_SERVERS=()
+
+                        if [ -n "$SERVERS_RAW" ]; then
+                          # SCENARIO: Config has a list. We must VALIDATE before deploying.
+                          echo "Logic: Manual List Provided. Validating against live node..."
+                          for s in "${ALL_ACTIVE_SERVERS[@]}"; do
+                            if [[ " $SERVERS_RAW " =~ " $s " ]]; then
+                              TARGET_SERVERS+=("$s")
+                              echo "  [VALIDATED] Server '$s' is active and in config."
+                            else
+                              echo "  [IGNORED]   Server '$s' is active but NOT in config."
+                            fi
+                          done
+                        else
+                          # SCENARIO: Config is empty. Deploy to everything active.
+                          echo "Logic: No list provided. Deploying to ALL discovered servers..."
+                          TARGET_SERVERS=("${ALL_ACTIVE_SERVERS[@]}")
+                        fi
+
+                        # ── 6. Execution ──────────────────────────────────────
+                        if [ ${#TARGET_SERVERS[@]} -eq 0 ]; then
+                          echo "!! Result: No servers matched the configuration for this node."
+                        else
+                          for server in "${TARGET_SERVERS[@]}"; do
+                            echo ">>> DEPLOYING -> $server"
+                            ibmint deploy \
+                              --input-bar-file "$ApplicationName.bar" \
+                              --integration-node-file "$broker_file" \
+                              --output-server "$server"
+                          done
+                        fi
+                      done
+                    done
+
+                    # ── 7. Restart lbMapper after all deployments ──────────────
+                    echo -e "\n===================================================="
+                    echo "Restarting lbMapper message flow on HEART_BEAT..."
+                    START_OUTPUT=$(mqsistartmsgflow HEART_BEAT -e lbMapper 2>&1)
+                    START_RC=$?
+                    echo "$START_OUTPUT"
+
+                    if [ "$START_RC" -eq 0 ] && echo "$START_OUTPUT" | grep -q "Successful command completion"; then
+                      echo "✅ lbMapper started successfully. Deployment cycle complete for all nodes/servers."
+                    else
+                      echo "!! Warning: lbMapper start command did not report success."
+                    fi
