@@ -45,14 +45,24 @@
                     echo " LB MAPPER: Pre-deployment check"
                     echo "===================================================="
 
+                    set +e
                     LBMAPPER_STATUS=$(mqsilist HEART_BEAT -e lbMapper 2>&1)
+                    LBMAPPER_RC=$?
+                    set -e
                     echo "$LBMAPPER_STATUS"
+
+                    if [ "$LBMAPPER_RC" -ne 0 ] && ! echo "$LBMAPPER_STATUS" | grep -qE "is running|is stopped"; then
+                      echo "!! Error: mqsilist command failed (exit code $LBMAPPER_RC). Aborting."
+                      exit 1
+                    fi
 
                     if echo "$LBMAPPER_STATUS" | grep -q "is running"; then
                       echo "lbMapper is running. Stopping it before release..."
 
+                      set +e
                       STOP_OUTPUT=$(mqsistopmsgflow HEART_BEAT -e lbMapper 2>&1)
                       STOP_RC=$?
+                      set -e
                       echo "$STOP_OUTPUT"
 
                       if [ "$STOP_RC" -eq 0 ] && echo "$STOP_OUTPUT" | grep -q "Successful command completion"; then
@@ -134,8 +144,10 @@
                     # ── 7. Restart lbMapper after all deployments ──────────────
                     echo -e "\n===================================================="
                     echo "Restarting lbMapper message flow on HEART_BEAT..."
+                    set +e
                     START_OUTPUT=$(mqsistartmsgflow HEART_BEAT -e lbMapper 2>&1)
                     START_RC=$?
+                    set -e
                     echo "$START_OUTPUT"
 
                     if [ "$START_RC" -eq 0 ] && echo "$START_OUTPUT" | grep -q "Successful command completion"; then
