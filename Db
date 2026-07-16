@@ -31,9 +31,13 @@
                     set -e
                     . /opt/IBM/ace/server/bin/mqsiprofile
 
+                    # ── lbMapper config ────────────────────────────────────────
+                    LBMAPPER_APP="HEART_BEAT"
+                    LBMAPPER_FLOW="lbMapper"
+                    ADMIN_PORT=4414
+
                     # ── 1. Load Data ──────────────────────────────────────────
                     ApplicationName=$(yq e ".ApplicationName" config.yml)
-                    # Convert comma-separated strings to space-separated arrays
                     NODES_RAW=$(yq e ".IntegrationNode" config.yml | tr -d ',' | sed 's/null//g')
                     SERVERS_RAW=$(yq e ".IntegrationServer // \"\"" config.yml | tr -d ',' | sed 's/null//g')
 
@@ -46,7 +50,6 @@
                       echo " NODE: $IntegrationNode"
                       echo "===================================================="
 
-                      # Find .broker connection files
                       BROKER_FILES=("$BROKER_BASE"/${IntegrationNode}*.broker)
                       if [ ! -e "${BROKER_FILES[0]}" ]; then
                         echo "!! Warning: No broker connection files found for $IntegrationNode"
@@ -58,9 +61,8 @@
                         echo "--- Connection: $fname ---"
 
                         # ── 3. Dynamic Discovery (The Ground Truth) ───────────
-                        # Extracts only the server names from the node file
                         MQSI_DISCOVERED=$(mqsilist -n "$broker_file" | awk -F"'" '{print $2}' | grep -v '^$' | tail -n +2)
-                        
+
                         if [ -z "$MQSI_DISCOVERED" ]; then
                           echo "!! Error: No active servers found on $fname via mqsilist."
                           exit 1
@@ -71,7 +73,6 @@
                         TARGET_SERVERS=()
 
                         if [ -n "$SERVERS_RAW" ]; then
-                          # SCENARIO: Config has a list. We must VALIDATE before deploying.
                           echo "Logic: Manual List Provided. Validating against live node..."
                           for s in "${ALL_ACTIVE_SERVERS[@]}"; do
                             if [[ " $SERVERS_RAW " =~ " $s " ]]; then
@@ -82,25 +83,51 @@
                             fi
                           done
                         else
-                          # SCENARIO: Config is empty. Deploy to everything active.
                           echo "Logic: No list provided. Deploying to ALL discovered servers..."
                           TARGET_SERVERS=("${ALL_ACTIVE_SERVERS[@]}")
                         fi
 
-                        # ── 5. Execution ──────────────────────────────────────
+                        # ── 4b. Resolve admin host IP from broker file ────────
+                        # Assumes the .broker file contains a plain IPv4 address.
+                        # Adjust this grep if the file uses a hostname or different format.
+                        ADMIN_HOST=$(grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' "$broker_file" | head -1)
+
+                        # ── 5. Execution: stop lbMapper -> deploy -> restart ──
                         if [ ${#TARGET_SERVERS[@]} -eq 0 ]; then
                           echo "!! Result: No servers matched the configuration for this node."
                         else
                           for server in "${TARGET_SERVERS[@]}"; do
+                            LBMAPPER_WAS_RUNNING=false
+
+                            echo ">>> TARGET -> $server"
+
+                            if [ -z "$ADMIN_HOST" ]; then
+                              echo "  !! Warning: Could not resolve admin host IP from $fname. Skipping lbMapper stop/start."
+                            else
+                              echo "  Stopping $LBMAPPER_FLOW on $server ($ADMIN_HOST:$ADMIN_PORT)..."
+                              if mqsistopmsgflow "$LBMAPPER_APP" -e "$LBMAPPER_FLOW" --admin-host="$ADMIN_HOST" --admin-port="$ADMIN_PORT"; then
+                                LBMAPPER_WAS_RUNNING=true
+                                echo "  $LBMAPPER_FLOW stopped."
+                              else
+                                echo "  !! Warning: Failed to stop $LBMAPPER_FLOW (may already be stopped). Continuing with deploy."
+                              fi
+                            fi
+
                             echo ">>> DEPLOYING -> $server"
                             ibmint deploy \
                               --input-bar-file "$ApplicationName.bar" \
                               --integration-node-file "$broker_file" \
                               --output-server "$server"
+
+                            if [ "$LBMAPPER_WAS_RUNNING" = true ]; then
+                              echo "  Restarting $LBMAPPER_FLOW on $server..."
+                              if mqsistartmsgflow "$LBMAPPER_APP" -e "$LBMAPPER_FLOW" --admin-host="$ADMIN_HOST" --admin-port="$ADMIN_PORT"; then
+                                echo "  $LBMAPPER_FLOW restarted."
+                              else
+                                echo "  !! Warning: Failed to restart $LBMAPPER_FLOW on $server. Manual check needed."
+                              fi
+                            fi
                           done
                         fi
                       done
                     done
-
-i want to stop the lbMapper before deployment using the command mqsistopmsgflow HEART_BEAT --admin-host=target_ip --admin-port=4414(always)
-do one by one if stop on lbmapper then deploy then start that lbMapper and stop another target server lbmapper and start deployment
