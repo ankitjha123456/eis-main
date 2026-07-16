@@ -1,3 +1,4 @@
+# ============== RELEASE STAGE ==============
 - stage: Release
   displayName: Deploy Stage
   pool:
@@ -39,9 +40,6 @@
                     IFS=' ' read -r -a NODES <<< "$NODES_RAW"
                     BROKER_BASE="/home/devops/broker/$BRANCH"
 
-                    # HEART_BEAT admin port is fixed; host is read per-server from its .broker file
-                    HEARTBEAT_PORT="4414"
-
                     # ── 2. Node Loop ──────────────────────────────────────────
                     for IntegrationNode in "${NODES[@]}"; do
                       echo -e "\n===================================================="
@@ -59,67 +57,17 @@
                         fname=$(basename "$broker_file")
                         echo "--- Connection: $fname ---"
 
-                        # Extract this server's host IP from its .broker file (for HEART_BEAT connection)
-                        HEARTBEAT_HOST=$(grep -o 'host="[^"]*"' "$broker_file" | head -1 | cut -d'"' -f2)
-                        if [ -z "$HEARTBEAT_HOST" ]; then
-                          echo "!! Error: Could not extract host from $fname. Aborting."
-                          exit 1
-                        fi
-                        echo "HEART_BEAT host for $fname: $HEARTBEAT_HOST:$HEARTBEAT_PORT"
-
-                        # ── 4. Dynamic Discovery (The Ground Truth) ───────────
+                        # ── 3. Dynamic Discovery (The Ground Truth) ───────────
                         # Extracts only the server names from the node file
                         MQSI_DISCOVERED=$(mqsilist -n "$broker_file" | awk -F"'" '{print $2}' | grep -v '^$' | tail -n +2)
-
+                        
                         if [ -z "$MQSI_DISCOVERED" ]; then
                           echo "!! Error: No active servers found on $fname via mqsilist."
                           exit 1
                         fi
                         mapfile -t ALL_ACTIVE_SERVERS <<< "$MQSI_DISCOVERED"
 
-                        # ── 4b. LB Mapper Pre-check (HEART_BEAT is a separate shared node) ──
-                        echo -e "\n---------------------------------------------------"
-                        echo " LB MAPPER: Pre-deployment check for $fname"
-                        echo "---------------------------------------------------"
-
-                        LBMAPPER_WAS_RUNNING=false
-
-                        set +e
-                        LBMAPPER_STATUS=$(mqsilist --admin-host "$HEARTBEAT_HOST" --admin-port "$HEARTBEAT_PORT" --https --insecure -e lbMapper 2>&1)
-                        LBMAPPER_RC=$?
-                        set -e
-                        echo "$LBMAPPER_STATUS"
-
-                        if [ "$LBMAPPER_RC" -ne 0 ] && ! echo "$LBMAPPER_STATUS" | grep -qE "is running|is stopped"; then
-                          echo "!! Error: mqsilist for HEART_BEAT/lbMapper failed (exit code $LBMAPPER_RC). Aborting."
-                          exit 1
-                        fi
-
-                        if echo "$LBMAPPER_STATUS" | grep -q "is running"; then
-                          echo "lbMapper is running. Stopping it before deploying to $fname..."
-                          LBMAPPER_WAS_RUNNING=true
-
-                          set +e
-                          STOP_OUTPUT=$(mqsistopmsgflow --admin-host "$HEARTBEAT_HOST" --admin-port "$HEARTBEAT_PORT" --https --insecure -e lbMapper 2>&1)
-                          STOP_RC=$?
-                          set -e
-                          echo "$STOP_OUTPUT"
-
-                          if [ "$STOP_RC" -eq 0 ] && echo "$STOP_OUTPUT" | grep -q "Successful command completion"; then
-                            echo "lbMapper stopped successfully."
-                          else
-                            echo "!! Error: lbMapper stop command failed. Aborting deployment."
-                            exit 1
-                          fi
-
-                        elif echo "$LBMAPPER_STATUS" | grep -q "is stopped"; then
-                          echo "lbMapper is already stopped. Continuing."
-                        else
-                          echo "!! Error: Unable to determine lbMapper status. Aborting."
-                          exit 1
-                        fi
-
-                        # ── 5. Determine Targets ──────────────────────────────
+                        # ── 4. Determine Targets ──────────────────────────────
                         TARGET_SERVERS=()
 
                         if [ -n "$SERVERS_RAW" ]; then
@@ -139,7 +87,7 @@
                           TARGET_SERVERS=("${ALL_ACTIVE_SERVERS[@]}")
                         fi
 
-                        # ── 6. Execution ──────────────────────────────────────
+                        # ── 5. Execution ──────────────────────────────────────
                         if [ ${#TARGET_SERVERS[@]} -eq 0 ]; then
                           echo "!! Result: No servers matched the configuration for this node."
                         else
@@ -151,25 +99,8 @@
                               --output-server "$server"
                           done
                         fi
-
-                        # ── 7. Restart lbMapper on this node (only if we stopped it) ──
-                        if [ "$LBMAPPER_WAS_RUNNING" = true ]; then
-                          echo "Restarting lbMapper after deploying to $fname..."
-                          set +e
-                          START_OUTPUT=$(mqsistartmsgflow --admin-host "$HEARTBEAT_HOST" --admin-port "$HEARTBEAT_PORT" --https --insecure -e lbMapper 2>&1)
-                          START_RC=$?
-                          set -e
-                          echo "$START_OUTPUT"
-
-                          if [ "$START_RC" -eq 0 ] && echo "$START_OUTPUT" | grep -q "Successful command completion"; then
-                            echo "✅ lbMapper started successfully on $fname."
-                          else
-                            echo "!! Warning: lbMapper start command did not report success on $fname."
-                          fi
-                        fi
                       done
                     done
 
-                    echo -e "\n===================================================="
-                    echo "Deployment cycle complete for all nodes/servers."
-                    echo "===================================================="
+i want to stop the lbMapper before deployment using the command mqsistopmsgflow HEART_BEAT --admin-host=target_ip --admin-port=4414(always)
+do one by one if stop on lbmapper then deploy then start that lbMapper and stop another target server lbmapper and start deployment
