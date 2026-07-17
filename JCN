@@ -1,141 +1,66 @@
+const express  = require("express");
+const { exec, spawn, execFile } = require("child_process");
+const cors     = require("cors");
+const path     = require("path");
+const fs       = require('fs');
+const { randomUUID } = require('crypto');
 
-# ============== RELEASE STAGE ==============
-- stage: Release
-  displayName: Deploy Stage
-  pool:
-    name: TFS-RH-1
-  dependsOn: [Validation_Stage, Build]
-  condition: |
-    and(
-      succeeded('Build'),
-      eq(dependencies.Validation_Stage.outputs['Validation_Job.val_task.DeployFlag'], 'true'),
-      ne(variables['Build.SourceBranchName'], 'main')
-    )
-  jobs:
-    - deployment: DeployApp
-      displayName: Deployment Job
-      environment: $(Build.SourceBranchName)
-      strategy:
-        runOnce:
-          deploy:
-            steps:
-              - download: current
-                artifact: drop
+const app  = express();
+const PORT = 4414;
 
-              - task: CmdLine@2
-                displayName: Dynamic Multi-Node Deployment
-                env:
-                  BRANCH: $(Build.SourceBranchName)
-                inputs:
-                  workingDirectory: $(Pipeline.Workspace)/drop
-                  script: |
-                    set -e
-                    . /opt/IBM/ace/server/bin/mqsiprofile
+// ── SSH / SCP config ──────────────────────────────────────────
+const SSH_KEY  = "/home/eisuser/.ssh/id_rsa";
+const SCP_USER = "eisuser";
+const REMOTE_DIR = "/tmp/";
 
-                    # ── lbMapper config ────────────────────────────────────────
-                    LBMAPPER_APP="HEART_BEAT"
-                    LBMAPPER_FLOW="lbMapper"
+// ── Certificate deploy config ─────────────────────────────────
+const CERT_SAVE_DIR = "/tmp/cert_uploads";
 
-                    # ── 1. Load Data ──────────────────────────────────────────
-                    ApplicationName=$(yq e ".ApplicationName" config.yml)
-                    NODES_RAW=$(yq e ".IntegrationNode" config.yml | tr -d ',' | sed 's/null//g')
-                    SERVERS_RAW=$(yq e ".IntegrationServer // \"\"" config.yml | tr -d ',' | sed 's/null//g')
 
-                    IFS=' ' read -r -a NODES <<< "$NODES_RAW"
-                    BROKER_BASE="/home/devops/broker/$BRANCH"
+// ── POST /upload — single server upload (binary-safe parsing) ────────────────
+app.post("/upload", (req, res) => {
+  const contentType = req.headers["content-type"] || "";
+  const boundary    = contentType.split("boundary=")[1];
+  if (!boundary) return res.status(400).json({ error: "No boundary found in content-type" });
 
-                    # ── 2. Node Loop ──────────────────────────────────────────
-                    for IntegrationNode in "${NODES[@]}"; do
-                      echo -e "\n===================================================="
-                      echo " NODE: $IntegrationNode"
-                      echo "===================================================="
+  const chunks = [];
+  req.on("data", chunk => chunks.push(chunk));
+  req.on("end", () => {
+    try {
+      const body = Buffer.concat(chunks);
+      const bodyStr = body.toString("binary");
 
-                      BROKER_FILES=("$BROKER_BASE"/${IntegrationNode}*.broker)
-                      if [ ! -e "${BROKER_FILES[0]}" ]; then
-                        echo "!! Warning: No broker connection files found for $IntegrationNode"
-                        continue
-                      fi
+      const filePart = extractFilePart(body, boundary);
+      if (!filePart) return res.status(400).json({ error: "No file found in upload" });
+      const { fileName, fileBuffer } = filePart;
 
-                      for broker_file in "${BROKER_FILES[@]}"; do
-                        fname=$(basename "$broker_file")
-                        echo "--- Connection: $fname ---"
+      const targetServer = extractField(bodyStr, "targetServer");
+      if (!targetServer) return res.status(400).json({ error: "targetServer not provided" });
 
-                        # ── 3. Dynamic Discovery (The Ground Truth) ───────────
-                        MQSI_DISCOVERED=$(mqsilist -n "$broker_file" | awk -F"'" '{print $2}' | grep -v '^$' | tail -n +2)
+      const localPath  = `${CERT_SAVE_DIR}/${fileName}`;
+      const remotePath = `${SCP_USER}@${targetServer}:${REMOTE_DIR}`;
 
-                        if [ -z "$MQSI_DISCOVERED" ]; then
-                          echo "!! Error: No active servers found on $fname via mqsilist."
-                          exit 1
-                        fi
-                        mapfile -t ALL_ACTIVE_SERVERS <<< "$MQSI_DISCOVERED"
+      fs.writeFile(localPath, fileBuffer, (err) => {
+        if (err) return res.status(500).json({ error: "Failed to save file locally: " + err.message });
 
-                        # ── 4. Determine Targets ──────────────────────────────
-                        TARGET_SERVERS=()
+        console.log(`[upload] Saved: ${localPath} (${fileBuffer.length} bytes) → scp to ${remotePath}`);
 
-                        if [ -n "$SERVERS_RAW" ]; then
-                          echo "Logic: Manual List Provided. Validating against live node..."
-                          for s in "${ALL_ACTIVE_SERVERS[@]}"; do
-                            if [[ " $SERVERS_RAW " =~ " $s " ]]; then
-                              TARGET_SERVERS+=("$s")
-                              echo "  [VALIDATED] Server '$s' is active and in config."
-                            else
-                              echo "  [IGNORED]   Server '$s' is active but NOT in config."
-                            fi
-                          done
-                        else
-                          echo "Logic: No list provided. Deploying to ALL discovered servers..."
-                          TARGET_SERVERS=("${ALL_ACTIVE_SERVERS[@]}")
-                        fi
-
-                        # ── 4b. Resolve admin connection details ──────────────
-                        # Host/ssl/creds come from the same .broker XML used for deploy
-                        # (same physical machine). Port is fixed: HEART_BEAT always
-                        # listens on 4414, independent of the node's own listenerPort.
-                        ADMIN_HOST=$(grep -oP 'host="\K[^"]+' "$broker_file" | head -1)
-                        ADMIN_PORT=4414
-                        USE_SSL=$(grep -oP 'useSsl="\K[^"]+' "$broker_file" | head -1)
-
-                        HTTPS_FLAG=""
-                        if [ "$USE_SSL" = "true" ]; then
-                          HTTPS_FLAG="--https"
-                        fi
-
-                        # ── 5. Execution: stop lbMapper -> deploy -> restart ──
-                        if [ ${#TARGET_SERVERS[@]} -eq 0 ]; then
-                          echo "!! Result: No servers matched the configuration for this node."
-                        else
-                          for server in "${TARGET_SERVERS[@]}"; do
-                            LBMAPPER_WAS_RUNNING=false
-
-                            echo ">>> TARGET -> $server"
-
-                            if [ -z "$ADMIN_HOST" ] || [ -z "$ADMIN_PORT" ]; then
-                              echo "  !! Warning: Could not resolve admin host/port from $fname. Skipping lbMapper stop/start."
-                            else
-                              echo "  Stopping $LBMAPPER_FLOW on $server ($ADMIN_HOST:$ADMIN_PORT, ssl=$USE_SSL)..."
-                              if mqsistopmsgflow "$LBMAPPER_APP" -e "$LBMAPPER_FLOW" --admin-host="$ADMIN_HOST" --admin-port="$ADMIN_PORT" $HTTPS_FLAG; then
-                                LBMAPPER_WAS_RUNNING=true
-                                echo "  $LBMAPPER_FLOW stopped."
-                              else
-                                echo "  !! Warning: Failed to stop $LBMAPPER_FLOW (may already be stopped). Continuing with deploy."
-                              fi
-                            fi
-
-                            echo ">>> DEPLOYING -> $server"
-                            ibmint deploy \
-                              --input-bar-file "$ApplicationName.bar" \
-                              --integration-node-file "$broker_file" \
-                              --output-server "$server"
-
-                            if [ "$LBMAPPER_WAS_RUNNING" = true ]; then
-                              echo "  Restarting $LBMAPPER_FLOW on $server..."
-                              if mqsistartmsgflow "$LBMAPPER_APP" -e "$LBMAPPER_FLOW" --admin-host="$ADMIN_HOST" --admin-port="$ADMIN_PORT" $HTTPS_FLAG; then
-                                echo "  $LBMAPPER_FLOW restarted."
-                              else
-                                echo "  !! Warning: Failed to restart $LBMAPPER_FLOW on $server. Manual check needed."
-                              fi
-                            fi
-                          done
-                        fi
-                      done
-                    done
+        execFile("scp", [
+          "-i", SSH_KEY,
+          "-o", "StrictHostKeyChecking=no",
+          localPath,
+          remotePath
+        ], (scpErr, stdout, stderr) => {
+          fs.unlink(localPath, () => {});
+          if (scpErr) {
+            console.error("[upload] SCP failed:", stderr || scpErr.message);
+            return res.status(500).json({ error: stderr || scpErr.message });
+          }
+          res.json({ success: true, message: `${fileName} sent to ${targetServer}:${REMOTE_DIR}`, size: fileBuffer.length });
+        });
+      });
+    } catch (err) {
+      res.status(500).json({ error: "Parse error: " + err.message });
+    }
+  });
+});
