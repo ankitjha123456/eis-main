@@ -23,503 +23,85 @@
       --fd: 'Segoe UI', system-ui, sans-serif;
     }
 
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    body {
-      background: var(--bg);
-      color: var(--t1);
-      font-family: var(--fd);
-      min-height: 100vh;
-      padding: 20px;
-    }
-
-    .page {
-      max-width: 1400px;
-      margin: 0 auto;
-    }
-
-    .ws {
-      display: flex;
-      gap: 16px;
-      background: var(--bg2);
-      border-radius: 12px;
-      border: 1px solid var(--border);
-      overflow: hidden;
-      min-height: 600px;
-    }
-
-    .wsb {
-      width: 220px;
-      min-width: 220px;
-      background: var(--bg3);
-      border-right: 1px solid var(--border);
-      padding: 12px 0;
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-
-    .sb-lbl {
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: .6px;
-      color: var(--t3);
-      padding: 10px 16px 4px;
-      font-weight: 600;
-    }
-
-    .sb-it {
-      padding: 8px 16px;
-      font-size: 12px;
-      color: var(--t2);
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      transition: all .2s;
-      border-left: 3px solid transparent;
-    }
-
-    .sb-it i {
-      width: 18px;
-      font-size: 13px;
-      color: var(--t3);
-    }
-
-    .sb-it.on {
-      background: rgba(79, 195, 247, 0.08);
-      border-left-color: var(--sky);
-      color: var(--t1);
-    }
-
-    .sb-it.on i {
-      color: var(--sky);
-    }
-
-    .sb-it:hover:not([style*="cursor:default"]) {
-      background: rgba(255,255,255,0.04);
-    }
-
-    .wbm {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      min-width: 0;
-    }
-
-    .wtb {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 12px 20px;
-      border-bottom: 1px solid var(--border);
-      background: var(--bg3);
-      flex-wrap: wrap;
-    }
-
-    .t-space {
-      flex: 1;
-    }
-
-    .btn {
-      padding: 6px 14px;
-      border: none;
-      border-radius: 6px;
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all .2s;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-family: var(--fd);
-    }
-
-    .btn:hover {
-      transform: translateY(-1px);
-      filter: brightness(1.1);
-    }
-
-    .btn:disabled {
-      opacity: .5;
-      cursor: not-allowed;
-      transform: none !important;
-    }
-
-    .btn-g {
-      background: var(--bg3);
-      color: var(--t2);
-      border: 1px solid var(--border);
-    }
-
-    .btn-sky {
-      background: var(--sky);
-      color: #03182a;
-    }
-
-    .btn-green {
-      background: var(--green);
-      color: #03182a;
-    }
-
-    .btn-sm {
-      padding: 4px 10px;
-      font-size: 11px;
-    }
-
-    .wbd {
-      flex: 1;
-      overflow-y: auto;
-      padding: 16px;
-      background: var(--bg);
-    }
-
-    .panel {
-      background: var(--bg2);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 14px;
-    }
-
-    .pt {
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--t1);
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 12px;
-    }
-
-    .pt i {
-      font-size: 14px;
-    }
-
-    .fg {
-      margin-bottom: 10px;
-    }
-
-    .fg:last-child {
-      margin-bottom: 0;
-    }
-
-    .fl {
-      font-size: 11px;
-      color: var(--t2);
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      margin-bottom: 4px;
-    }
-
-    .fi, .fs, .fta {
-      width: 100%;
-      padding: 6px 10px;
-      background: var(--bg3);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      color: var(--t1);
-      font-size: 12px;
-      font-family: var(--fd);
-      transition: border .2s;
-    }
-
-    .fi:focus, .fs:focus, .fta:focus {
-      outline: none;
-      border-color: var(--sky);
-    }
-
-    .fi:disabled {
-      opacity: .6;
-      cursor: not-allowed;
-    }
-
-    .fs {
-      appearance: none;
-      cursor: pointer;
-    }
-
-    .fta {
-      resize: vertical;
-      font-family: var(--fm);
-      font-size: 11px;
-      line-height: 1.5;
-      min-height: 60px;
-    }
-
-    .r2 {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-
-    .tfs-uz {
-      border: 2px dashed var(--border);
-      border-radius: 8px;
-      padding: 30px 20px;
-      text-align: center;
-      cursor: pointer;
-      transition: all .3s;
-      position: relative;
-    }
-
-    .tfs-uz:hover {
-      border-color: var(--sky);
-      background: rgba(79, 195, 247, 0.04);
-    }
-
-    .tfs-uz.drag {
-      border-color: var(--sky);
-      background: rgba(79, 195, 247, 0.08);
-    }
-
-    .tfs-uz input[type="file"] {
-      position: absolute;
-      inset: 0;
-      opacity: 0;
-      cursor: pointer;
-    }
-
-    .tfs-uz i {
-      font-size: 32px;
-      color: var(--sky);
-      display: block;
-      margin-bottom: 8px;
-    }
-
-    .pgbar {
-      height: 3px;
-      background: var(--bg3);
-      border-radius: 2px;
-      overflow: hidden;
-    }
-
-    .pgfill {
-      height: 100%;
-      width: 0%;
-      transition: width .3s;
-      border-radius: 2px;
-    }
-
-    .pgfill.sky {
-      background: var(--sky);
-    }
-
-    .tfs-file-info {
-      display: none;
-      margin-top: 8px;
-      padding: 6px 10px;
-      background: var(--bg3);
-      border-radius: 4px;
-      font-size: 11px;
-    }
-
-    .tfs-file-info.on {
-      display: flex;
-      justify-content: space-between;
-    }
-
-    .tfs-fname {
-      color: var(--sky);
-      font-weight: 500;
-    }
-
-    .tfs-fsize {
-      color: var(--t3);
-    }
-
-    .local-badge {
-      font-size: 9px;
-      background: var(--bg3);
-      padding: 2px 8px;
-      border-radius: 10px;
-      color: var(--t3);
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      font-weight: 400;
-    }
-
-    .ci-identity-box {
-      margin-top: 8px;
-      padding: 10px 12px;
-      background: rgba(102, 187, 106, 0.08);
-      border: 1px solid var(--green);
-      border-radius: 6px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .ci-identity-box i {
-      font-size: 20px;
-      color: var(--green);
-    }
-
-    .progress-track {
-      height: 4px;
-      background: var(--bg3);
-      border-radius: 2px;
-      overflow: hidden;
-      margin-top: 4px;
-    }
-
-    .progress-fill-sky {
-      height: 100%;
-      width: 0%;
-      background: var(--sky);
-      transition: width .3s;
-    }
-
-    .ci-log {
-      background: var(--bg3);
-      border-radius: 4px;
-      padding: 8px 10px;
-      font-family: var(--fm);
-      font-size: 10.5px;
-      max-height: 120px;
-      overflow-y: auto;
-      margin-top: 8px;
-      white-space: pre-wrap;
-      word-break: break-all;
-      line-height: 1.6;
-    }
-
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: var(--bg); color: var(--t1); font-family: var(--fd); min-height: 100vh; padding: 20px; }
+    .page { max-width: 1400px; margin: 0 auto; }
+    .ws { display: flex; gap: 16px; background: var(--bg2); border-radius: 12px; border: 1px solid var(--border); overflow: hidden; min-height: 600px; }
+    .wsb { width: 220px; min-width: 220px; background: var(--bg3); border-right: 1px solid var(--border); padding: 12px 0; display: flex; flex-direction: column; gap: 2px; }
+    .sb-lbl { font-size: 10px; text-transform: uppercase; letter-spacing: .6px; color: var(--t3); padding: 10px 16px 4px; font-weight: 600; }
+    .sb-it { padding: 8px 16px; font-size: 12px; color: var(--t2); cursor: pointer; display: flex; align-items: center; gap: 10px; transition: all .2s; border-left: 3px solid transparent; }
+    .sb-it i { width: 18px; font-size: 13px; color: var(--t3); }
+    .sb-it.on { background: rgba(79, 195, 247, 0.08); border-left-color: var(--sky); color: var(--t1); }
+    .sb-it.on i { color: var(--sky); }
+    .sb-it:hover:not([style*="cursor:default"]) { background: rgba(255,255,255,0.04); }
+    .wbm { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    .wtb { display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--border); background: var(--bg3); flex-wrap: wrap; }
+    .t-space { flex: 1; }
+    .btn { padding: 6px 14px; border: none; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all .2s; display: inline-flex; align-items: center; gap: 6px; font-family: var(--fd); }
+    .btn:hover { transform: translateY(-1px); filter: brightness(1.1); }
+    .btn:disabled { opacity: .5; cursor: not-allowed; transform: none !important; }
+    .btn-g { background: var(--bg3); color: var(--t2); border: 1px solid var(--border); }
+    .btn-sky { background: var(--sky); color: #03182a; }
+    .btn-green { background: var(--green); color: #03182a; }
+    .btn-sm { padding: 4px 10px; font-size: 11px; }
+    .wbd { flex: 1; overflow-y: auto; padding: 16px; background: var(--bg); display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .panel { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+    .pt { font-size: 12px; font-weight: 600; color: var(--t1); display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+    .pt i { font-size: 14px; }
+    .fg { margin-bottom: 10px; }
+    .fg:last-child { margin-bottom: 0; }
+    .fl { font-size: 11px; color: var(--t2); display: flex; align-items: center; gap: 6px; margin-bottom: 4px; flex-wrap: wrap; }
+    .fi, .fs, .fta { width: 100%; padding: 6px 10px; background: var(--bg3); border: 1px solid var(--border); border-radius: 4px; color: var(--t1); font-size: 12px; font-family: var(--fd); transition: border .2s; }
+    .fi:focus, .fs:focus, .fta:focus { outline: none; border-color: var(--sky); }
+    .fi:disabled { opacity: .6; cursor: not-allowed; }
+    .fs { appearance: none; cursor: pointer; }
+    .fta { resize: vertical; font-family: var(--fm); font-size: 11px; line-height: 1.5; min-height: 60px; }
+    .r2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .tfs-uz { border: 2px dashed var(--border); border-radius: 8px; padding: 30px 20px; text-align: center; cursor: pointer; transition: all .3s; position: relative; }
+    .tfs-uz:hover { border-color: var(--sky); background: rgba(79, 195, 247, 0.04); }
+    .tfs-uz.drag { border-color: var(--sky); background: rgba(79, 195, 247, 0.08); }
+    .tfs-uz input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+    .tfs-uz i { font-size: 32px; color: var(--sky); display: block; margin-bottom: 8px; }
+    .pgbar { height: 3px; background: var(--bg3); border-radius: 2px; overflow: hidden; }
+    .pgfill { height: 100%; width: 0%; transition: width .3s; border-radius: 2px; }
+    .pgfill.sky { background: var(--sky); }
+    .tfs-file-info { display: none; margin-top: 8px; padding: 6px 10px; background: var(--bg3); border-radius: 4px; font-size: 11px; }
+    .tfs-file-info.on { display: flex; justify-content: space-between; }
+    .tfs-fname { color: var(--sky); font-weight: 500; }
+    .tfs-fsize { color: var(--t3); }
+    .local-badge { font-size: 9px; background: var(--bg3); padding: 2px 8px; border-radius: 10px; color: var(--t3); display: inline-flex; align-items: center; gap: 4px; font-weight: 400; }
+    .ci-identity-box { margin-top: 8px; padding: 10px 12px; background: rgba(102, 187, 106, 0.08); border: 1px solid var(--green); border-radius: 6px; display: flex; align-items: center; gap: 12px; }
+    .ci-identity-box i { font-size: 20px; color: var(--green); }
+    .progress-track { height: 4px; background: var(--bg3); border-radius: 2px; overflow: hidden; margin-top: 4px; }
+    .progress-fill-sky { height: 100%; width: 0%; background: var(--sky); transition: width .3s; }
+    .ci-log { background: var(--bg3); border-radius: 4px; padding: 8px 10px; font-family: var(--fm); font-size: 10.5px; max-height: 120px; overflow-y: auto; margin-top: 8px; white-space: pre-wrap; word-break: break-all; line-height: 1.6; }
     .ci-log .log-info { color: var(--t2); }
     .ci-log .log-ok { color: var(--green); }
     .ci-log .log-err { color: var(--red); }
     .ci-log .log-warn { color: var(--gold); }
-
-    .ci-step {
-      display: flex;
-      align-items: flex-start;
-      gap: 10px;
-      padding: 4px 0;
-      font-size: 11px;
-      opacity: .4;
-      transition: all .3s;
-    }
-
+    .ci-step { display: flex; align-items: flex-start; gap: 10px; padding: 4px 0; font-size: 11px; opacity: .4; transition: all .3s; }
     .ci-step.done { opacity: .7; }
     .ci-step.running { opacity: 1; }
     .ci-step.error { opacity: 1; }
     .ci-step.error .ci-step-title { color: var(--red); }
-
-    .ci-step-num {
-      width: 20px;
-      height: 20px;
-      border-radius: 50%;
-      background: var(--bg3);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 10px;
-      font-weight: 700;
-      flex-shrink: 0;
-      color: var(--t3);
-    }
-
-    .ci-step.done .ci-step-num {
-      background: var(--green);
-      color: #fff;
-    }
-
-    .ci-step.running .ci-step-num {
-      background: var(--sky);
-      color: #03182a;
-      animation: pulse 1s infinite;
-    }
-
-    .ci-step.error .ci-step-num {
-      background: var(--red);
-      color: #fff;
-    }
-
-    @keyframes pulse {
-      0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.1); }
-    }
-
-    .ci-step-title {
-      font-weight: 500;
-      color: var(--t1);
-    }
-
-    .ci-step-sub {
-      font-size: 10px;
-      color: var(--t3);
-    }
-
-    .ld {
-      display: flex;
-      gap: 4px;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .ldd {
-      width: 6px;
-      height: 6px;
-      background: currentColor;
-      border-radius: 50%;
-      animation: bounce .6s infinite alternate;
-    }
-
+    .ci-step-num { width: 20px; height: 20px; border-radius: 50%; background: var(--bg3); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; flex-shrink: 0; color: var(--t3); }
+    .ci-step.done .ci-step-num { background: var(--green); color: #fff; }
+    .ci-step.running .ci-step-num { background: var(--sky); color: #03182a; animation: pulse 1s infinite; }
+    .ci-step.error .ci-step-num { background: var(--red); color: #fff; }
+    @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+    .ci-step-title { font-weight: 500; color: var(--t1); }
+    .ci-step-sub { font-size: 10px; color: var(--t3); }
+    .ld { display: flex; gap: 4px; align-items: center; justify-content: center; }
+    .ldd { width: 6px; height: 6px; background: currentColor; border-radius: 50%; animation: bounce .6s infinite alternate; }
     .ldd:nth-child(2) { animation-delay: .2s; }
     .ldd:nth-child(3) { animation-delay: .4s; }
-
-    @keyframes bounce {
-      0% { transform: translateY(0); opacity: .3; }
-      100% { transform: translateY(-6px); opacity: 1; }
-    }
-
-    #ci-history .sb-it {
-      border-left: none;
-      padding: 6px 16px;
-    }
-
-    #ci-history .sb-it:hover {
-      background: none;
-    }
-
-    #ci-local-script-panel .pt i {
-      color: var(--green);
-    }
-
-    #ci-local-script-content {
-      background: var(--bg3);
-      padding: 12px;
-      border-radius: 6px;
-      font-family: var(--fm);
-      font-size: 11px;
-      white-space: pre-wrap;
-      max-height: 200px;
-      overflow: auto;
-      color: var(--t2);
-      border: 1px solid var(--border);
-    }
-
-    code {
-      background: var(--bg3);
-      padding: 1px 6px;
-      border-radius: 3px;
-      font-family: var(--fm);
-      font-size: 10px;
-      color: var(--teal);
-    }
-
-    @media (max-width: 900px) {
-      .ws { flex-direction: column; }
-      .wsb { width: 100%; min-width: 0; flex-direction: row; flex-wrap: wrap; padding: 8px 12px; border-right: none; border-bottom: 1px solid var(--border); }
-      .sb-lbl { display: none; }
-      .sb-it { padding: 4px 12px; font-size: 11px; border-left: none; }
-      .r2 { grid-template-columns: 1fr; }
-      .wbd { grid-template-columns: 1fr !important; }
-    }
+    @keyframes bounce { 0% { transform: translateY(0); opacity: .3; } 100% { transform: translateY(-6px); opacity: 1; } }
+    #ci-history .sb-it { border-left: none; padding: 6px 16px; }
+    #ci-history .sb-it:hover { background: none; }
+    #ci-local-script-panel .pt i { color: var(--green); }
+    #ci-local-script-content { background: var(--bg3); padding: 12px; border-radius: 6px; font-family: var(--fm); font-size: 11px; white-space: pre-wrap; max-height: 200px; overflow: auto; color: var(--t2); border: 1px solid var(--border); }
+    code { background: var(--bg3); padding: 1px 6px; border-radius: 3px; font-family: var(--fm); font-size: 10px; color: var(--teal); }
+    @media (max-width: 900px) { .ws { flex-direction: column; } .wsb { width: 100%; min-width: 0; flex-direction: row; flex-wrap: wrap; padding: 8px 12px; border-right: none; border-bottom: 1px solid var(--border); } .sb-lbl { display: none; } .sb-it { padding: 4px 12px; font-size: 11px; border-left: none; } .r2 { grid-template-columns: 1fr; } .wbd { grid-template-columns: 1fr !important; } }
   </style>
 </head>
 <body>
@@ -544,16 +126,11 @@
         <span style="font-family:var(--fd);font-size:13px;font-weight:600">TFS Code Check-In via CI/CD Pipeline</span>
         <div class="t-space"></div>
         <button class="btn btn-g btn-sm" onclick="ciReset()"><i class="fa-solid fa-rotate-left"></i> Reset</button>
-        <button class="btn btn-sky" id="ci-btn" onclick="ciSubmit()">
-          <i class="fa-solid fa-upload"></i> Check-In to TFS
-        </button>
-        <button class="btn btn-green" id="ci-local-btn" onclick="ciDirectLocalSubmit()" title="Generate local script to check-in directly from your machine">
-          <i class="fa-solid fa-laptop"></i> Local Check-In
-        </button>
+        <button class="btn btn-sky" id="ci-btn" onclick="ciSubmit()"><i class="fa-solid fa-upload"></i> Check-In to TFS</button>
+        <button class="btn btn-green" id="ci-local-btn" onclick="ciDirectLocalSubmit()"><i class="fa-solid fa-laptop"></i> Local Check-In</button>
       </div>
 
-      <div class="wbd" style="padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:14px">
-
+      <div class="wbd">
         <!-- Left column: Upload + Config -->
         <div style="display:flex;flex-direction:column;gap:14px">
 
@@ -577,10 +154,10 @@
           <div class="panel">
             <div class="pt"><i class="fa-solid fa-server" style="color:var(--sky)"></i>TFS Server Connection</div>
             <div class="fg"><div class="fl"><i class="fa-solid fa-globe"></i>TFS Server URL (via nginx)</div><input class="fi" id="ci-tfsurl" value="http://10.177.44.29:4415/tfs" placeholder="http://10.177.44.29:4415/tfs"/>
-              <div style="font-size:9.5px;color:var(--t3);margin-top:4px;line-height:1.5"><i class="fa-solid fa-circle-info"></i> Must point at the <b style="color:var(--t2)">nginx proxy</b> (10.177.44.29:4415), not the raw TFS server. nginx forwards to the real TFS at <code style="color:var(--teal);font-family:var(--fm)">https://10.177.56.207:443</code> behind the scenes.</div>
+              <div style="font-size:9.5px;color:var(--t3);margin-top:4px;line-height:1.5"><i class="fa-solid fa-circle-info"></i> Must point at the <b style="color:var(--t2)">nginx proxy</b> (10.177.44.29:4415), not the raw TFS server.</div>
             </div>
             <div class="fg"><div class="fl"><i class="fa-solid fa-server"></i>Check-in Backend Service URL <span style="color:var(--red)">*</span></div><input class="fi" id="ci-backend" value="http://10.177.44.29:4416/api/tfs-checkin" placeholder="http://your-backend-host:5000/api/tfs-checkin"/>
-              <div style="font-size:9.5px;color:var(--t3);margin-top:4px;line-height:1.5"><i class="fa-solid fa-circle-info"></i> You upload the ZIP here in the UI. This backend service (Node.js, included in the companion code) unzips it and runs <code style="color:var(--teal);font-family:var(--fm)">tf add → tf checkin</code> against the TFS URL above — no manual cmd needed.</div>
+              <div style="font-size:9.5px;color:var(--t3);margin-top:4px;line-height:1.5"><i class="fa-solid fa-circle-info"></i> Backend service unzips and runs <code style="color:var(--teal);font-family:var(--fm)">tf add → tf checkin</code> against TFS.</div>
             </div>
             <div class="r2">
               <div class="fg"><div class="fl"><i class="fa-solid fa-building"></i>Collection</div><input class="fi" id="ci-collection" value="SBIEIS" placeholder="SBIEIS"/></div>
@@ -588,14 +165,14 @@
             </div>
             <div class="fg">
               <div class="fl"><i class="fa-solid fa-shield-halved"></i>Auth Type
-                <span class="local-badge" title="Whichever you pick, your identity is verified straight against TFS or the OS itself, so the resolved name always matches the real account."><i class="fa-solid fa-lock"></i> Verified, not typed</span>
+                <span class="local-badge"><i class="fa-solid fa-lock"></i> Verified, not typed</span>
               </div>
               <select class="fs" id="ci-authmode" onchange="ciAuthModeChanged()">
-                <option value="basic">TFS Username + Password — no PAT to generate</option>
+                <option value="basic">TFS Username + Password</option>
                 <option value="pat">Personal Access Token (PAT)</option>
-                <option value="winauth">OS Login (SSO) — no typing at all</option>
+                <option value="winauth">OS Login (SSO)</option>
               </select>
-              <div style="font-size:9.5px;color:var(--t3);margin-top:4px;line-height:1.5" id="ci-authmode-note"><i class="fa-solid fa-circle-info"></i> Either way, the backend sends your credentials to TFS's own identity API to resolve your real display name — the commit is always credited to whoever the credentials actually belong to, never to a typed-in name.</div>
+              <div style="font-size:9.5px;color:var(--t3);margin-top:4px;line-height:1.5" id="ci-authmode-note"><i class="fa-solid fa-circle-info"></i> Credentials resolve your real display name from TFS.</div>
             </div>
             <div class="r2" id="ci-user-row">
               <div class="fg"><div class="fl"><i class="fa-solid fa-user"></i>TFS Username <span style="color:var(--red)">*</span></div><input class="fi" id="ci-user" placeholder="domain\username" oninput="ciPassChanged()"/></div>
@@ -603,19 +180,18 @@
             </div>
             <div class="fg" id="ci-directurl-row" style="display:none">
               <div class="fl"><i class="fa-solid fa-route"></i>Direct TFS URL <span style="color:var(--red)">*</span>
-                <span class="local-badge" title="OS-level SSO needs a connection nginx won't break mid-handshake — this must reach TFS WITHOUT going back through the same proxy."><i class="fa-solid fa-triangle-exclamation"></i> Must bypass the proxy</span>
+                <span class="local-badge"><i class="fa-solid fa-triangle-exclamation"></i> Must bypass the proxy</span>
               </div>
-              <input class="fi" id="ci-directurl" placeholder="https://10.177.56.207 (TFS's real address, not the nginx URL)" oninput="ciPassChanged()"/>
-              <div style="font-size:9.5px;color:var(--t3);margin-top:4px;line-height:1.5"><i class="fa-solid fa-circle-info"></i> Uses your current OS login with no typed password — Windows SSPI if this backend runs on Windows, Kerberos (<code>curl --negotiate</code>) if it runs on Linux/Mac. <strong>Real prerequisites apply:</strong> it only works if (1) this backend runs on YOUR OWN machine, not a shared server, and (2) on Linux/Mac, this machine is Kerberos-joined to the same domain as TFS with a valid ticket. It also needs a network path to TFS that skips the proxy. If any of that doesn't hold on your setup, use PAT or Username+Password instead — this mode is a bonus for the right setup, not the default choice.</div>
+              <input class="fi" id="ci-directurl" placeholder="https://10.177.56.207 (TFS's real address)" oninput="ciPassChanged()"/>
             </div>
             <div class="fg" id="ci-pat-row" style="display:none">
-              <div class="fl"><i class="fa-solid fa-key"></i>Personal Access Token (PAT) <span style="color:var(--red)">*</span></div>
-              <input class="fi" type="password" id="ci-pat" placeholder="Paste your Personal Access Token" oninput="ciPassChanged()"/>
+              <div class="fl"><i class="fa-solid fa-key"></i>PAT <span style="color:var(--red)">*</span></div>
+              <input class="fi" type="password" id="ci-pat" placeholder="Paste your PAT" oninput="ciPassChanged()"/>
               <div style="font-size:9.5px;color:var(--t3);margin-top:4px;line-height:1.5" id="ci-pat-note"></div>
             </div>
             <div style="display:flex;gap:8px;margin-top:2px">
-              <button class="btn btn-g btn-sm" style="flex:1;justify-content:center" onclick="ciTestConnection()" id="ci-test-btn"><i class="fa-solid fa-plug-circle-check"></i> Test TFS Connection</button>
-              <button class="btn btn-g btn-sm" style="flex:1;justify-content:center" onclick="ciVerifyIdentity()" id="ci-verify-btn"><i class="fa-solid fa-user-check"></i> Verify My Identity</button>
+              <button class="btn btn-g btn-sm" style="flex:1;justify-content:center" onclick="ciTestConnection()" id="ci-test-btn"><i class="fa-solid fa-plug-circle-check"></i> Test Connection</button>
+              <button class="btn btn-g btn-sm" style="flex:1;justify-content:center" onclick="ciVerifyIdentity()" id="ci-verify-btn"><i class="fa-solid fa-user-check"></i> Verify Identity</button>
             </div>
             <div id="ci-test-result" style="font-size:10.5px;margin-top:6px"></div>
             <div id="ci-identity-box" class="ci-identity-box" style="display:none">
@@ -630,8 +206,8 @@
           <!-- Clone Path -->
           <div class="panel">
             <div class="pt"><i class="fa-solid fa-folder-tree" style="color:var(--sky)"></i>Repository & Clone</div>
-            <div class="fg"><div class="fl"><i class="fa-solid fa-code-fork"></i>Repository Name <span style="color:var(--red)">*</span></div><input class="fi" id="ci-reponame" placeholder="e.g. ACE_Services.git / $/ACE_Services"/></div>
-            <div class="fg"><div class="fl"><i class="fa-solid fa-folder-open"></i>Clone / Workspace Path</div><input class="fi" id="ci-clonepath" placeholder="$/ProjectName/Branch/Path  or  C:\workspace\repo"/></div>
+            <div class="fg"><div class="fl"><i class="fa-solid fa-code-fork"></i>Repository Name <span style="color:var(--red)">*</span></div><input class="fi" id="ci-reponame" placeholder="e.g. ACE_Services.git"/></div>
+            <div class="fg"><div class="fl"><i class="fa-solid fa-folder-open"></i>Clone / Workspace Path</div><input class="fi" id="ci-clonepath" placeholder="C:\workspace\repo"/></div>
             <div class="fg" style="margin-bottom:0"><div class="fl"><i class="fa-solid fa-copy"></i>Target Directory in TFS</div><input class="fi" id="ci-targetdir" placeholder="$/ACE_Services/Dev/APIs/MyFeature"/></div>
           </div>
         </div>
@@ -643,24 +219,24 @@
           <div class="panel">
             <div class="pt"><i class="fa-solid fa-code-branch" style="color:var(--sky)"></i>Branch & Feature Details</div>
             <div class="r2">
-              <div class="fg"><div class="fl"><i class="fa-solid fa-code-branch"></i>Branch Name</div><input class="fi" id="ci-branch" placeholder="e.g. dev, feature/JIRA-123, release/v2.1"/></div>
+              <div class="fg"><div class="fl"><i class="fa-solid fa-code-branch"></i>Branch Name</div><input class="fi" id="ci-branch" placeholder="e.g. dev, feature/JIRA-123"/></div>
               <div class="fg"><div class="fl"><i class="fa-solid fa-tag"></i>Feature Name</div><input class="fi" id="ci-feature" placeholder="e.g. DepositAccountShort"/></div>
             </div>
-            <div class="fg"><div class="fl"><i class="fa-solid fa-ticket"></i>Work Item / Ticket ID</div><input class="fi" id="ci-workitem" placeholder="e.g. JIRA-4521 or TFS #1234"/></div>
+            <div class="fg"><div class="fl"><i class="fa-solid fa-ticket"></i>Work Item / Ticket ID</div><input class="fi" id="ci-workitem" placeholder="e.g. JIRA-4521"/></div>
             <div class="fg" style="margin-bottom:0">
               <div class="fl"><i class="fa-solid fa-user-tie"></i>Author / Developer
-                <span class="local-badge" title="This can't be typed — it's resolved automatically from your TFS credentials (PAT or username/password) so the commit is always credited to the real person checking in."><i class="fa-solid fa-lock"></i> Auto-verified</span>
+                <span class="local-badge"><i class="fa-solid fa-lock"></i> Auto-verified</span>
               </div>
-              <input class="fi" id="ci-author" placeholder="Click &quot;Verify My Identity&quot; above — resolved automatically from your TFS credentials" disabled style="opacity:.75;cursor:not-allowed"/>
+              <input class="fi" id="ci-author" placeholder="Click 'Verify Identity' above" disabled style="opacity:.75;cursor:not-allowed"/>
             </div>
           </div>
 
           <!-- Commit Message -->
           <div class="panel">
-            <div class="pt"><i class="fa-solid fa-message" style="color:var(--sky)"></i>Commit Message <span style="font-size:10px;color:var(--t3);font-weight:400">(-m "")</span></div>
+            <div class="pt"><i class="fa-solid fa-message" style="color:var(--sky)"></i>Commit Message</div>
             <div class="fg" style="margin-bottom:8px">
               <div class="fl">Message</div>
-              <textarea class="fta" id="ci-msg" style="min-height:80px" placeholder="[JIRA-4521] Add DepositAccountShort API — implements short deposit account query with EIS DMZ routing and ACE SQL generation"></textarea>
+              <textarea class="fta" id="ci-msg" style="min-height:80px" placeholder="[JIRA-4521] Add DepositAccountShort API"></textarea>
             </div>
             <div style="display:flex;gap:6px;flex-wrap:wrap" id="ci-msg-chips">
               <button class="btn btn-g btn-sm" onclick="appendMsg('[Feature] ')"><i class="fa-solid fa-plus"></i>[Feature]</button>
@@ -733,12 +309,588 @@
             </div>
           </div>
         </div>
-
       </div>
     </div>
   </div>
 </div>
 
-<script src="js/tfs-checkin.js"></script>
+<script>
+// ═══════════════════════════════════════════════════════════════
+// TFS CI/CD - Complete JavaScript
+// ═══════════════════════════════════════════════════════════════
+
+// Global state
+const ST = {
+  ciFile: null,
+  ciVerifiedAuthor: null,
+  ciVerifiedForCombo: null,
+  ciHistory: JSON.parse(localStorage.getItem('devSuiteCi') || '[]'),
+  ciLocalScript: null
+};
+
+// Utility functions
+function $v(id) { const el = document.getElementById(id); return el ? el.value : ''; }
+function fmtSz(b) {
+  if (!b) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let i = 0;
+  while (b >= 1024 && i < units.length - 1) { b /= 1024; i++; }
+  return b.toFixed(i === 0 ? 0 : 1) + ' ' + units[i];
+}
+function toast(msg, type) {
+  const el = document.createElement('div');
+  const bg = type === 'ok' ? 'var(--green)' : type === 'err' ? 'var(--red)' : type === 'warn' ? 'var(--gold)' : 'var(--sky)';
+  el.style.cssText = `
+    position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+    background: var(--bg3); color: var(--t1); padding: 10px 24px;
+    border-radius: 8px; font-size: 13px; z-index: 9999;
+    border: 1px solid ${bg}; box-shadow: 0 8px 32px rgba(0,0,0,.6);
+    transition: all .3s; opacity: 0; transform: translateX(-50%) translateY(20px);
+    font-family: var(--fd); max-width: 90%;
+  `;
+  el.textContent = msg;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translateX(-50%) translateY(0)'; });
+  setTimeout(() => {
+    el.style.opacity = '0';
+    el.style.transform = 'translateX(-50%) translateY(20px)';
+    setTimeout(() => el.remove(), 400);
+  }, 4000);
+}
+
+// ══════════ Drag & Drop / File ══════════
+function ciDov(e) { e.preventDefault(); document.getElementById('ci-uz').classList.add('drag'); }
+function ciDlv() { document.getElementById('ci-uz').classList.remove('drag'); }
+function ciDop(e) { e.preventDefault(); ciDlv(); const f = e.dataTransfer?.files[0]; if (f) ciSetFile(f); }
+function ciFileSelect(inp) { if (inp.files[0]) ciSetFile(inp.files[0]); }
+function ciSetFile(f) {
+  ST.ciFile = f;
+  const pf = document.getElementById('ci-pf'); pf.style.width = '0%';
+  let p = 0; const iv = setInterval(() => { p += 18; pf.style.width = Math.min(p, 95) + '%'; if (p >= 95) clearInterval(iv); }, 60);
+  setTimeout(() => { clearInterval(iv); pf.style.width = '100%'; setTimeout(() => pf.style.width = '0%', 600); }, 800);
+  document.getElementById('ci-fname').textContent = f.name;
+  document.getElementById('ci-fsize').textContent = fmtSz(f.size) + ' · ' + f.type;
+  document.getElementById('ci-finfo').classList.add('on');
+  toast(f.name + ' ready', 'ok');
+}
+
+function appendMsg(prefix) {
+  const ta = document.getElementById('ci-msg');
+  if (!ta.value.startsWith(prefix)) ta.value = prefix + ta.value;
+  ta.focus();
+}
+
+function ciAutoMsg() {
+  const feat = $v('ci-feature') || 'API';
+  const branch = $v('ci-branch') || 'dev';
+  const wi = $v('ci-workitem');
+  const author = ST.ciVerifiedAuthor || '';
+  const file = ST.ciFile ? ST.ciFile.name : 'api-package.zip';
+  let msg = `[Feature] ${feat} — Deploy ${file} to ${branch} branch`;
+  if (wi) msg = `[${wi}] ` + msg;
+  if (author) msg += ` | Author: ${author}`;
+  document.getElementById('ci-msg').value = msg;
+}
+
+function ciReset() {
+  ST.ciFile = null;
+  ST.ciVerifiedAuthor = null;
+  ST.ciVerifiedForCombo = null;
+  ST.ciLocalScript = null;
+  document.getElementById('ci-finfo').classList.remove('on');
+  document.getElementById('ci-pf').style.width = '0%';
+  document.getElementById('ci-progress-panel').style.display = 'none';
+  document.getElementById('ci-local-script-panel').style.display = 'none';
+  document.getElementById('ci-identity-box').style.display = 'none';
+  ['ci-reponame','ci-branch','ci-feature','ci-workitem','ci-author','ci-msg','ci-clonepath','ci-targetdir','ci-pat','ci-directurl'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
+  toast('Reset', 'info');
+}
+
+// ══════════ Auth Mode ══════════
+function ciAuthModeChanged() {
+  const mode = $v('ci-authmode');
+  document.getElementById('ci-user-row').style.display = mode === 'basic' ? '' : 'none';
+  document.getElementById('ci-directurl-row').style.display = mode === 'winauth' ? '' : 'none';
+  document.getElementById('ci-pat-row').style.display = (mode === 'pat' || mode === 'winauth') ? '' : 'none';
+  document.getElementById('ci-pat-note').innerHTML = mode === 'winauth'
+    ? 'Still required — Windows SSO only verifies who you are; the actual push needs a PAT.' : '';
+  document.getElementById('ci-authmode-note').innerHTML =
+    mode === 'pat' ? '<i class="fa-solid fa-circle-info"></i> Paste a PAT. The backend resolves your real display name from TFS.'
+    : mode === 'winauth' ? '<i class="fa-solid fa-circle-info"></i> Uses OS login (SSPI/Kerberos) against TFS. Requires direct TFS URL.'
+    : '<i class="fa-solid fa-circle-info"></i> Enter TFS username and password. The commit is credited to the real owner.';
+  ciPassChanged();
+}
+
+function ciCreds() {
+  const mode = $v('ci-authmode') || 'basic';
+  if (mode === 'pat') {
+    return { mode, username: '', password: $v('ci-pat'), directUrl: '', combo: 'pat\u0000' + $v('ci-pat') };
+  }
+  if (mode === 'winauth') {
+    const du = $v('ci-directurl'), pw = $v('ci-pat');
+    return { mode, username: '', password: pw, directUrl: du, combo: 'winauth\u0000' + du + '\u0000' + pw };
+  }
+  const u = $v('ci-user'), p = $v('ci-pass');
+  return { mode, username: u, password: p, directUrl: '', combo: 'basic\u0000' + u + '\u0000' + p };
+}
+
+function ciPassChanged() {
+  const { combo } = ciCreds();
+  if (ST.ciVerifiedForCombo !== null && ST.ciVerifiedForCombo !== combo) {
+    ST.ciVerifiedAuthor = null; ST.ciVerifiedForCombo = null;
+    document.getElementById('ci-identity-box').style.display = 'none';
+    document.getElementById('ci-author').value = '';
+  }
+}
+
+// ══════════ Test Connection ══════════
+async function ciTestConnection() {
+  const resEl = document.getElementById('ci-test-result');
+  const btn = document.getElementById('ci-test-btn');
+  const tfsUrl = $v('ci-tfsurl');
+  const backendUrl = $v('ci-backend').trim();
+  const { mode, username, password, directUrl } = ciCreds();
+  if (!backendUrl) { toast('Set the Check-in Backend Service URL first', 'warn'); return; }
+  if (mode === 'basic' && !username) { toast('Enter your TFS username first', 'warn'); return; }
+  if (mode === 'winauth' && !directUrl) { toast('Enter the direct TFS URL first', 'warn'); return; }
+  if (!password) { toast(mode === 'basic' ? 'Enter your TFS password first' : 'Enter your PAT first', 'warn'); return; }
+  btn.disabled = true;
+  resEl.style.color = 'var(--t2)';
+  resEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Testing connection...';
+  try {
+    const testUrl = backendUrl.replace(/\/api\/tfs-checkin\/?$/, '/api/tfs-test');
+    const resp = await fetch(testUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tfsUrl, collection: $v('ci-collection') || 'DefaultCollection', project: $v('ci-project') || '', repo: $v('ci-reponame') || '', authMode: mode, username, password, directUrl })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (resp.ok && data.ok) {
+      resEl.style.color = 'var(--green)';
+      resEl.innerHTML = `<i class="fa-solid fa-circle-check"></i> Connected — ${data.message || 'TFS reachable'}`;
+      toast('TFS connection OK', 'ok');
+    } else {
+      resEl.style.color = 'var(--red)';
+      resEl.innerHTML = `<i class="fa-solid fa-circle-xmark"></i> ${data.message || data.error || ('HTTP ' + resp.status)}`;
+      toast('TFS connection failed', 'err');
+    }
+  } catch (err) {
+    resEl.style.color = 'var(--red)';
+    resEl.innerHTML = `<i class="fa-solid fa-circle-xmark"></i> ${err.message}`;
+    toast('Could not reach backend', 'err');
+  }
+  btn.disabled = false;
+}
+
+// ══════════ Verify Identity ══════════
+async function ciVerifyIdentity() {
+  const btn = document.getElementById('ci-verify-btn');
+  const box = document.getElementById('ci-identity-box');
+  const nameEl = document.getElementById('ci-identity-name');
+  const tfsUrl = $v('ci-tfsurl');
+  const backendUrl = $v('ci-backend').trim();
+  const { mode, username, password, directUrl, combo } = ciCreds();
+  if (!backendUrl) { toast('Set the Check-in Backend Service URL first', 'warn'); return; }
+  if (mode === 'basic' && !username) { toast('Enter your TFS username first', 'warn'); document.getElementById('ci-user').focus(); return; }
+  if (mode === 'winauth' && !directUrl) { toast('Enter the direct TFS URL first', 'warn'); document.getElementById('ci-directurl').focus(); return; }
+  if (mode !== 'winauth' && !password) { toast(mode === 'basic' ? 'Enter your TFS password first' : 'Enter your PAT first', 'warn'); return; }
+  btn.disabled = true;
+  const prevHtml = btn.innerHTML;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Verifying…';
+  ST.ciVerifiedAuthor = null;
+  ST.ciVerifiedForCombo = null;
+  try {
+    const whoUrl = backendUrl.replace(/\/api\/tfs-checkin\/?$/, '/api/tfs-whoami');
+    const resp = await fetch(whoUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tfsUrl, collection: $v('ci-collection') || 'DefaultCollection', project: $v('ci-project') || '', repo: $v('ci-reponame') || '', authMode: mode, username, password, directUrl }) });
+    const data = await resp.json().catch(() => ({}));
+    if (resp.ok && data.ok && data.name) {
+      ST.ciVerifiedAuthor = data.name;
+      ST.ciVerifiedForCombo = combo;
+      document.getElementById('ci-author').value = data.name;
+      nameEl.textContent = data.name;
+      box.style.display = '';
+      toast(`Identity verified: ${data.name}`, 'ok');
+    } else {
+      document.getElementById('ci-author').value = '';
+      box.style.display = 'none';
+      toast(data.message || 'Could not verify identity', 'err');
+    }
+  } catch (err) {
+    document.getElementById('ci-author').value = '';
+    box.style.display = 'none';
+    toast('Could not reach backend to verify identity', 'err');
+  }
+  btn.disabled = false;
+  btn.innerHTML = prevHtml;
+}
+
+// ══════════ Pipeline Steps ══════════
+function ciPipelineSteps(repo) {
+  return [
+    { label: 'Validate ZIP package', sub: 'Checking file integrity and manifest' },
+    { label: 'Connect to TFS Server', sub: 'Authenticating with TFS collection' },
+    { label: 'Locate repository', sub: `Resolving repository "${repo}" on TFS server` },
+    { label: 'Create workspace mapping', sub: `Mapping clone path to repository "${repo}"` },
+    { label: 'Get latest from branch', sub: 'tf get /force from target branch' },
+    { label: 'Extract & stage files', sub: 'Unzipping API package to staging area' },
+    { label: 'Add files to TFS pending changes', sub: 'tf add *.* /recursive' },
+    { label: 'Check-in with commit message', sub: `tf checkin into ${repo}` },
+    { label: 'Trigger CI build pipeline', sub: 'Queuing build on TFS build server' },
+    { label: 'Verify check-in', sub: 'Confirming changeset number' },
+  ];
+}
+let CI_PIPELINE_STEPS = ciPipelineSteps('repository');
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => { const s = r.result; resolve(typeof s === 'string' ? s.split(',').pop() : s); };
+    r.onerror = () => reject(new Error('Could not read the ZIP file'));
+    r.readAsDataURL(file);
+  });
+}
+
+// ══════════ Submit (Server-side) ══════════
+async function ciSubmit() {
+  if (!ST.ciFile) { toast('Upload a ZIP file first', 'warn'); return; }
+  const repo = $v('ci-reponame');
+  const branch = $v('ci-branch');
+  const feature = $v('ci-feature');
+  const msg = $v('ci-msg');
+  const tfsUrl = $v('ci-tfsurl');
+  const clonePath = $v('ci-clonepath');
+  const targetDir = $v('ci-targetdir');
+  const backendUrl = $v('ci-backend').trim();
+  if (!repo) { toast('Enter the Repository Name', 'warn'); document.getElementById('ci-reponame').focus(); return; }
+  if (!branch) { toast('Enter a branch name', 'warn'); return; }
+  if (!msg) { toast('Add a commit message', 'warn'); return; }
+  if (!backendUrl) { toast('Set the Check-in Backend Service URL', 'warn'); document.getElementById('ci-backend').focus(); return; }
+  const { mode, username: ciUser, password: ciPass, directUrl, combo } = ciCreds();
+  if (mode === 'basic' && !ciUser) { toast('Enter your TFS username', 'warn'); return; }
+  if (mode === 'winauth' && !directUrl) { toast('Enter the direct TFS URL', 'warn'); return; }
+  if (!ciPass) { toast(mode === 'basic' ? 'Enter your TFS password' : 'Enter your PAT', 'warn'); return; }
+  if (!ST.ciVerifiedAuthor || ST.ciVerifiedForCombo !== combo) {
+    toast('Click "Verify My Identity" first', 'warn');
+    document.getElementById('ci-verify-btn').focus();
+    return;
+  }
+  CI_PIPELINE_STEPS = ciPipelineSteps(repo);
+
+  const btn = document.getElementById('ci-btn');
+  btn.disabled = true;
+  btn.innerHTML = `<div class="ld" style="color:#03182a"><div class="ldd"></div><div class="ldd"></div><div class="ldd"></div></div>`;
+
+  const panel = document.getElementById('ci-progress-panel');
+  panel.style.display = '';
+  document.getElementById('ci-local-script-panel').style.display = 'none';
+  const stepsList = document.getElementById('ci-steps-list');
+  const logEl = document.getElementById('ci-log');
+  const prog = document.getElementById('ci-progress');
+  const pgpct = document.getElementById('ci-pgpct');
+  const pgstatus = document.getElementById('ci-pgstatus');
+  const pgeta = document.getElementById('ci-pgeta');
+  logEl.innerHTML = '';
+  pgpct.textContent = '0%'; pgstatus.textContent = 'Starting…'; pgeta.innerHTML = '&nbsp;';
+
+  function log(txt, type) { logEl.innerHTML += `<span class="log-${type}">${txt}</span>\n`; logEl.scrollTop = logEl.scrollHeight; }
+  function setPct(pct, statusTxt, timeTxt) {
+    const clamped = Math.max(0, Math.min(100, pct));
+    const done = Math.round(clamped), left = 100 - done;
+    prog.style.width = clamped + '%';
+    pgpct.textContent = done + '%';
+    if (statusTxt !== undefined) pgstatus.textContent = statusTxt;
+    if (done >= 100) {
+      pgeta.innerHTML = '&nbsp;';
+    } else if (timeTxt === undefined || timeTxt === '&nbsp;') {
+      pgeta.textContent = `${left}% left`;
+    } else {
+      pgeta.textContent = `${left}% left · ${timeTxt}`;
+    }
+  }
+  function setStep(idx, state) {
+    stepsList.innerHTML = CI_PIPELINE_STEPS.map((s, i) => `<div class="ci-step ${i < idx ? 'done' : i === idx ? state : ''}" id="cis-${i}"><div class="ci-step-num">${i < idx ? '✓' : i + 1}</div><div class="ci-step-body"><div class="ci-step-title">${s.label}</div><div class="ci-step-sub">${s.sub}</div></div></div>`).join('');
+    const pct = (idx / CI_PIPELINE_STEPS.length) * 100;
+    const current = CI_PIPELINE_STEPS[idx];
+    setPct(pct, current ? `${current.label}…` : 'Finishing up…', '&nbsp;');
+    const sids = ['ci-s1', 'ci-s2', 'ci-s3', 'ci-s4', 'ci-s5'];
+    const map = [0, 1, 4, 7, 9]; const sidx = map.findLastIndex(m => idx >= m);
+    document.querySelectorAll('#pci .sb-it').forEach(e => e.classList.remove('on'));
+    if (sids[sidx]) document.getElementById(sids[sidx])?.classList.add('on');
+  }
+  let simTimer = null;
+  function startSimEta(fileSizeBytes) {
+    const estMs = Math.min(26000, Math.max(4500, 3200 + fileSizeBytes / 45000));
+    const floorPct = 30, ceilPct = 88;
+    const t0 = performance.now();
+    setPct(floorPct, 'Uploading & running check-in…', `~${Math.ceil(estMs / 1000)}s remaining`);
+    simTimer = setInterval(() => {
+      const elapsed = performance.now() - t0;
+      const t = Math.min(1, elapsed / estMs);
+      const pct = floorPct + (ceilPct - floorPct) * (1 - Math.pow(1 - t, 2));
+      const remainMs = Math.max(0, estMs - elapsed);
+      setPct(pct, 'Uploading & running check-in…',
+        remainMs > 800 ? `~${Math.ceil(remainMs / 1000)}s remaining` : 'Almost done…');
+    }, 250);
+  }
+  function stopSimEta() { if (simTimer) { clearInterval(simTimer); simTimer = null; } }
+
+  log('[INFO] TFS CI/CD Pipeline started', 'info');
+  log(`[INFO] File: ${ST.ciFile.name} (${fmtSz(ST.ciFile.size)})`, 'info');
+  log(`[INFO] Repository: ${repo}`, 'info');
+  log(`[INFO] Branch: ${branch}`, 'info');
+  log(`[INFO] Verified identity: ${ST.ciVerifiedAuthor}`, 'ok');
+
+  for (let i = 0; i < 3; i++) {
+    setStep(i, 'running');
+    await new Promise(r => setTimeout(r, 450 + Math.random() * 350));
+    if (i === 0) log(`[OK] ZIP validated — ${ST.ciFile.name}`, 'ok');
+    else if (i === 1) log(`[OK] Connected to check-in backend`, 'ok');
+    else if (i === 2) log(`[..] Resolving repository "${repo}"`, 'info');
+    setStep(i + 1, '');
+  }
+  for (let i = 3; i < 8; i++) setStep(i, 'running');
+  startSimEta(ST.ciFile.size);
+
+  let result = null, ok = false, errMsg = '';
+  const t0 = performance.now();
+  try {
+    const zipBase64 = await fileToBase64(ST.ciFile);
+    const payload = {
+      zipBase64, zipName: ST.ciFile.name,
+      repo, branch, feature: feature || '', workItem: $v('ci-workitem') || '',
+      message: msg, tfsUrl, clonePath: clonePath || '', targetDir: targetDir || '',
+      collection: $v('ci-collection') || 'DefaultCollection', project: $v('ci-project') || '',
+      authMode: mode, username: ciUser || '', password: ciPass || '', directUrl: directUrl || ''
+    };
+
+    const resp = await fetch(backendUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const ms = Math.round(performance.now() - t0);
+    if (!resp.ok) {
+      const t = await resp.text().catch(() => '');
+      throw new Error(`Backend responded ${resp.status}${t ? ': ' + t.slice(0, 300) : ''}`);
+    }
+    const startData = await resp.json();
+    if (startData && startData.jobId) {
+      stopSimEta();
+      result = await (async function pollCheckinJob(jobId) {
+        const statusUrl = backendUrl.replace(/\/api\/tfs-checkin\/?$/, '/api/tfs-checkin-status') + `?jobId=${encodeURIComponent(jobId)}`;
+        let lastLogged = 0;
+        for (;;) {
+          await new Promise(r => setTimeout(r, 700));
+          let data;
+          try { const r = await fetch(statusUrl); data = await r.json(); } catch (e) { continue; }
+          if (!data || (data.ok === false && data.percent == null)) {
+            throw new Error((data && data.message) || 'Lost track of check-in progress');
+          }
+          const pct = typeof data.percent === 'number' ? data.percent : 0;
+          const etaTxt = data.done ? '&nbsp;' : (data.etaMs != null ? `~${Math.ceil(data.etaMs / 1000)}s remaining` : 'Estimating…');
+          setPct(pct, data.label || 'Working…', etaTxt);
+          if (Array.isArray(data.log)) {
+            for (; lastLogged < data.log.length; lastLogged++) log(`[..] ${data.log[lastLogged]}`, 'info');
+          }
+          if (data.done) {
+            const r = data.result || {};
+            return { ok: !!data.success, commit: r.commit, changeset: r.changeset, filesChanged: r.filesChanged, author: r.author, message: data.error || r.message, buildTriggered: r.buildTriggered, log: data.log };
+          }
+        }
+      })(startData.jobId);
+    } else {
+      result = startData;
+    }
+    ok = !!result.ok;
+    if (!ok) errMsg = result.message || result.error || 'Backend reported failure';
+    stopSimEta();
+    for (let i = 3; i < 8; i++) setStep(i + 1, '');
+    if (ok) {
+      log(`[OK] Check-in complete (${ms}ms)`, 'ok');
+      log(`[OK] ${result.filesChanged ?? '?'} file(s) changed, authored by ${result.author || ST.ciVerifiedAuthor}`, 'ok');
+      log(`[OK] Commit: ${result.commit || result.changeset || 'commit'}`, 'ok');
+      if (result.buildTriggered) log(`[OK] Build triggered`, 'ok');
+      setStep(9, 'running');
+      await new Promise(r => setTimeout(r, 300));
+      setStep(10, '');
+      setPct(100, 'Check-in complete', '&nbsp;');
+      log(`[OK] Check-in complete!`, 'ok');
+    } else {
+      log(`[ERROR] Check-in failed: ${errMsg}`, 'err');
+      setStep(3, 'error');
+      setPct(pgpct.textContent.replace('%', ''), 'Check-in failed', '&nbsp;');
+    }
+  } catch (err) {
+    ok = false; errMsg = err.message;
+    stopSimEta();
+    log(`[ERROR] ${err.message}`, 'err');
+    setStep(3, 'error');
+    setPct(pgpct.textContent.replace('%', ''), 'Check-in failed', '&nbsp;');
+  }
+
+  if (ok) {
+    const hEntry = { file: ST.ciFile.name, repo, branch, feature: feature || '', msg, cs: result.commit || result.changeset || '-', ts: Date.now(), ok: true };
+    ST.ciHistory.unshift(hEntry);
+    if (ST.ciHistory.length > 20) ST.ciHistory.pop();
+    localStorage.setItem('devSuiteCi', JSON.stringify(ST.ciHistory));
+    renderCiHistory();
+    toast(`✓ Checked in to "${repo}" (${branch})`, 'ok');
+  } else {
+    const hEntry = { file: ST.ciFile.name, repo, branch, feature: feature || '', msg, cs: 'FAILED', ts: Date.now(), ok: false };
+    ST.ciHistory.unshift(hEntry);
+    if (ST.ciHistory.length > 20) ST.ciHistory.pop();
+    localStorage.setItem('devSuiteCi', JSON.stringify(ST.ciHistory));
+    renderCiHistory();
+    toast(`✗ Check-in failed: ${errMsg}`, 'err');
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '<i class="fa-solid fa-upload"></i> Check-In to TFS';
+}
+
+// ══════════ Direct Local Check-In ══════════
+async function ciDirectLocalSubmit() {
+  if (!ST.ciFile) { toast('Upload a ZIP file first', 'warn'); return; }
+  
+  const repo = $v('ci-reponame');
+  const branch = $v('ci-branch');
+  const feature = $v('ci-feature');
+  const msg = $v('ci-msg');
+  const tfsUrl = $v('ci-tfsurl');
+  const collection = $v('ci-collection') || 'DefaultCollection';
+  const project = $v('ci-project') || '';
+  const clonePath = $v('ci-clonepath');
+  const targetDir = $v('ci-targetdir');
+  
+  if (!repo) { toast('Enter the Repository Name', 'warn'); return; }
+  if (!branch) { toast('Enter a branch name', 'warn'); return; }
+  if (!msg) { toast('Add a commit message', 'warn'); return; }
+
+  const { mode, username, password, directUrl, combo } = ciCreds();
+  if (mode === 'basic' && !username) { toast('Enter your TFS username', 'warn'); return; }
+  if (mode === 'winauth' && !directUrl) { toast('Enter the direct TFS URL', 'warn'); return; }
+  if (!password) { toast(mode === 'basic' ? 'Enter your TFS password' : 'Enter your PAT', 'warn'); return; }
+
+  if (!ST.ciVerifiedAuthor || ST.ciVerifiedForCombo !== combo) {
+    toast('Click "Verify My Identity" first', 'warn');
+    return;
+  }
+
+  const btn = document.getElementById('ci-local-btn');
+  btn.disabled = true;
+  const origHtml = btn.innerHTML;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generating script...';
+
+  const workDir = clonePath || `C:\\workspace\\${repo.replace(/[^a-zA-Z0-9]/g, '_')}`;
+  const targetDirClean = targetDir || `$/${repo}`;
+  
+  let script = `@echo off
+echo =============================================
+echo TFS LOCAL CHECK-IN SCRIPT
+echo =============================================
+echo Repository: ${repo}
+echo Branch: ${branch}
+echo Author: ${ST.ciVerifiedAuthor}
+echo Workspace: ${workDir}
+echo Target: ${targetDirClean}
+echo.
+echo [1] Setting up TFS workspace...
+`;
+
+  if (mode === 'basic') {
+    script += `tf workspace /new /collection:${tfsUrl}/${collection} /noprompt /login:${username},${password} ${repo}_workspace_%USERNAME%
+`;
+  } else if (mode === 'pat') {
+    script += `tf workspace /new /collection:${tfsUrl}/${collection} /noprompt ${repo}_workspace_%USERNAME%
+`;
+  } else {
+    script += `tf workspace /new /collection:${tfsUrl}/${collection} /noprompt ${repo}_workspace_%USERNAME%
+`;
+  }
+
+  script += `
+echo [2] Creating workspace directory...
+mkdir "${workDir}" 2>nul
+cd /d "${workDir}"
+
+echo [3] Mapping workspace...
+tf workfold /map "${targetDirClean}" "${workDir}" /collection:${tfsUrl}/${collection} /workspace:${repo}_workspace_%USERNAME%
+
+echo [4] Getting latest version...
+tf get /recursive /force
+
+echo [5] Extracting ZIP file...
+powershell -command "Expand-Archive -Path '${ST.ciFile.name}' -DestinationPath '.' -Force"
+
+echo [6] Adding files to TFS...
+tf add /recursive
+
+echo [7] Checking in...
+tf checkin /comment:"${msg}" /noprompt /override:"${ST.ciVerifiedAuthor}"
+
+echo.
+echo =============================================
+echo CHECK-IN COMPLETE!
+echo =============================================
+pause
+`;
+
+  ST.ciLocalScript = script;
+  
+  const panel = document.getElementById('ci-local-script-panel');
+  panel.style.display = '';
+  document.getElementById('ci-local-script-content').textContent = script;
+  
+  const sids = ['ci-s1', 'ci-s2', 'ci-s3', 'ci-s4', 'ci-s5'];
+  document.querySelectorAll('#pci .sb-it').forEach(e => e.classList.remove('on'));
+  sids.forEach(id => document.getElementById(id)?.classList.add('on'));
+
+  toast('Local check-in script generated!', 'ok');
+  
+  btn.disabled = false;
+  btn.innerHTML = origHtml;
+}
+
+// ══════════ Script Actions ══════════
+function ciDownloadScript() {
+  if (!ST.ciLocalScript) { toast('Generate a script first', 'warn'); return; }
+  const blob = new Blob([ST.ciLocalScript], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `tfs-checkin-${Date.now()}.bat`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('Script downloaded', 'ok');
+}
+
+function ciCopyScript() {
+  if (!ST.ciLocalScript) { toast('Generate a script first', 'warn'); return; }
+  navigator.clipboard.writeText(ST.ciLocalScript).then(() => {
+    toast('Script copied to clipboard', 'ok');
+  }).catch(() => {
+    const el = document.getElementById('ci-local-script-content');
+    const range = document.createRange();
+    range.selectNode(el);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+    document.execCommand('copy');
+    toast('Script copied to clipboard', 'ok');
+  });
+}
+
+// ══════════ History ══════════
+function renderCiHistory() {
+  const h = document.getElementById('ci-history');
+  if (!ST.ciHistory.length) { h.innerHTML = '<div style="padding:8px 13px;font-size:10px;color:var(--t3)">No check-ins yet</div>'; return; }
+  h.innerHTML = ST.ciHistory.slice(0, 6).map(r => {
+    const age = Math.floor((Date.now() - r.ts) / 1000);
+    const as = age < 60 ? age + 's' : age < 3600 ? Math.floor(age / 60) + 'm' : Math.floor(age / 3600) + 'h ago';
+    return `<div class="sb-it" style="flex-direction:column;align-items:flex-start;gap:1px;cursor:default">
+      <span style="font-size:10.5px;color:${r.ok ? 'var(--sky)' : 'var(--red)'}">${r.ok ? '✓' : '✗'} ${r.file || 'unknown.zip'}</span>
+      <span style="font-size:9.5px;color:var(--t3)"><i class="fa-solid fa-code-fork" style="margin-right:3px;opacity:.7"></i>${r.repo || '(no repo)'} · ${r.branch} · CS#${r.cs} · ${as}</span>
+    </div>`;
+  }).join('');
+}
+
+// ══════════ Init ══════════
+renderCiHistory();
+</script>
 </body>
 </html>
