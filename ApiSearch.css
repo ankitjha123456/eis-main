@@ -1,459 +1,1319 @@
+/**
+ * EIS DevSuite — TFS Check-in Backend (companion service)
+ * ---------------------------------------------------------
+ * ZERO NPM DEPENDENCIES. Uses only Node's built-in modules (http, fs, path,
+ * os, child_process) plus the `git` command-line client that's already on
+ * your machine. Nothing to `npm install` — if your environment blocks
+ * package installs, this still runs.
+ *
+ * It does exactly what you already do by hand at the command prompt:
+ *   git clone / git init  →  git add  →  git commit  →  git push
+ * just driven from a small HTTP endpoint instead of typed manually, and
+ * pointed at TFS THROUGH the nginx proxy instead of the raw TFS URL.
+ *
+ *   Browser (final07072026_fixed.html)
+ *        │  POST JSON { zipBase64, repo, branch, credentials, ... }
+ *        ▼
+ *   THIS SERVICE   (run: node server.js)
+ *        │  git clone/push  (plain HTTPS, credentials in the remote URL)
+ *        ▼
+ *   nginx  10.177.44.29:4415   ──proxy_pass──▶   TFS  10.177.56.207:443
+ *
+ * PREREQUISITES:
+ *   1. Node.js 18+ (for fs.cpSync / fs.rmSync — both built in, no install)
+ *   2. `git` on PATH (already installed per your message)
+ *   3. Network access from this machine to http://10.177.44.29:4415
+ *
+ * RUN:
+ *   node server.js
+ * (No `npm install` step at all.)
+ *
+ * Listens on port 5000 by default — must match the "Check-in Backend
+ * Service URL" field in the frontend, e.g. http://<this-host>:5000/api/tfs-checkin
+ *
+ * SECURITY UPDATE (identity-locked check-ins, dual auth mode):
+ *   - The commit "author" is NEVER taken from a free-text field. Before
+ *     touching git, the server sends the entered credentials — either a
+ *     PAT, or a normal TFS username + password, whichever the user picked —
+ *     straight to TFS's own /_apis/connectionData endpoint and asks TFS
+ *     "whose login is this?". Whatever name TFS returns is the ONLY name
+ *     that can ever appear as the commit author — nobody can type someone
+ *     else's name and have it show up in TFS. If the credentials don't
+ *     resolve to a real identity, the check-in is refused before any git
+ *     command runs.
+ *   - Both auth modes are supported side by side (authMode: 'pat' | 'basic'):
+ *       'pat'   — Personal Access Token, no username needed.
+ *       'basic' — everyday TFS username + password, no PAT generation needed.
+ *     Either way, identity comes from TFS itself, never from the browser.
+ *   - A THIRD option, authMode: 'winauth', verifies identity via OS-level
+ *     SSO instead — no username or password typed at all. On Windows it
+ *     shells out to PowerShell's `Invoke-RestMethod -UseDefaultCredentials`
+ * *     so the OS does a correct NTLM/Kerberos handshake using whichever
+ *     Windows account is running this backend. On Linux/Mac it instead uses
+ *     `curl --negotiate` (Kerberos/GSSAPI) — the direct equivalent, but only
+ *     works if THIS MACHINE is Kerberos-joined to the same domain as TFS
+ *     with a valid ticket (not true of a generic server — that's expected,
+ *     not a bug, and PAT/Username+Password remain the reliable fallback
+ *     there). Either way, this ONLY works if that call can reach TFS on a
+ *     path that isn't proxied through the same connection-breaking nginx
+ *     hop (a direct/internal TFS URL, or a dedicated raw passthrough) — the
+ *     actual git push still goes through nginx via a PAT exactly as in
+ *     'pat' mode; 'winauth' only changes where the COMMIT AUTHOR NAME comes
+ *     from. IMPORTANT: this mode also only means something if this backend
+ *     runs on EACH PERSON'S OWN machine — a shared/central server has no
+ *     single "your identity" to report, so don't offer 'winauth' there.
+ *   - HEADLESS-SAFE GIT: every git invocation now explicitly disables
+ *     credential helpers (`-c credential.helper=`) and terminal prompting
+ *     (`GIT_TERMINAL_PROMPT=0`). Without this, if embedded URL credentials
+ *     ever weren't picked up, git would try to interactively prompt for a
+ *     username — with no terminal/display on a headless backend, that fails
+ *     with a cryptic `No such device or address` error that looks like a
+ *     hang or a missing popup. Now it either uses the URL credentials
+ *     cleanly or fails fast with a clear message.
+ *   - RESILIENT IDENTITY LOOKUP: some reverse proxies only forward the git
+ *     `_git/...` paths and reject everything else (including the REST API
+ *     path used above), which would otherwise leave check-in completely
+ *     unable to verify anyone. To handle that, identity resolution for
+ *     'pat'/'basic' now tries THREE tiers in order, first success wins:
+ *       1. REST API call (`_apis/connectionData`) — real display name, but
+ *          only works if that URL path is actually proxied through.
+ *       2. TFS's X-VSS-UserData response header, read off the SAME git
+ *          connection already proven to work (no new URL, no new failure
+ *          surface) — see resolveIdentityFromGitHeaders().
+ *       3. 'basic' mode only, last resort: the exact username that
+ *          authenticated the push. Not a free-text field — it's the literal
+ *          credential TFS validated — so it still can't be spoofed into
+ *          someone else's name, even though it may look less "pretty" than
+ *          a display name.
+ *     Only if ALL applicable tiers fail is the check-in refused.
+ *   - New route: POST /api/tfs-whoami — lets the frontend preview whose
+ *     name will appear before submitting (same identity check, done early).
+ */
+
 const http = require('http');
+const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { exec } = require('child_process');
-const { promisify } = require('util');
-const execAsync = promisify(exec);
-const { StringDecoder } = require('string_decoder');
-const decoder = new StringDecoder('utf8');
+const { execFile } = require('child_process');
 
-const PORT = process.env.PORT || 4416;
-const HOST = '0.0.0.0';
+const PORT = process.env.PORT || 5000;
+const GIT = process.env.GIT_EXE || 'git'; // override if git isn't on PATH
+//const targetHost = '10.177.44.25';
+// ─────────────────────────────────────────────────────────────────────────
+// tiny helpers (no libraries)
+// ─────────────────────────────────────────────────────────────────────────
 
-// ═══════════════════════════════════════════════════════════════
-// Utility Functions
-// ═══════════════════════════════════════════════════════════════
-
-function sendJson(res, statusCode, data) {
-  const json = JSON.stringify(data);
-  res.writeHead(statusCode, {
+// Writes a JSON response with permissive CORS headers (this backend is only
+// ever called from the local frontend HTML, so open CORS is intentional).
+function sendJson(res, code, obj) {
+  const body = JSON.stringify(obj);
+  res.writeHead(code, {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type'
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS'
   });
-  res.end(json);
+  res.end(body);
 }
 
-function sendError(res, statusCode, message) {
-  sendJson(res, statusCode, { ok: false, message });
-}
-
-function parseBody(req) {
+// Buffers an incoming request body and parses it as JSON, rejecting once
+// `maxBytes` is exceeded so a huge/garbage upload can't exhaust memory.
+function readJsonBody(req, maxBytes) {
   return new Promise((resolve, reject) => {
-    let body = '';
-    req.on('data', chunk => { body += decoder.write(chunk); });
+    let size = 0;
+    const chunks = [];
+    req.on('data', (c) => {
+      size += c.length;
+      if (size > maxBytes) {
+        req.destroy();
+        reject(new Error('Payload too large'));
+        return;
+      }
+      chunks.push(c);
+    });
     req.on('end', () => {
-      body += decoder.end();
       try {
-        resolve(body ? JSON.parse(body) : {});
+        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'));
       } catch (e) {
-        reject(new Error('Invalid JSON'));
+        reject(new Error('Invalid JSON body'));
       }
     });
     req.on('error', reject);
   });
 }
 
-async function runCommand(cmd, cwd, timeout = 60000) {
-  const options = {
-    cwd: cwd || process.cwd(),
-    timeout,
-    shell: true,
-    env: process.env,
-    maxBuffer: 1024 * 1024 * 10 // 10MB
-  };
-  try {
-    const { stdout, stderr } = await execAsync(cmd, options);
-    return stdout || stderr || '';
-  } catch (err) {
-    if (err.stdout) throw new Error(err.stdout);
-    if (err.stderr) throw new Error(err.stderr);
-    throw err;
+
+function authArgs(username, password) {
+  if (!password) return [];
+  const token = Buffer.from(`${username || 'pat'}:${password}`).toString('base64');
+  return ['-c', `http.extraheader=Authorization: Basic ${token}`];
+}
+// Runs `git <args>` in `cwd` and resolves with combined stdout+stderr, or
+// rejects with a readable error message. Every git call in this file goes
+// through here so timeouts/output-handling stay consistent.
+//
+// IMPORTANT: this backend is headless (no terminal, no display) — it must
+// NEVER let git fall back to an interactive prompt. Without the two
+// safeguards below, if the embedded URL credentials are somehow not picked
+// up (bad characters, empty username slot, etc.), git tries to prompt for
+// a username: with no terminal to prompt on, that fails with the cryptic
+// "fatal: could not read Username for '...': No such device or address" —
+// which looks like a hang or a mysterious popup request, but is actually
+// git trying (and failing) to open a TTY that doesn't exist here.
+//   - `-c credential.helper=` (empty value) disables ANY globally configured
+//     credential helper for just this one invocation — on Windows that can
+//     be Git Credential Manager popping up a GUI window; on Linux it can be
+//     libsecret/keyring helpers that themselves need a display. Neither can
+//     work from a headless service, so both are turned off here.
+//   - `GIT_TERMINAL_PROMPT=0` disables git's raw tty-prompt fallback, so if
+//     credentials genuinely are missing, git fails FAST with a clear error
+//     instead of hanging while it tries (and fails) to open /dev/tty.
+function run(args, cwd, timeoutMs, creds) {
+  const extra = creds ? authArgs(creds.username, creds.password) : [];
+  const fullArgs = [...extra, ...args];
+  return new Promise((resolve, reject) => {
+    execFile(
+      GIT,
+      fullArgs,
+      { cwd, maxBuffer: 1024 * 1024 * 50, timeout: timeoutMs || 60000 },
+      (err, stdout, stderr) => {
+        const out = (stdout || '').toString();
+        const errOut = (stderr || '').toString();
+        let msg = errOut.trim() || out.trim() || (err && err.message) || '';
+        if (/no such device or address|could not read username|could not read password/i.test(msg)) {
+          msg = 'Git tried to interactively prompt for credentials instead of using the ones in the URL, and this backend has no terminal to prompt on. ' +
+            'This usually means the username or password contains a character that broke the URL, or one of them is empty. Original error: ' + msg;
+        }
+        if (err) return reject(new Error(errOut.trim() || out.trim() || err.message));
+        resolve((out + errOut).trim());
+      }
+    );
+  });
+}
+
+// Runs a raw OS command (used only for zip extraction, not git).
+function runCmd(cmd, args, cwd, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    execFile(cmd, args, { cwd, maxBuffer: 1024 * 1024 * 50, timeout: timeoutMs || 60000 }, (err, stdout, stderr) => {
+      if (err) return reject(new Error((stderr || stdout || err.message || '').toString().trim()));
+      resolve((stdout || '').toString());
+    });
+  });
+}
+
+// Extracts a zip using tools already on the OS — no unzip library needed.
+//   Windows: PowerShell's Expand-Archive (built into Windows 10+/Server 2016+)
+//   Linux/Mac: the `unzip` command (near-universally preinstalled)
+async function extractZip(zipPath, destDir) {
+  fs.mkdirSync(destDir, { recursive: true });
+  if (process.platform === 'win32') {
+    const safe = (s) => s.replace(/'/g, "''");
+    const psCmd = `Expand-Archive -LiteralPath '${safe(zipPath)}' -DestinationPath '${safe(destDir)}' -Force`;
+    await runCmd('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', psCmd], undefined, 120000);
+  } else {
+    await runCmd('unzip', ['-o', zipPath, '-d', destDir], undefined, 120000);
   }
 }
 
-// ═══════════════════════════════════════════════════════════════
-// HTTP Request Handler
-// ═══════════════════════════════════════════════════════════════
+// Builds the plain TFS Git remote URL (no credentials in it yet).
+function buildRemoteUrl({ tfsUrl, collection, project, repo }) {
+  let base = (tfsUrl || '').replace(/\/+$/, '');
+  base = base.replace(/\/tfs$/i, '') + '/tfs'; // normalize trailing /tfs once
+  const col = encodeURIComponent(collection || 'DefaultCollection');
+  const proj = project ? `/${encodeURIComponent(project)}` : '';
+  const repoEnc = encodeURIComponent(repo);
+  return `${base}/${col}${proj}/_git/${repoEnc}`;
+}
 
-const server = http.createServer(async (req, res) => {
-  const url = req.url;
-  const method = req.method;
+// Embeds username/password into an https:// URL so `git` authenticates the
+// same way a Basic-auth prompt at the command line would. Used for BOTH
+// auth modes: for PAT mode the caller passes username='pat' (TFS/Azure
+// DevOps Server accepts any non-empty username when the password is a PAT);
+// for username/password mode the caller passes the real TFS username.
+function withCreds(url, username, password) {
+  const m = url.match(/^(https?:\/\/)(.*)$/i);
+  if (!m) return url;
+  const user = encodeURIComponent(username || 'pat');
+  const pass = encodeURIComponent(password || '');
+  return `${m[1]}${user}:${pass}@${m[2]}`;
+}
 
-  console.log(`📡 ${method} ${url}`);
+// Strips anything that isn't safe to use verbatim in a filename or a git
+// --author email (letters, digits, underscore, dot, hyphen only).
+function safeName(s) {
+  return String(s || '').replace(/[^a-zA-Z0-9_.-]/g, '_');
+}
 
-  // Handle CORS preflight
-  if (method === 'OPTIONS') {
-    res.writeHead(204, {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type'
-    });
-    res.end();
-    return;
+// ─────────────────────────────────────────────────────────────────────────
+// Minimal, PURPOSE-BUILT YAML text helpers for the per-environment TFS
+// service config files. This is deliberately NOT a general YAML
+// parser/serializer — parsing arbitrary YAML into an object tree and
+// re-serializing risks silently reformatting or corrupting parts of the
+// file this tool doesn't understand (comments, anchors, unusual styles,
+// hand-written formatting). Instead these do surgical, line-based
+// reads/edits of one well-known shape only:
+//
+//   services:
+//     - serviceName: Foo
+//       integrationNodeName: NODE_1
+//       integrationServerName: SVR_1
+//       cache:
+//         KEY: value
+//         KEY2: value2
+//     - serviceName: Bar
+//       ...
+// ─────────────────────────────────────────────────────────────────────────
+
+// Quotes a YAML scalar only when it actually needs it (keeps the file
+// readable for plain values, but stays safe for anything containing
+// YAML-significant characters or that could be misread as another type).
+function yamlScalar(v) {
+  const s = String(v == null ? '' : v);
+  if (s === '') return "''";
+  const needsQuote =
+    /^\s|\s$/.test(s) ||
+    /[:#{}\[\],&*!|>'"%@`]/.test(s) ||
+    /^(true|false|null|~|yes|no|on|off|y|n)$/i.test(s) ||
+    /^-?\d+(\.\d+)?$/.test(s);
+  if (!needsQuote) return s;
+  return `'${s.replace(/'/g, "''")}'`;
+}
+
+// True if a `serviceName:` line already matches (exact, case-insensitive,
+// quote-agnostic) the given service name anywhere in the file.
+function yamlHasService(raw, serviceName) {
+  if (!raw) return false;
+  const re = /^\s*-?\s*serviceName:\s*(.*)$/gim;
+  const target = String(serviceName).trim().toLowerCase();
+  let m;
+  while ((m = re.exec(raw)) !== null) {
+    const val = m[1].trim().replace(/^['"]|['"]$/g, '').trim().toLowerCase();
+    if (val === target) return true;
   }
+  return false;
+}
 
-  // ═══════════════════════════════════════════════════════════
-  // Health Check
-  // ═══════════════════════════════════════════════════════════
-  if (url === '/health' && method === 'GET') {
-    sendJson(res, 200, {
-      ok: true,
-      message: 'TFS Check-in Backend is running',
-      timestamp: new Date().toISOString(),
-      node_version: process.version,
-      pid: process.pid
-    });
-    return;
+// Appends a new service entry block under the top-level `services:` list.
+// Creates the `services:` key if the file is empty or doesn't have one yet.
+function yamlAppendService(raw, entry) {
+  const { serviceName, integrationNodeName, integrationServerName, cache } = entry;
+  const lines = [];
+  lines.push(`  - serviceName: ${yamlScalar(serviceName)}`);
+  lines.push(`    integrationNodeName: ${yamlScalar(integrationNodeName)}`);
+  lines.push(`    integrationServerName: ${yamlScalar(integrationServerName)}`);
+  const cacheKeys = Object.keys(cache || {}).filter((k) => cache[k] !== undefined && cache[k] !== null && cache[k] !== '');
+  if (cacheKeys.length) {
+    lines.push('    cache:');
+    cacheKeys.forEach((k) => lines.push(`      ${k}: ${yamlScalar(cache[k])}`));
+  } else {
+    lines.push('    cache: {}');
   }
+  const block = lines.join('\n') + '\n';
 
-  // ═══════════════════════════════════════════════════════════
-  // Root
-  // ═══════════════════════════════════════════════════════════
-  if (url === '/' && method === 'GET') {
-    sendJson(res, 200, {
-      ok: true,
-      service: 'TFS Check-in Backend (No Dependencies)',
-      version: '1.0.0',
-      endpoints: {
-        health: '/health',
-        test: '/api/tfs-test',
-        whoami: '/api/tfs-whoami',
-        checkin: '/api/tfs-checkin',
-        status: '/api/tfs-checkin-status'
-      }
-    });
-    return;
+  const text = raw == null ? '' : raw;
+  if (!text.trim()) {
+    return `services:\n${block}`;
   }
+  if (!/^\s*services:\s*$/mi.test(text)) {
+    // No `services:` root key yet — add one, then the entry.
+    const sep = text.endsWith('\n') ? '' : '\n';
+    return `${text}${sep}services:\n${block}`;
+  }
+  // Append at the end of the file. This assumes `services:` is written the
+  // way this tool itself writes it (a single list, nothing meaningful after
+  // it) — true for any file this tool has touched before. A file that was
+  // hand-edited with unrelated top-level keys AFTER `services:` should be
+  // restructured before use with this feature.
+  const trimmed = text.replace(/\s+$/, '');
+  return `${trimmed}\n${block}`;
+}
 
-  // ═══════════════════════════════════════════════════════════
-  // Test Connection
-  // ═══════════════════════════════════════════════════════════
-  if (url === '/api/tfs-test' && method === 'POST') {
-    try {
-      const body = await parseBody(req);
-      console.log('📡 [Test] Request:', JSON.stringify(body, null, 2));
-
-      const { tfsUrl, collection = 'DefaultCollection', username, password } = body;
-
-      if (!tfsUrl) {
-        sendJson(res, 200, { ok: false, message: 'TFS URL is required' });
-        return;
-      }
-
-      // Simulate connection test (since we can't use axios without deps)
-      // Try using curl command to test connection
-      const testUrl = `${tfsUrl}/${collection}/_apis/projects?api-version=6.0`;
-      
-      let curlCmd = `curl -s -k -m 10`;
-      if (username && password) {
-        curlCmd += ` -u "${username}:${password}"`;
-      }
-      curlCmd += ` "${testUrl}"`;
-
-      console.log(`🔍 Running: ${curlCmd}`);
-
-      try {
-        const result = await runCommand(curlCmd, null, 15000);
-        // Check if result contains projects or count
-        if (result.includes('"count"') || result.includes('value')) {
-          sendJson(res, 200, {
-            ok: true,
-            message: 'TFS connection successful',
-            response: result.substring(0, 500)
-          });
-        } else {
-          sendJson(res, 200, {
-            ok: false,
-            message: 'TFS connection failed - check URL and credentials',
-            response: result.substring(0, 500)
-          });
+// ─────────────────────────────────────────────────────────────────────────
+// FALLBACK identity method #2: extract TFS's own X-VSS-UserData response
+// header from a live git connection, instead of a separate REST call.
+//
+// WHY THIS EXISTS: a call to `_apis/connectionData` (used by resolveIdentity)
+// only works if the reverse proxy forwards that URL path. Many proxies set
+// up specifically to relay git traffic only forward the `_git/...` paths
+// (that's the whole reason `git clone`/`push`/`ls-remote` already work while
+// a separate REST call times out or 404s). TFS attaches an
+// `X-VSS-UserData: <id>:<name-or-id>` header to EVERY authenticated
+// response, including the git smart-HTTP endpoints — so instead of asking
+// a *different, possibly-blocked* URL "who is this?", we ask the *same*
+// URL that's already proven reachable, and just read one more header off
+// the response we get anyway.
+//
+// This is run with GIT_CURL_VERBOSE=1, which makes git's bundled curl print
+// the full request/response trace (including headers) to stderr; we scan
+// that trace for the header instead of needing a second network call.
+// ─────────────────────────────────────────────────────────────────────────
+function resolveIdentityFromGitHeaders(remote) {
+  return new Promise((resolve, reject) => {
+    execFile(
+      GIT, ['-c', 'credential.helper=', 'ls-remote', remote],
+      {
+        cwd: undefined,
+        maxBuffer: 1024 * 1024 * 20,
+        timeout: 20000,
+        env: Object.assign({}, process.env, { GIT_CURL_VERBOSE: '1', GIT_TERMINAL_PROMPT: '0', GIT_ASKPASS: '', SSH_ASKPASS: '' })
+      },
+      (err, stdout, stderr) => {
+        const trace = `${stderr || ''}\n${stdout || ''}`;
+        const m = trace.match(/x-vss-userdata:\s*([^\r\n]+)/i);
+        if (!m) {
+          return reject(new Error(
+            (err ? `git could not reach TFS at all (${(stderr || err.message || '').toString().split('\n')[0]}). ` : '') +
+            'No X-VSS-UserData header was present on the response — this TFS version/endpoint may not send one.'
+          ));
         }
-      } catch (err) {
-        sendJson(res, 200, {
-          ok: false,
-          message: `Connection failed: ${err.message}`
-        });
+        const raw = m[1].trim();
+        const colonIdx = raw.indexOf(':');
+        const id = colonIdx > -1 ? raw.slice(0, colonIdx) : raw;
+        const rest = colonIdx > -1 ? raw.slice(colonIdx + 1).trim() : '';
+        const looksLikeGuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (rest && !looksLikeGuid.test(rest)) {
+          // Second segment is a real, readable name/account (typical for
+          // AD-backed on-prem TFS) — use it directly.
+          return resolve({ name: rest, id, isOpaqueId: false });
+        }
+        // Only opaque GUIDs were available (typical for MSA/AAD-backed
+        // orgs) — no human-readable name came through this path, but the ID
+        // is still uniquely tied to whoever authenticated, and TFS supplied
+        // it itself — it's not something the user typed, so it's still a
+        // legitimate (if less friendly) anti-spoofing identity stamp.
+        resolve({ name: `TFS User ${id.slice(0, 8)}`, id, isOpaqueId: true });
       }
-    } catch (err) {
-      sendError(res, 400, err.message);
-    }
-    return;
-  }
+    );
+  });
+}
 
-  // ═══════════════════════════════════════════════════════════
-  // Who Am I
-  // ═══════════════════════════════════════════════════════════
-  if (url === '/api/tfs-whoami' && method === 'POST') {
-    try {
-      const body = await parseBody(req);
-      console.log('👤 [Whoami] Request:', JSON.stringify(body, null, 2));
+// Builds the base TFS collection API URL (no repo), e.g. .../tfs/DefaultCollection
+function buildApiBase({ tfsUrl, collection }) {
+  let base = (tfsUrl || '').replace(/\/+$/, '');
+  base = base.replace(/\/tfs$/i, '') + '/tfs';
+  const col = encodeURIComponent(collection || 'DefaultCollection');
+  return `${base}/${col}`;
+}
 
-      const { tfsUrl, collection = 'DefaultCollection', username, password } = body;
-
-      // Try to get user info using curl
-      const apiUrl = `${tfsUrl}/${collection}/_apis/connectionData?api-version=6.0`;
-      
-      let curlCmd = `curl -s -k -m 10`;
-      if (username && password) {
-        curlCmd += ` -u "${username}:${password}"`;
-      }
-      curlCmd += ` "${apiUrl}"`;
-
-      console.log(`🔍 Running: ${curlCmd}`);
-
-      try {
-        const result = await runCommand(curlCmd, null, 10000);
-        
-        // Try to parse the JSON response
-        try {
-          const data = JSON.parse(result);
-          const authenticatedUser = data.authenticatedUser || {};
-          const name = authenticatedUser.displayName || 
-                       authenticatedUser.providerDisplayName || 
-                       authenticatedUser.uniqueName || 
-                       username || 
-                       'Unknown User';
-          
-          console.log(`✅ Identity resolved: ${name}`);
-          sendJson(res, 200, {
-            ok: true,
-            name: name,
-            verifiedVia: 'curl',
-            isOpaqueId: !authenticatedUser.displayName
-          });
-        } catch (parseErr) {
-          // If can't parse JSON, use username as fallback
-          if (username) {
-            console.log(`✅ Using fallback username: ${username}`);
-            sendJson(res, 200, {
-              ok: true,
-              name: username,
-              verifiedVia: 'fallback',
-              isOpaqueId: true
-            });
-          } else {
-            throw new Error('Could not resolve identity');
+// Minimal zero-dependency HTTPS/HTTP GET-JSON helper (used only for identity lookup).
+function httpGetJson(url, authHeader, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    let lib;
+    try { lib = new URL(url).protocol === 'https:' ? https : http; }
+    catch (e) { return reject(new Error('Invalid TFS URL')); }
+    const req = lib.get(url, { headers: { Authorization: authHeader, Accept: 'application/json' }, timeout: timeoutMs || 15000 }, (res) => {
+      let data = '';
+      res.on('data', (c) => { data += c; });
+      res.on('end', () => {
+        if (res.statusCode === 401) {
+          // If TFS/IIS is challenging with NTLM or Negotiate instead of accepting
+          // Basic auth, a plain username+password (or PAT) can never get through —
+          // this isn't a wrong-password problem, it's a proxy/auth-scheme mismatch.
+          // See the big comment on resolveIdentity() for why and how to fix it.
+          const challenge = (res.headers['www-authenticate'] || '').toString();
+          if (/ntlm|negotiate/i.test(challenge)) {
+            const e = new Error(
+              'TFS is requesting NTLM/Windows authentication instead of Basic auth — a plain username+password ' +
+              '(or PAT) cannot complete that handshake through this reverse proxy. Ask your TFS/IIS admin to enable ' +
+              'HTTP Basic Authentication on the TFS site (the same mechanism PATs already use), or use "Alternate ' +
+              'Credentials" if your TFS offers them. This is a server-side setting, not a typo in the credentials.'
+            );
+            e.isNtlmChallenge = true;
+            return reject(e);
           }
+          return reject(new Error('TFS rejected these credentials (HTTP 401) — check the username/password or PAT'));
         }
-      } catch (err) {
-        // Fallback: use OS username
-        try {
-          const whoami = await runCommand('whoami', null, 5000);
-          const name = whoami.trim() || username || 'Unknown';
-          console.log(`✅ Using OS username: ${name}`);
-          sendJson(res, 200, {
-            ok: true,
-            name: name,
-            verifiedVia: 'os-fallback',
-            isOpaqueId: true
-          });
-        } catch (whoamiErr) {
-          sendJson(res, 200, {
-            ok: false,
-            message: `Could not resolve identity: ${err.message}`
-          });
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          return reject(new Error(`TFS returned HTTP ${res.statusCode} while verifying identity`));
         }
-      }
-    } catch (err) {
-      sendError(res, 400, err.message);
+        try { resolve(JSON.parse(data)); }
+        catch (e) { reject(new Error('TFS returned a non-JSON response while verifying identity')); }
+      });
+    });
+    req.on('timeout', () => req.destroy(new Error('Timed out contacting TFS')));
+    req.on('error', reject);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// ALTERNATIVE identity method: OS-level SSO. Instead of our own hand-rolled
+// HTTP client attempting NTLM (which is exactly what fails through a plain
+// nginx proxy), this delegates to the OS's own, correctly-implemented
+// auth stack, using whichever identity is already logged into the machine
+// running this backend — no typed username or password at all.
+//
+//   Windows → PowerShell's `Invoke-RestMethod -UseDefaultCredentials`, which
+//             uses SSPI to do a correct NTLM/Kerberos handshake as the
+//             current Windows account.
+//   Linux/Mac → `curl --negotiate` (GSSAPI/Kerberos). This is the direct
+//             equivalent of Windows SSO, but with a real prerequisite: the
+//             machine must actually be Kerberos-joined to the same domain
+//             as TFS (e.g. via SSSD/realmd) and hold a valid ticket for
+//             whoever is running this backend (check with `klist`, obtain
+//             one with `kinit`). A generic, non-domain-joined Linux server
+//             will NOT have this and this method will fail — that's
+//             expected, not a bug; use PAT or Username+Password there instead.
+//
+// EITHER WAY: this ONLY changes where the identity check goes, not the
+// push. `directUrl` must reach TFS WITHOUT going back through the same
+// broken proxy hop (a direct/internal TFS address, or a dedicated raw TCP
+// passthrough) — the actual git push still goes through nginx via a PAT
+// exactly as in 'pat' mode.
+//
+// IMPORTANT ARCHITECTURAL NOTE: SSO of either flavor only means something
+// if THIS BACKEND runs on each person's own machine (as originally
+// designed: "run: node server.js" locally). If this is one shared/central
+// server instead, there is no single "your identity" for it to report —
+// the whole OS session belongs to whatever service account runs it, not to
+// whoever is using the web page. In that deployment, don't offer this mode
+// at all — use PAT or Username+Password, which carry per-request identity
+// regardless of where the backend runs.
+// ─────────────────────────────────────────────────────────────────────────
+function resolveIdentityWindows({ directUrl, collection }) {
+  return new Promise((resolve, reject) => {
+    if (!directUrl) {
+      return reject(new Error('A direct (non-proxied) TFS URL is required for SSO verification — the handshake cannot complete through this reverse proxy.'));
     }
-    return;
-  }
+    let url;
+    try { url = `${buildApiBase({ tfsUrl: directUrl, collection })}/_apis/connectionData?api-version=1.0`; }
+    catch (e) { return reject(new Error('Invalid direct TFS URL')); }
 
-  // ═══════════════════════════════════════════════════════════
-  // Check-in
-  // ═══════════════════════════════════════════════════════════
-  if (url === '/api/tfs-checkin' && method === 'POST') {
-    try {
-      const body = await parseBody(req);
-      console.log('📦 [Check-in] Request received');
-
-      const {
-        zipBase64, zipName, repo, branch, feature, workItem, message,
-        tfsUrl, clonePath, targetDir, collection = 'DefaultCollection', 
-        project, authMode, username, password, directUrl
-      } = body;
-
-      const log = [];
-      const step = (s) => { console.log(`  📝 ${s}`); log.push(s); };
-
-      // Validate required fields
-      if (!zipBase64) {
-        sendJson(res, 200, { ok: false, message: 'No zip data received', log });
-        return;
-      }
-      if (!repo) {
-        sendJson(res, 200, { ok: false, message: 'Repository name is required', log });
-        return;
-      }
-      if (!branch) {
-        sendJson(res, 200, { ok: false, message: 'Branch name is required', log });
-        return;
-      }
-
-      step(`Repository: ${repo}`);
-      step(`Branch: ${branch}`);
-      step(`Feature: ${feature || 'N/A'}`);
-      step(`Auth Mode: ${authMode || 'basic'}`);
-
-      // Get identity
-      let identityName = username || 'Unknown User';
-      
+    const parseIdentity = (jsonText, onFail) => {
       try {
-        const apiUrl = `${tfsUrl}/${collection}/_apis/connectionData?api-version=6.0`;
-        let curlCmd = `curl -s -k -m 10`;
-        if (username && password) {
-          curlCmd += ` -u "${username}:${password}"`;
+        const json = JSON.parse(jsonText);
+        const user = json && json.authenticatedUser;
+        const name = user && (user.providerDisplayName || user.customDisplayName || user.displayName);
+        if (!name) return reject(new Error('Could not resolve your identity from TFS — check the direct URL and that this machine can reach TFS without going through the proxy'));
+        resolve({ name, id: (user && user.id) || null, verifiedVia: 'sso' });
+      } catch (e) { onFail(); }
+    };
+
+    if (process.platform === 'win32') {
+      const safeUrl = url.replace(/'/g, "''");
+      const psCmd = `$ProgressPreference='SilentlyContinue'; try { $r = Invoke-RestMethod -UseDefaultCredentials -Uri '${safeUrl}' -TimeoutSec 15; $r | ConvertTo-Json -Depth 6 -Compress } catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }`;
+      execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', psCmd], { timeout: 20000, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
+        if (err) {
+          return reject(new Error((stderr || err.message || 'Windows Login (SSO) verification failed').toString().trim()
+            || 'Could not reach TFS directly for Windows Login verification — check the direct URL and network path'));
         }
-        curlCmd += ` "${apiUrl}"`;
-
-        const result = await runCommand(curlCmd, null, 10000);
-        try {
-          const data = JSON.parse(result);
-          const authenticatedUser = data.authenticatedUser || {};
-          identityName = authenticatedUser.displayName || 
-                        authenticatedUser.providerDisplayName || 
-                        authenticatedUser.uniqueName || 
-                        username || 
-                        'Unknown User';
-        } catch (e) {
-          // Use username as fallback
-          identityName = username || 'Unknown User';
+        parseIdentity(stdout, () => reject(new Error('TFS returned an unexpected response during Windows Login verification')));
+      });
+    } else {
+      // Linux/Mac: curl's built-in GSSAPI/Kerberos support, using whatever
+      // ticket this machine's current session already holds.
+      execFile('curl', ['-s', '--negotiate', '-u', ':', '--max-time', '15', url], { timeout: 20000, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
+        if (err) {
+          return reject(new Error(
+            `Kerberos SSO via curl failed: ${(stderr || err.message || '').toString().split('\n')[0]}. ` +
+            'This requires the machine running this backend to be Kerberos-joined to the same domain as TFS, with a valid ticket ' +
+            '(check `klist`, get one with `kinit`) — it is not available on a generic, non-domain-joined server. Use PAT or Username+Password instead.'
+          ));
         }
-      } catch (err) {
-        step(`⚠️ Could not resolve identity: ${err.message}`);
-        identityName = username || 'Unknown User';
-      }
-
-      step(`✅ Identity: ${identityName}`);
-
-      // Save the ZIP file temporarily
-      const tmpRoot = path.join(os.tmpdir(), 'tfs-ci-' + Date.now());
-      const zipPath = path.join(tmpRoot, zipName || 'package.zip');
-      const extractDir = path.join(tmpRoot, 'extracted');
-
-      try {
-        fs.mkdirSync(tmpRoot, { recursive: true });
-        fs.mkdirSync(extractDir, { recursive: true });
-
-        // Write ZIP file
-        const buffer = Buffer.from(zipBase64, 'base64');
-        fs.writeFileSync(zipPath, buffer);
-        step(`✅ ZIP saved: ${zipPath} (${buffer.length} bytes)`);
-
-        // Extract ZIP using system unzip
-        step('📦 Extracting ZIP...');
-        try {
-          await runCommand(`unzip -o "${zipPath}" -d "${extractDir}"`, null, 30000);
-          step('✅ ZIP extracted successfully');
-        } catch (err) {
-          step(`⚠️ Unzip failed: ${err.message}`);
-        }
-
-        // Count extracted files
-        let filesCount = 0;
-        try {
-          const files = fs.readdirSync(extractDir, { recursive: true });
-          filesCount = files.filter(f => fs.statSync(path.join(extractDir, f)).isFile()).length;
-        } catch (e) {
-          // Ignore
-        }
-
-        // Generate a mock commit hash
-        const mockCommit = `mock-${Date.now().toString(16)}`;
-
-        // Clean up temp files
-        try {
-          fs.rmSync(tmpRoot, { recursive: true, force: true });
-        } catch (e) {
-          // Ignore
-        }
-
-        step(`✅ Check-in simulated successfully`);
-        step(`📝 Commit: ${mockCommit}`);
-        step(`📁 Files: ${filesCount || 5} changed`);
-
-        sendJson(res, 200, {
-          ok: true,
-          commit: mockCommit,
-          branch: branch,
-          author: identityName,
-          filesChanged: filesCount || 5,
-          message: message || `Check-in by ${identityName}`,
-          buildTriggered: false,
-          log: log
-        });
-
-      } catch (err) {
-        // Clean up on error
-        try {
-          fs.rmSync(tmpRoot, { recursive: true, force: true });
-        } catch (e) { /* ignore */ }
-        throw err;
-      }
-
-    } catch (err) {
-      console.error('❌ Check-in error:', err);
-      sendJson(res, 200, {
-        ok: false,
-        message: err.message,
-        log: []
+        parseIdentity(stdout, () => reject(new Error(
+          'TFS returned an unexpected response during Kerberos SSO verification — this endpoint may require NTLM specifically, which Kerberos negotiation does not cover on this platform.'
+        )));
       });
     }
-    return;
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// SECURITY: resolves the REAL identity behind the supplied credentials —
+// for ANY auth mode. This is the ONLY source of truth for "who is checking
+// in" — it is never taken from a free-text "Author" field, so nobody can
+// type someone else's name and have it show up as the committer in TFS.
+//
+//   authMode === 'pat'     → Basic auth, empty username, PAT as password.
+//   authMode === 'basic'   → Basic auth, real TFS username + password
+//                            (default when authMode is omitted).
+//   authMode === 'winauth' → OS-level SSO (Windows SSPI, or Kerberos via
+//                            curl on Linux/Mac) — no typed credentials, the
+//                            OS proves identity directly. See
+//                            resolveIdentityWindows() for platform details
+//                            and real prerequisites.
+//
+// THREE-TIER FALLBACK CHAIN (tried in order, first success wins):
+//   1. REST API — call TFS's own `_apis/connectionData` directly. Gives the
+//      real display name, but only works if the reverse proxy forwards
+//      that URL path (some proxies are set up to relay ONLY the git
+//      `_git/...` paths and reject/404 everything else).
+//   2. Git-header extraction — reuse the SAME git connection that's already
+//      proven to work (git clone/push obviously succeed, or nothing in this
+//      tool would work at all) and read TFS's own X-VSS-UserData response
+//      header off of it. No second URL, no new failure surface — see
+//      resolveIdentityFromGitHeaders() above for why this works when #1
+//      doesn't. Skipped for 'winauth' (there's no PAT/password to build a
+//      git remote with in that mode; SSO already IS its own separate check).
+//   3. Authenticated-username stamp — 'basic' mode ONLY, last resort. If
+//      TFS genuinely won't tell us anyone's name through any path, fall
+//      back to the exact username that was actually used to authenticate.
+//      This is NOT a free-text field — it's the literal credential TFS
+//      validated to let the push through — so it still can't be spoofed
+//      into someone else's name, it just may not be a "pretty" display name.
+//      Not available for 'pat'/'winauth': a PAT has no inherent username,
+//      and SSO already failed by this point, so there's nothing safe to
+//      fall back to — those modes fail closed instead.
+// ─────────────────────────────────────────────────────────────────────────
+async function resolveIdentity({ tfsUrl, collection, project, repo, authMode, username, password, directUrl }) {
+  if (authMode === 'winauth') {
+    return resolveIdentityWindows({ directUrl, collection });
+  }
+  const mode = authMode === 'pat' ? 'pat' : 'basic';
+  const errors = [];
+
+  // Tier 1: REST API
+  try {
+    let authHeader;
+    if (mode === 'pat') {
+      if (!password) throw new Error('A Personal Access Token (PAT) is required to verify identity');
+      authHeader = 'Basic ' + Buffer.from(`:${password}`).toString('base64');
+    } else {
+      if (!username) throw new Error('TFS username is required to verify identity');
+      if (!password) throw new Error('Password is required to verify identity');
+      authHeader = 'Basic ' + Buffer.from(`${username}:${password}`).toString('base64');
+    }
+    const url = `${buildApiBase({ tfsUrl, collection })}/_apis/connectionData?api-version=1.0`;
+    const json = await httpGetJson(url, authHeader);
+    const user = json && json.authenticatedUser;
+    const name = user && (user.providerDisplayName || user.customDisplayName || user.displayName);
+    if (!name) throw new Error(`TFS responded but returned no identity for ${mode === 'pat' ? 'this PAT' : 'these credentials'}`);
+    return { name, id: (user && user.id) || null, verifiedVia: 'rest' };
+  } catch (e1) {
+    errors.push(`REST API: ${e1.message}`);
   }
 
-  // ═══════════════════════════════════════════════════════════
-  // Status
-  // ═══════════════════════════════════════════════════════════
-  if (url.startsWith('/api/tfs-checkin-status') && method === 'GET') {
-    const urlParams = new URL(`http://${req.headers.host}${url}`);
-    const jobId = urlParams.searchParams.get('jobId') || 'no-job-id';
-    
-    sendJson(res, 200, {
-      ok: true,
-      message: 'Status endpoint ready',
-      jobId: jobId,
-      done: true,
-      success: true,
-      percent: 100,
-      label: 'Check-in complete',
-      result: {
-        commit: 'mock-commit',
-        message: 'Check-in completed successfully'
+  // Tier 2: git-header extraction (reuses the already-working git connection)
+  if (tfsUrl && repo && password) {
+    try {
+      const gitUsername = mode === 'basic' ? username : 'pat';
+      const remote = withCreds(buildRemoteUrl({ tfsUrl, collection, project, repo }), gitUsername, password);
+      const identity = await resolveIdentityFromGitHeaders(remote);
+      return Object.assign(identity, { verifiedVia: 'git-header' });
+    } catch (e2) {
+      errors.push(`Git connection header: ${e2.message}`);
+    }
+  } else {
+    errors.push('Git connection header: skipped (need tfsUrl, repo, and password/PAT to open a connection)');
+  }
+
+  // Tier 3: authenticated-username stamp — 'basic' mode only
+  if (mode === 'basic' && username) {
+    return { name: username, id: null, verifiedVia: 'authenticated-username', isOpaqueId: true };
+  }
+
+  throw new Error(
+    `Could not verify identity through any available method. ${errors.join(' | ')}` +
+    (mode === 'pat' ? ' — try Username+Password mode instead, which has an extra fallback (the authenticated username itself).' : '')
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// route: POST /api/tfs-test — quick auth/connectivity check (git ls-remote)
+// ─────────────────────────────────────────────────────────────────────────
+async function handleTest(body, res) {
+  const { tfsUrl, collection, project, repo, authMode, username, password, directUrl } = body;
+  const mode = ['pat', 'winauth'].includes(authMode) ? authMode : 'basic';
+  if (!tfsUrl) return sendJson(res, 200, { ok: false, message: 'tfsUrl is required' });
+  if (!repo) return sendJson(res, 200, { ok: false, message: 'repo (repository name) is required to build the git URL' });
+  if (mode === 'basic' && !username) return sendJson(res, 200, { ok: false, message: 'TFS username is required' });
+  if (!password) return sendJson(res, 200, { ok: false, message: mode === 'basic' ? 'password is required' : 'A PAT is required for the actual git push (Windows SSO only covers identity verification)' });
+  const gitUsername = mode === 'basic' ? username : 'pat';
+  const remote = buildRemoteUrl({ tfsUrl, collection, project, repo });
+  const creds = { username, password };
+  try {
+    const out = await run(['ls-remote', remote], undefined, 15000,creds);
+    const refCount = out.split('\n').filter(Boolean).length;
+    let identityNote = '';
+    try {
+      const identity = await resolveIdentity({ tfsUrl, collection, project, repo, authMode: mode, username, password, directUrl });
+      identityNote = ` · you will check in as "${identity.name}"${identity.verifiedVia && identity.verifiedVia !== 'rest' ? ` (via ${identity.verifiedVia})` : ''}`;
+    } catch (e) {
+      identityNote = ` · WARNING: could not verify identity (${e.message}) — check-in will be blocked`;
+    }
+    return sendJson(res, 200, { ok: true, message: `Connected — found ${refCount} ref(s) on the remote${identityNote}` });
+  } catch (err) {
+    return sendJson(res, 200, { ok: false, message: err.message });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// route: POST /api/tfs-whoami — resolves the real name behind either a PAT
+// or a username+password (whichever authMode the frontend is using).
+// The frontend calls this BEFORE check-in so the user sees exactly whose
+// name will appear on the commit. check-in itself re-resolves independently
+// (never trusts a name sent from the browser), so this is a preview, not
+// the source of truth.
+// ─────────────────────────────────────────────────────────────────────────
+async function handleWhoami(body, res) {
+  const { tfsUrl, collection, project, repo, authMode, username, password, directUrl } = body;
+  const mode = ['pat', 'winauth'].includes(authMode) ? authMode : 'basic';
+  if (mode === 'winauth') {
+    if (!directUrl) return sendJson(res, 200, { ok: false, message: 'A direct (non-proxied) TFS URL is required for Windows Login verification' });
+  } else {
+    if (!tfsUrl) return sendJson(res, 200, { ok: false, message: 'tfsUrl is required' });
+    if (mode === 'basic' && !username) return sendJson(res, 200, { ok: false, message: 'TFS username is required to verify identity' });
+    if (!password) return sendJson(res, 200, { ok: false, message: mode === 'basic' ? 'Password is required to verify identity' : 'PAT is required to verify identity' });
+  }
+  try {
+    const identity = await resolveIdentity({ tfsUrl, collection, project, repo, authMode: mode, username, password, directUrl });
+    return sendJson(res, 200, { ok: true, name: identity.name, verifiedVia: identity.verifiedVia, isOpaqueId: !!identity.isOpaqueId });
+  } catch (err) {
+    return sendJson(res, 200, { ok: false, message: err.message });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// route: POST /api/tfs-checkin — the real pipeline (git clone/add/commit/push)
+// ─────────────────────────────────────────────────────────────────────────
+async function handleCheckin(body, res) {
+  const {
+    zipBase64, zipName, repo, branch, feature, workItem, message,
+    tfsUrl, clonePath, targetDir, collection, project, authMode, username, password, directUrl
+  } = body;
+  const mode = ['pat', 'winauth'].includes(authMode) ? authMode : 'basic';
+  if (!zipBase64) return sendJson(res, 200, { ok: false, message: 'No zip data received' });
+  if (!repo) return sendJson(res, 200, { ok: false, message: 'repo is required' });
+  if (!branch) return sendJson(res, 200, { ok: false, message: 'branch is required' });
+  if (mode === 'basic' && !username) return sendJson(res, 200, { ok: false, message: 'TFS username is required' });
+  if (!password) return sendJson(res, 200, { ok: false, message: mode === 'basic' ? 'password is required' : 'A PAT is required for the actual git push (Windows SSO only covers identity verification)' });
+  let identity;
+  try {
+    identity = await resolveIdentity({ tfsUrl, collection, project, repo, authMode: mode, username, password, directUrl });
+  } catch (err) {
+    return sendJson(res, 200, { ok: false, message: `Identity verification failed — check-in blocked: ${err.message}` });
+  }
+  const author = identity.name;
+  const authorEmail = `${safeName(author).toLowerCase()}@local`;
+  const gitUsername = mode === 'basic' ? username : 'pat';
+  const plainRemote = buildRemoteUrl({ tfsUrl, collection, project, repo });
+  //const remote = withCreds(plainRemote, gitUsername, password);
+  const creds = { username, password };
+  const workDir = clonePath && path.isAbsolute(clonePath)
+    ? clonePath
+    : path.join(os.tmpdir(), 'tfs-ci', safeName(repo));
+
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tfs-ci-zip-'));
+  const zipPath = path.join(tmpRoot, zipName || 'package.zip');
+  const extractDir = path.join(tmpRoot, 'extracted');
+
+  const log = [];
+  const step = (s) => log.push(s);
+
+  try {
+    step(`Verified identity — checking in as "${author}" (via ${identity.verifiedVia}${identity.isOpaqueId ? ', opaque ID — no friendly display name available from TFS' : ''})`);
+    // 1. Decode & extract the uploaded zip
+    step('Decoding uploaded zip...');
+    fs.writeFileSync(zipPath, Buffer.from(zipBase64, 'base64'));
+    step('Extracting zip (Expand-Archive / unzip)...');
+    await extractZip(zipPath, extractDir);
+
+    // 2. Ensure we have a local clone pointed at the (nginx-proxied) remote
+    fs.mkdirSync(path.dirname(workDir), { recursive: true });
+    if (fs.existsSync(path.join(workDir, '.git'))) {
+      step(`Reusing existing clone at ${workDir}`);
+      await run(['remote', 'set-url', 'origin', plainRemote], workDir);
+      await run(['fetch', 'origin'], workDir,undefined, creds);
+    } else {
+      step(`git clone ${plainRemote} -> ${workDir}`);
+      try {
+        await run(['clone', remote, workDir], undefined, 120000,creds);
+      } catch (e) {
+        // Repo might be empty / brand new on the server — init locally instead
+        step('clone failed (likely an empty new repo) — falling back to git init');
+        fs.mkdirSync(workDir, { recursive: true });
+        await run(['init'], workDir);
+        await run(['remote', 'add', 'origin', plainRemote], workDir);
+        await run(['fetch', 'origin'], workDir,undefined, creds).catch(() => {});
       }
+    }
+
+    // 3. Checkout (or create) the target branch
+    step(`Checking out branch "${branch}"`);
+    try {
+      await run(['checkout', branch], workDir);
+      await run(['reset', '--hard', `origin/${branch}`], workDir).catch(() => {});
+    } catch (e) {
+      try {
+        await run(['checkout', '-b', branch, `origin/${branch}`], workDir);
+      } catch (e2) {
+        await run(['checkout', '-b', branch], workDir);
+      }
+    }
+
+    // 4. Copy extracted files into the working copy (optionally under targetDir)
+    const dest = targetDir ? path.join(workDir, targetDir) : workDir;
+    fs.mkdirSync(dest, { recursive: true });
+    step(`Copying extracted files into ${dest}`);
+    fs.cpSync(extractDir, dest, { recursive: true, force: true });
+
+    // 5. Stage, commit, push
+    await run(['add', '-A'], workDir);
+    const statusOut = await run(['status', '--porcelain'], workDir);
+    if (!statusOut.trim()) {
+      return sendJson(res, 200, { ok: false, message: 'Nothing to commit — no file changes detected after copying the zip', log });
+    }
+
+    //6. New changes for username and email
+    await run(['config','user.email','apidev.eis@sbi.co.in'],workDir);
+    await run(['config','user.name',author],workDir);
+
+    step(`Committing as verified identity "${author}"...`);
+    const commitMsg = message || `[${workItem || feature || 'CI'}] Automated check-in for ${feature || repo}`;
+    const commitArgs = ['commit', '-m', commitMsg, '--author', `${author} <${authorEmail}>`];
+    await run(commitArgs, workDir);
+
+    step(`Pushing to origin/${branch}...`);
+    await run(['push', 'origin', `HEAD:${branch}`], workDir, 120000,creds);
+
+    const shortHash = await run(['rev-parse', '--short', 'HEAD'], workDir);
+    const filesChanged = statusOut.split('\n').filter(Boolean).length;
+
+    return sendJson(res, 200, {
+      ok: true,
+      commit: shortHash,
+      branch,
+      author,
+      filesChanged,
+      message: `Checked in as commit ${shortHash} (author: ${author})`,
+      buildTriggered: false,
+      log
     });
-    return;
+  } catch (err) {
+    return sendJson(res, 200, { ok: false, message: err.message, log });
+  } finally {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// route: POST /api/tfs-config-upsert — inserts a DB Query result (Service
+// Name / Integration Node Name / Integration Server Name / cache) into the
+// per-environment YAML config file on TFS (config/<env>.yaml by default,
+// override with configPathTemplate using a "{env}" placeholder).
+//
+// If a service with this exact name is already present in that file, this
+// REFUSES and makes no commit at all — existing entries are never
+// overwritten by this endpoint. Identity is verified exactly the same way
+// as a check-in (see resolveIdentity) before any git operation runs, so the
+// commit author here is just as unspoofable as a regular check-in.
+// ─────────────────────────────────────────────────────────────────────────
+async function handleConfigUpsert(body, res) {
+  const {
+    tfsUrl, collection, project, repo, branch, authMode, username, password, directUrl,
+    env, configPathTemplate, serviceName, integrationNodeName, integrationServerName, cache
+  } = body;
+  const mode = ['pat', 'winauth'].includes(authMode) ? authMode : 'basic';
+
+  if (!repo) return sendJson(res, 200, { ok: false, message: 'repo is required' });
+  if (!branch) return sendJson(res, 200, { ok: false, message: 'branch is required' });
+  if (!env) return sendJson(res, 200, { ok: false, message: 'environment (SIT/UAT/DEV/MAIN) is required' });
+  if (!serviceName) return sendJson(res, 200, { ok: false, message: 'Service Name is required — fill in Display Labels on the DB Query page first' });
+  if (mode === 'basic' && !username) return sendJson(res, 200, { ok: false, message: 'TFS username is required' });
+  if (!password) return sendJson(res, 200, { ok: false, message: mode === 'basic' ? 'password is required' : 'A PAT is required for the actual git push' });
+
+  const envKey = String(env).trim().toLowerCase();
+  if (!['sit', 'uat', 'dev', 'main'].includes(envKey)) {
+    return sendJson(res, 200, { ok: false, message: 'environment must be one of SIT, UAT, DEV, MAIN' });
   }
 
-  // ═══════════════════════════════════════════════════════════
-  // 404
-  // ═══════════════════════════════════════════════════════════
-  sendError(res, 404, `Endpoint not found: ${url}`);
+  // 0. Verify identity FIRST, exactly like check-in — refuse before any git
+  //    operation if it can't be resolved to a real person.
+  let identity;
+  try {
+    identity = await resolveIdentity({ tfsUrl, collection, project, repo, authMode: mode, username, password, directUrl });
+  } catch (err) {
+    return sendJson(res, 200, { ok: false, message: `Identity verification failed — update blocked: ${err.message}` });
+  }
+  const author = identity.name;
+  const authorEmail = `${safeName(author).toLowerCase()}@local`;
+
+  const relPath = (configPathTemplate || 'config/{env}.yaml').replace('{env}', envKey);
+  const gitUsername = mode === 'basic' ? username : 'pat';
+  const plainRemote = buildRemoteUrl({ tfsUrl, collection, project, repo });
+  const remote = withCreds(plainRemote, gitUsername, password);
+
+  const workDir = path.join(os.tmpdir(), 'tfs-cfg', safeName(repo));
+  const log = [];
+  const step = (s) => log.push(s);
+
+  try {
+    step(`Verified identity — updating config as "${author}" (via ${identity.verifiedVia}${identity.isOpaqueId ? ', opaque ID' : ''})`);
+
+    // 1. Ensure a local clone pointed at the remote, on the right branch
+    fs.mkdirSync(path.dirname(workDir), { recursive: true });
+    if (fs.existsSync(path.join(workDir, '.git'))) {
+      step(`Reusing existing clone at ${workDir}`);
+      await run(['remote', 'set-url', 'origin', remote], workDir);
+      await run(['fetch', 'origin'], workDir);
+    } else {
+      step(`git clone ${plainRemote} -> ${workDir}`);
+      try {
+        await run(['clone', remote, workDir], undefined, 120000);
+      } catch (e) {
+        step('clone failed (likely an empty new repo) — falling back to git init');
+        fs.mkdirSync(workDir, { recursive: true });
+        await run(['init'], workDir);
+        await run(['remote', 'add', 'origin', remote], workDir);
+        await run(['fetch', 'origin'], workDir).catch(() => {});
+      }
+    }
+
+    step(`Checking out branch "${branch}"`);
+    try {
+      await run(['checkout', branch], workDir);
+      await run(['reset', '--hard', `origin/${branch}`], workDir).catch(() => {});
+    } catch (e) {
+      try {
+        await run(['checkout', '-b', branch, `origin/${branch}`], workDir);
+      } catch (e2) {
+        await run(['checkout', '-b', branch], workDir);
+      }
+    }
+
+    // 2. Read the current config file, if it exists
+    const filePath = path.join(workDir, relPath);
+    let raw = '';
+    if (fs.existsSync(filePath)) {
+      raw = fs.readFileSync(filePath, 'utf8');
+    } else {
+      step(`${relPath} does not exist yet on this branch — it will be created`);
+    }
+
+    // 3. Refuse if the service is already present — NO commit happens
+    if (yamlHasService(raw, serviceName)) {
+      return sendJson(res, 200, {
+        ok: false,
+        alreadyExists: true,
+        message: `Service "${serviceName}" already exists in the ${envKey.toUpperCase()} config (${relPath}) — not modified.`,
+        log
+      });
+    }
+
+    // 4. Append the new entry and write it back
+    step(`Adding "${serviceName}" to ${relPath}`);
+    const updated = yamlAppendService(raw, { serviceName, integrationNodeName, integrationServerName, cache });
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, updated, 'utf8');
+
+    // 5. Commit & push — same identity-locked authorship as check-in
+    await run(['add', relPath], workDir);
+    const statusOut = await run(['status', '--porcelain', '--', relPath], workDir);
+    if (!statusOut.trim()) {
+      return sendJson(res, 200, { ok: false, message: 'Nothing changed — the file already matches what was requested', log });
+    }
+    step('Committing...');
+    const commitMsg = `[CONFIG] Add ${serviceName} to ${envKey.toUpperCase()} config`;
+    await run(['commit', '-m', commitMsg, '--author', `${author} <${authorEmail}>`], workDir);
+
+    step(`Pushing to origin/${branch}...`);
+    await run(['push', 'origin', `HEAD:${branch}`], workDir, 120000);
+
+    const shortHash = await run(['rev-parse', '--short', 'HEAD'], workDir);
+    return sendJson(res, 200, {
+      ok: true,
+      commit: shortHash,
+      branch,
+      env: envKey,
+      configPath: relPath,
+      author,
+      message: `Added "${serviceName}" to ${envKey.toUpperCase()} config — commit ${shortHash}`,
+      log
+    });
+  } catch (err) {
+    return sendJson(res, 200, { ok: false, message: err.message, log });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// CERTIFICATE MANAGER — fetches and configures TLS certificates on a remote
+// (e.g. nginx) server by shelling out to the system's OpenSSH client
+// (`ssh`), the same "zero npm dependencies, use what's already on the
+// machine" approach as git/PowerShell/unzip elsewhere in this file. There is
+// no pure-JS SSH implementation here on purpose — hand-rolling the SSH
+// protocol (key exchange, ciphers, MACs) from scratch is a real security
+// liability; shelling out to the battle-tested OpenSSH client is safer and
+// simpler.
+//
+// BASTION / JUMP-HOST MODEL: this backend only ever authenticates to ONE
+// server directly — the bastion (jump host), by default 10.177.44.25 as
+// user "siuser". From there, the bastion ALREADY has SSH access to every
+// other server (a trust relationship set up by infra, independent of this
+// tool) — so reaching an actual target server means running a NESTED ssh
+// command FROM WITHIN the bastion session, using whatever key/trust
+// "siuser" already has deployed there, not a second set of credentials
+// this backend supplies itself.
+//
+// This is deliberately NOT OpenSSH's ProxyJump (-J): ProxyJump still
+// authenticates the FINAL hop using the ORIGINAL client's own credentials,
+// which this backend doesn't have — and per this environment's setup,
+// isn't supposed to need — for every downstream server. A true nested
+// command is the right model when the trust relationship lives on the
+// bastion itself, not on the machine calling in to it.
+//
+// To dodge the classic "shell quoting inside quoting inside quoting"
+// nightmare of nesting scripts inside ssh commands inside ssh commands,
+// every script is base64-encoded and reconstituted with
+// `echo <base64>|base64 -d|bash` at each hop. Base64's alphabet
+// (A-Za-z0-9+/=) contains no shell-special characters, so it is always
+// safe to embed directly, at any nesting depth, with zero escaping.
+//
+// AUTH to the bastion: two modes.
+//   'key'      → `ssh -i <keyPath> ...` — works with the plain OpenSSH
+//                client, no extra tools needed. Recommended.
+//   'password' → plain `ssh` CANNOT take a password non-interactively.
+//                This shells out through `sshpass` instead, which is NOT
+//                installed by default on most systems. If it's missing, the
+//                error says so plainly and suggests key-based auth instead
+//                of failing mysteriously.
+// ─────────────────────────────────────────────────────────────────────────
+
+const DEFAULT_BASTION_HOST = '10.177.44.29';
+const DEFAULT_BASTION_USER = 'eisuser';
+
+function sshBaseArgs({ port, authMethod, keyPath }) {
+  const args = ['-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new', '-o', 'ConnectTimeout=12'];
+  if (port) args.push('-p', String(port));
+  if (authMethod === 'key') {
+    if (!keyPath) throw new Error('Private key path is required for key-based auth');
+    args.push('-i', keyPath);
+  }
+  return args;
+}
+
+// Wraps a shell script so it survives being embedded, verbatim, inside
+// another shell command at any nesting depth (see big comment above).
+function b64Wrap(script) {
+  const b64 = Buffer.from(script, 'utf8').toString('base64');
+  return `echo ${b64}|base64 -d|bash`;
+}
+
+// Runs a script ON THE BASTION ITSELF — the one server this backend
+// actually authenticates to. Everything else nests through this.
+function runOnBastion({ bastionHost, bastionPort, bastionUser, authMethod, password, keyPath, script }, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const host = bastionHost || DEFAULT_BASTION_HOST;
+    const username = bastionUser || DEFAULT_BASTION_USER;
+    if (!host) return reject(new Error('Bastion server host/IP is required'));
+    if (!username) return reject(new Error('Bastion username is required'));
+    let args;
+    try { args = sshBaseArgs({ port: bastionPort, authMethod, keyPath }); }
+    catch (e) { return reject(e); }
+    args.push(`${username}@${host}`, b64Wrap(script));
+
+    let cmd = 'ssh';
+    if (authMethod !== 'key') {
+      cmd = 'sshpass';
+      args = ['-p', password || '', 'ssh', ...args];
+    }
+    execFile(cmd, args, { timeout: timeoutMs || 20000, maxBuffer: 1024 * 1024 * 20 }, (err, stdout, stderr) => {
+      if (err) {
+        if (err.code === 'ENOENT' && cmd === 'sshpass') {
+          return reject(new Error("Password-based SSH needs the 'sshpass' utility on this backend, and it isn't installed. Install sshpass, or (recommended) switch Auth Method to Private Key — it works with the plain ssh client already on most systems."));
+        }
+        if (err.code === 'ENOENT') {
+          return reject(new Error("The 'ssh' command isn't available on this backend. Install an OpenSSH client (present by default on Linux/Mac; an optional Windows feature on Windows 10+)."));
+        }
+        return reject(new Error((stderr || stdout || err.message || 'SSH to bastion failed').toString().trim()));
+      }
+      resolve((stdout || '').toString());
+    });
+  });
+}
+
+// Runs a script on a TARGET server, reached by nesting a second ssh call
+// inside the bastion session — this is the one function almost everything
+// in the Certificate Manager goes through. The bastion's own, already
+// trusted key for `targetUser` (defaults to the same "siuser") does this
+// second hop; this backend supplies no credentials for it.
+function runOnTarget({ bastionHost, bastionPort, bastionUser, authMethod, password, keyPath, targetHost, targetUser, script }, timeoutMs) {
+  if (!targetHost) return Promise.reject(new Error('Target server host/IP is required'));
+  const tUser = targetUser || bastionUser || DEFAULT_BASTION_USER;
+  const nestedSsh =
+    `ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 ` +
+    `${tUser}@${targetHost} ${JSON.stringify(b64Wrap(script))}`;
+  // JSON.stringify gives a plain double-quoted string here, which is safe
+  // shell syntax too since base64 output never contains a '"', '$', or '`'.
+  return runOnBastion({ bastionHost, bastionPort, bastionUser, authMethod, password, keyPath, script: nestedSsh }, timeoutMs);
+}
+
+// Escapes a path/value for safe embedding inside single-quoted shell text
+// (used only for short, human-typed values like directory paths/filenames —
+// bulk data always goes through b64Wrap instead).
+function shQuote(v) {
+  return `'${String(v).replace(/'/g, "'\\''")}'`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// route: POST /api/cert-test — checks BOTH hops: bastion connectivity, and
+// (if a target host was given) reachability of the target FROM the bastion.
+// ─────────────────────────────────────────────────────────────────────────
+async function handleCertTest(body, res) {
+  const { bastionHost, bastionPort, bastionUser, authMethod, password, keyPath, targetHost, targetUser } = body;
+  try {
+    const bastionOut = await runOnBastion({ bastionHost, bastionPort, bastionUser, authMethod, password, keyPath, script: 'echo __OK__; hostname 2>/dev/null' }, 15000);
+    const bastionName = bastionOut.split('\n').map((s) => s.trim()).filter(Boolean).pop();
+    const bHost = bastionHost || DEFAULT_BASTION_HOST;
+    let msg = `Connected to bastion ${bHost}${bastionName && bastionName !== '__OK__' ? ` (${bastionName})` : ''}`;
+    if (targetHost) {
+      try {
+        const targetOut = await runOnTarget({ bastionHost, bastionPort, bastionUser, authMethod, password, keyPath, targetHost, targetUser, script: 'echo __OK__; hostname 2>/dev/null' }, 20000);
+        const targetName = targetOut.split('\n').map((s) => s.trim()).filter(Boolean).pop();
+        if (/__OK__/.test(targetOut)) {
+          msg += ` · reached target ${targetHost}${targetName && targetName !== '__OK__' ? ` (${targetName})` : ''} via bastion`;
+        } else {
+          msg += ` · WARNING: could not confirm reaching target ${targetHost} from the bastion`;
+        }
+      } catch (e) {
+        msg += ` · WARNING: could not reach target ${targetHost} from the bastion (${e.message})`;
+      }
+    }
+    return sendJson(res, 200, { ok: true, message: msg });
+  } catch (err) {
+    return sendJson(res, 200, { ok: false, message: err.message });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// route: POST /api/cert-list — lists certificates in the configured
+// directory (default /opt/IBM/End_Point_Publibkey) and, for anything that
+// parses as an X.509 cert, pulls subject/issuer/validity via openssl — all
+// in ONE ssh round trip rather than one connection per file.
+// ─────────────────────────────────────────────────────────────────────────
+async function handleCertList(body, res) {
+  try {
+  const { bastionHost, bastionPort, bastionUser, authMethod, password, keyPath, targetHost, targetUser, certPath } = body;
+  //console.log("handleCertList_body",body);
+  // const bastionHost = body.jumpHost;
+  // const bastionPort = body.jumpPort;
+  // const bastionUser = body.username;
+  // const authMethod = body.authMethod;
+  // const password = body.password;
+  // const keyPath = body.keyPath;
+    const targetHost1 = targetHost || body.host || '10.177.44.25';
+  // const targetUser = body.port;
+  const dir = (certPath || '/opt/IBM/EndPoint_Public').replace(/\/+$/, '');
+  const script =
+    `d=${shQuote(dir)}\n` +
+    `if [ ! -d "$d" ]; then echo __DIR_MISSING__; exit 0; fi\n` +
+    `for f in "$d"/*; do\n` +
+    `  [ -f "$f" ] || continue\n` +
+    `  echo "__FILE_START__$f"\n` +
+    `  openssl x509 -in "$f" -noout -subject -issuer -startdate -enddate 2>/dev/null || echo NOT_A_CERT\n` +
+    `  echo __FILE_END__\n` +
+    `done`;
+
+    //const targetHost1 = targetHost || body.host || '10.177.44.25';
+    const out = await runOnTarget({ bastionHost, bastionPort, bastionUser, authMethod, password, keyPath, targetHost:targetHost1, targetUser, script }, 30000);
+    if (/__DIR_MISSING__/.test(out)) {
+      return sendJson(res, 200, { ok: false, message: `Directory not found on ${targetHost}: ${dir}` });
+    }
+    const certs = [];
+    const blocks = out.split('__FILE_START__').slice(1);
+    for (const b of blocks) {
+      const nlIdx = b.indexOf('\n');
+      const filePath = (nlIdx > -1 ? b.slice(0, nlIdx) : b).trim();
+      const body2 = (nlIdx > -1 ? b.slice(nlIdx + 1) : '').split('__FILE_END__')[0];
+      const isCert = !/NOT_A_CERT/.test(body2);
+      const subjectMatch = body2.match(/subject=(.*)/);
+      const issuerMatch = body2.match(/issuer=(.*)/);
+      const startMatch = body2.match(/notBefore=(.*)/);
+      const endMatch = body2.match(/notAfter=(.*)/);
+      let status = 'unknown';
+      if (isCert && endMatch) {
+        const end = new Date(endMatch[1].trim());
+        if (!isNaN(end.getTime())) {
+          const daysLeft = (end.getTime() - Date.now()) / 86400000;
+          status = daysLeft < 0 ? 'expired' : daysLeft < 30 ? 'expiring' : 'valid';
+        }
+      }
+      certs.push({
+        name: filePath.split('/').pop(),
+        path: filePath,
+        serverIp: targetHost,
+        isCert,
+        subject: subjectMatch ? subjectMatch[1].trim() : null,
+        issuer: issuerMatch ? issuerMatch[1].trim() : null,
+        validFrom: startMatch ? startMatch[1].trim() : null,
+        validTo: endMatch ? endMatch[1].trim() : null,
+        status
+      });
+    }
+    return sendJson(res, 200, { ok: true, serverIp: targetHost, path: dir, certs });
+  } catch (err) {
+    return sendJson(res, 200, { ok: false, message: err.message });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// route: POST /api/cert-fetch — pulls one certificate's raw content back
+// (base64-encoded over the wire so binary DER-format certs transport safely
+// too, not just PEM text) for viewing/downloading in the browser.
+// ─────────────────────────────────────────────────────────────────────────
+async function handleCertFetch(body, res) {
+  const { bastionHost, bastionPort, bastionUser, authMethod, password, keyPath, targetHost, targetUser, certPath, fileName } = body;
+  const targetHost1 = targetHost || body.host || '10.177.44.25';
+  //const targetHost = body.host;
+  if (!fileName) return sendJson(res, 200, { ok: false, message: 'fileName is required' });
+  const dir = (certPath || '/opt/IBM/End_Point_Publibkey').replace(/\/+$/, '');
+  const fullPath = `${dir}/${fileName}`;
+  try {
+    const out = await runOnTarget({
+      bastionHost, bastionPort, bastionUser, authMethod, password, keyPath, targetHost:targetHost1, targetUser,
+      script: `[ -f ${shQuote(fullPath)} ] && base64 ${shQuote(fullPath)} 2>/dev/null || echo __NOT_FOUND__`
+    }, 20000);
+    if (/__NOT_FOUND__/.test(out)) {
+      return sendJson(res, 200, { ok: false, message: `Could not read ${fullPath} on ${targetHost}` });
+    }
+    return sendJson(res, 200, { ok: true, fileName, path: fullPath, serverIp: targetHost, contentBase64: out.replace(/\s+/g, '') });
+  } catch (err) {
+    return sendJson(res, 200, { ok: false, message: err.message });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// route: POST /api/cert-configure — pushes a certificate to the remote
+// path. Refuses (no upload) if a file with that exact name already exists
+// there, unless `overwrite` is explicitly true — mirroring the same
+// "never silently clobber an existing entry" rule used by the TFS config
+// upsert feature. Optionally reloads nginx afterward (best-effort, reported
+// separately — a failed reload doesn't undo a successful upload).
+// ─────────────────────────────────────────────────────────────────────────
+async function handleCertConfigure(body, res) {
+  const { bastionHost, bastionPort, bastionUser, authMethod, password, keyPath, targetHost, targetUser, certPath, fileName, contentBase64, overwrite, reloadNginx } = body;
+  const targetHost1 = targetHost || body.host || '10.177.44.25';
+  if (!fileName) return sendJson(res, 200, { ok: false, message: 'Certificate file name is required' });
+  if (!contentBase64) return sendJson(res, 200, { ok: false, message: 'Certificate content is required' });
+  const dir = (certPath || '/opt/IBM/End_Point_Publibkey').replace(/\/+$/, '');
+  const fullPath = `${dir}/${fileName}`;
+  const conn = { bastionHost, bastionPort, bastionUser, authMethod, password, keyPath, targetHost:targetHost1, targetUser };
+
+  try {
+    // 1. Refuse if already present, unless explicitly overwriting
+    const existsOut = await runOnTarget({ ...conn, script: `[ -e ${shQuote(fullPath)} ] && echo __EXISTS__ || echo __MISSING__` }, 15000);
+    if (/__EXISTS__/.test(existsOut) && !overwrite) {
+      return sendJson(res, 200, {
+        ok: false,
+        alreadyExists: true,
+        message: `A certificate named "${fileName}" already exists at ${fullPath} on ${targetHost} — not modified. Check "Overwrite" to replace it intentionally.`
+      });
+    }
+
+    // 2. Write the file directly on the target — no scp needed, since scp has
+    //    no equivalent for "nest through the bastion's own trust"; instead the
+    //    cert bytes (already base64 from the browser) are decoded straight
+    //    into place by a script run via runOnTarget, same as everything else.
+    const writeScript =
+      `mkdir -p ${shQuote(dir)}\n` +
+      `echo ${contentBase64.replace(/\s+/g, '')} | base64 -d > ${shQuote(fullPath)}\n` +
+      `echo __WRITE_OK__`;
+    const writeOut = await runOnTarget({ ...conn, script: writeScript }, 30000);
+    if (!/__WRITE_OK__/.test(writeOut)) {
+      return sendJson(res, 200, { ok: false, message: `Write did not confirm success on ${targetHost}: ${writeOut.trim().slice(0, 300)}` });
+    }
+
+    // 3. Optional, best-effort nginx reload
+    let reloadResult = null;
+    if (reloadNginx) {
+      try {
+        const out = await runOnTarget({ ...conn, script: 'sudo -n nginx -t 2>&1 && sudo -n systemctl reload nginx 2>&1 && echo __RELOAD_OK__' }, 20000);
+        reloadResult = /__RELOAD_OK__/.test(out) ? 'nginx reloaded successfully' : `reload did not confirm success: ${out.trim().slice(0, 300)}`;
+      } catch (e) {
+        reloadResult = `reload failed (certificate was still uploaded): ${e.message}`;
+      }
+    }
+
+    return sendJson(res, 200, {
+      ok: true,
+      path: fullPath,
+      serverIp: targetHost,
+      message: `Certificate "${fileName}" pushed to ${targetHost}:${fullPath} (via bastion)`,
+      reload: reloadNginx ? reloadResult : null
+    });
+  } catch (err) {
+    return sendJson(res, 200, { ok: false, message: err.message });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// server
+// ─────────────────────────────────────────────────────────────────────────
+const server = http.createServer(async (req, res) => {
+  if (req.method === 'OPTIONS') {
+    return sendJson(res, 200, {});
+  }
+  if (req.method === 'GET' && req.url === '/api/health') {
+    return sendJson(res, 200, { ok: true, git: GIT, platform: process.platform });
+  }
+  if (req.method === 'POST' && req.url === '/api/tfs-test') {
+    try {
+      const body = await readJsonBody(req, 1 * 1024 * 1024);
+      return handleTest(body, res);
+    } catch (e) {
+      return sendJson(res, 400, { ok: false, message: e.message });
+    }
+  }
+  if (req.method === 'POST' && req.url === '/api/tfs-whoami') {
+    try {
+      const body = await readJsonBody(req, 1 * 1024 * 1024);
+      return handleWhoami(body, res);
+    } catch (e) {
+      return sendJson(res, 400, { ok: false, message: e.message });
+    }
+  }
+  if (req.method === 'POST' && req.url === '/api/tfs-checkin') {
+    try {
+      const body = await readJsonBody(req, 300 * 1024 * 1024); // allow up to ~300MB zip (base64-inflated)
+      return handleCheckin(body, res);
+    } catch (e) {
+      return sendJson(res, 400, { ok: false, message: e.message });
+    }
+  }
+  if (req.method === 'POST' && req.url === '/api/tfs-config-upsert') {
+    try {
+      const body = await readJsonBody(req, 5 * 1024 * 1024);
+      return handleConfigUpsert(body, res);
+    } catch (e) {
+      return sendJson(res, 400, { ok: false, message: e.message });
+    }
+  }
+  if (req.method === 'POST' && req.url === '/api/cert-test') {
+    try {
+      const body = await readJsonBody(req, 1 * 1024 * 1024);
+      return handleCertTest(body, res);
+    } catch (e) {
+      return sendJson(res, 400, { ok: false, message: e.message });
+    }
+  }
+  if (req.method === 'POST' && req.url === '/api/cert-list') {
+    try {
+      const body = await readJsonBody(req, 1 * 1024 * 1024);
+      return handleCertList(body, res);
+    } catch (e) {
+      return sendJson(res, 400, { ok: false, message: e.message });
+    }
+  }
+  if (req.method === 'POST' && req.url === '/api/cert-fetch') {
+    try {
+      const body = await readJsonBody(req, 1 * 1024 * 1024);
+      return handleCertFetch(body, res);
+    } catch (e) {
+      return sendJson(res, 400, { ok: false, message: e.message });
+    }
+  }
+  if (req.method === 'POST' && req.url === '/api/cert-configure') {
+    try {
+      const body = await readJsonBody(req, 10 * 1024 * 1024);
+      return handleCertConfigure(body, res);
+    } catch (e) {
+      return sendJson(res, 400, { ok: false, message: e.message });
+    }
+  }
+  sendJson(res, 404, { ok: false, message: 'Not found' });
 });
 
-// ═══════════════════════════════════════════════════════════════
-// Start Server
-// ═══════════════════════════════════════════════════════════════
-
-server.listen(PORT, HOST, () => {
-  console.log('\n' + '='.repeat(60));
-  console.log('✅ TFS Check-in Backend (NO DEPENDENCIES)');
-  console.log('='.repeat(60));
-  console.log(`📍 URL: http://${HOST}:${PORT}`);
-  console.log(`❤️  Health: http://${HOST}:${PORT}/health`);
-  console.log(`📡 Test: http://${HOST}:${PORT}/api/tfs-test`);
-  console.log(`👤 Whoami: http://${HOST}:${PORT}/api/tfs-whoami`);
-  console.log(`📦 Check-in: http://${HOST}:${PORT}/api/tfs-checkin`);
-  console.log(`📊 Status: http://${HOST}:${PORT}/api/tfs-checkin-status`);
-  console.log('='.repeat(60));
-  console.log(`Node Version: ${process.version}`);
-  console.log(`PID: ${process.pid}`);
-  console.log('='.repeat(60) + '\n');
-});
-
-// Handle errors
-server.on('error', (err) => {
-  console.error('❌ Server error:', err);
-});
-
-process.on('uncaughtException', (err) => {
-  console.error('❌ Uncaught Exception:', err);
-});
-
-process.on('unhandledRejection', (reason) => {
-  console.error('❌ Unhandled Rejection:', reason);
+server.listen(PORT, () => {
+  console.log(`TFS check-in backend (zero-dependency) listening on http://0.0.0.0:${PORT}`);
+  console.log(`Using git executable: ${GIT}`);
+  console.log(`Platform: ${process.platform}`);
 });
