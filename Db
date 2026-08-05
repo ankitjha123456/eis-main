@@ -1,15 +1,300 @@
-CREATE COMPUTE MODULE KafkaDemo_Compute
+const express = require('express');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+const { exec } = require('child_process');
+const { promisify } = require('util');
+const execAsync = promisify(exec);
+const cors = require('cors');
+const archiver = require('archiver');
+const unzipper = require('unzipper');
+const axios = require('axios');
 
-CREATE FUNCTION Main() RETURNS BOOLEAN
-BEGIN
+const app = express();
+const PORT = process.env.PORT || 4416;
 
-    SET OutputRoot.Properties = InputRoot.Properties;
+app.use(cors());
+app.use(express.json({ limit: '500mb' }));
 
-    SET OutputRoot.JSON.Data.message = 'Hello from IBM ACE';
-    SET OutputRoot.JSON.Data.time = CURRENT_TIMESTAMP;
+// ══════════ Utility Functions ══════════
+function sendJson(res, status, data) {
+  res.status(status).json(data);
+}
 
-    RETURN TRUE;
+function safeName(name) {
+  return name.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+}
 
-END;
+async function run(cmd, cwd, timeout = 60000, creds) {
+  const env = { ...process.env };
+  if (creds && creds.username && creds.password) {
+    // For basic auth with git
+    env.GIT_ASKPASS = 'echo';
+    env.GIT_USERNAME = creds.username;
+    env.GIT_PASSWORD = creds.password;
+  }
+  const options = { cwd: cwd || process.cwd(), timeout, env, shell: true };
+  try {
+    const { stdout, stderr } = await execAsync(cmd, options);
+    return stdout;
+  } catch (err) {
+    if (err.stdout) throw new Error(err.stdout);
+    if (err.stderr) throw new Error(err.stderr);
+    throw err;
+  }
+}
 
-END MODULE;
+async function extractZip(zipPath, destDir) {
+  fs.mkdirSync(destDir, { recursive: true });
+  
+  // Try using system unzip first
+  try {
+    await run(`unzip -o "${zipPath}" -d "${destDir}"`);
+    return;
+  } catch (e) {
+    console.log('System unzip failed, trying Node.js unzipper...');
+  }
+  
+  // Fallback to Node.js unzipper
+  const stream = fs.createReadStream(zipPath).pipe(unzipper.Extract({ path: destDir }));
+  return new Promise((resolve, reject) => {
+    stream.on('finish', resolve);
+    stream.on('error', reject);
+  });
+}
+
+// ══════════ Identity Resolution ══════════
+async function resolveIdentity({ tfsUrl, collection, project, repo, authMode, username, password, directUrl }) {
+  // Try TFS API to get the user's display name
+  const apiUrl = `${tfsUrl}/${collection}/_apis/connectionData?api-version=6.0`;
+  const auth = authMode === 'pat' 
+    ? { headers: { 'Authorization': `Bearer ${password}` } }
+    : authMode === 'winauth'
+    ? { headers: { 'Authorization': 'Negotiate' }, httpsAgent: new (require('https').Agent)({ rejectUnauthorized: false }) }
+    : { auth: { username, password } };
+  
+  try {
+    const response = await axios.get(apiUrl, { 
+      ...auth,
+      timeout: 10000,
+      httpsAgent: new (require('https').Agent)({ rejectUnauthorized: false })
+    });
+    const data = response.data;
+    const authenticatedUser = data.authenticatedUser || {};
+    const name = authenticatedUser.displayName || authenticatedUser.providerDisplayName || authenticatedUser.uniqueName || username || 'Unknown User';
+    
+    return { 
+      name, 
+      verifiedVia: authMode,
+      isOpaqueId: !authenticatedUser.displayName
+    };
+  } catch (err) {
+    console.log('Identity API failed, falling back to provided credentials:', err.message);
+    // Fallback: use the provided username or a default
+    if (authMode === 'basic' && username) {
+      return { name: username, verifiedVia: 'basic-fallback', isOpaqueId: true };
+    }
+    if (authMode === 'winauth') {
+      // Try to get OS username
+      try {
+        const whoami = await run('whoami');
+        return { name: whoami.trim(), verifiedVia: 'os', isOpaqueId: true };
+      } catch (e) {}
+    }
+    throw new Error(`Could not resolve identity from TFS: ${err.message}`);
+  }
+}
+
+// ══════════ Test Connection ══════════
+app.post('/api/tfs-test', async (req, res) => {
+  const { tfsUrl, collection, project, repo, authMode, username, password, directUrl } = req.body;
+  const mode = ['pat', 'winauth'].includes(authMode) ? authMode : 'basic';
+  
+  try {
+    // Test connection to TFS
+    const testUrl = `${tfsUrl}/${collection}/_apis/projects?api-version=6.0`;
+    const auth = mode === 'pat' 
+      ? { headers: { 'Authorization': `Bearer ${password}` } }
+      : mode === 'winauth'
+      ? { headers: { 'Authorization': 'Negotiate' }, httpsAgent: new (require('https').Agent)({ rejectUnauthorized: false }) }
+      : { auth: { username, password } };
+    
+    await axios.get(testUrl, { 
+      ...auth,
+      timeout: 15000,
+      httpsAgent: new (require('https').Agent)({ rejectUnauthorized: false })
+    });
+    
+    sendJson(res, 200, { ok: true, message: 'TFS connection successful' });
+  } catch (err) {
+    sendJson(res, 200, { ok: false, message: `Connection failed: ${err.message}` });
+  }
+});
+
+// ══════════ Who Am I ══════════
+app.post('/api/tfs-whoami', async (req, res) => {
+  const { tfsUrl, collection, project, repo, authMode, username, password, directUrl } = req.body;
+  const mode = ['pat', 'winauth'].includes(authMode) ? authMode : 'basic';
+  
+  try {
+    const identity = await resolveIdentity({ tfsUrl, collection, project, repo, authMode: mode, username, password, directUrl });
+    sendJson(res, 200, { ok: true, name: identity.name, verifiedVia: identity.verifiedVia, isOpaqueId: identity.isOpaqueId });
+  } catch (err) {
+    sendJson(res, 200, { ok: false, message: err.message });
+  }
+});
+
+// ══════════ Main Check-in Endpoint ══════════
+async function handleCheckin(body, res) {
+  const {
+    zipBase64, zipName, repo, branch, feature, workItem, message,
+    tfsUrl, clonePath, targetDir, collection, project, authMode, username, password, directUrl
+  } = body;
+  
+  const mode = ['pat', 'winauth'].includes(authMode) ? authMode : 'basic';
+  if (!zipBase64) return sendJson(res, 200, { ok: false, message: 'No zip data received' });
+  if (!repo) return sendJson(res, 200, { ok: false, message: 'repo is required' });
+  if (!branch) return sendJson(res, 200, { ok: false, message: 'branch is required' });
+  if (mode === 'basic' && !username) return sendJson(res, 200, { ok: false, message: 'TFS username is required' });
+  if (!password) return sendJson(res, 200, { ok: false, message: mode === 'basic' ? 'password is required' : 'A PAT is required for the actual git push' });
+  
+  let identity;
+  try {
+    identity = await resolveIdentity({ tfsUrl, collection, project, repo, authMode: mode, username, password, directUrl });
+  } catch (err) {
+    return sendJson(res, 200, { ok: false, message: `Identity verification failed — check-in blocked: ${err.message}` });
+  }
+  
+  const author = identity.name;
+  const authorEmail = `${safeName(author).toLowerCase()}@local`;
+  
+  // Build the TFS remote URL
+  const plainRemote = `${tfsUrl}/${collection}/${project}/_git/${repo}`;
+  
+  const workDir = clonePath && path.isAbsolute(clonePath)
+    ? clonePath
+    : path.join(os.tmpdir(), 'tfs-ci', safeName(repo));
+
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tfs-ci-zip-'));
+  const zipPath = path.join(tmpRoot, zipName || 'package.zip');
+  const extractDir = path.join(tmpRoot, 'extracted');
+
+  const log = [];
+  const step = (s) => log.push(s);
+
+  try {
+    step(`Verified identity — checking in as "${author}"`);
+    
+    // 1. Decode & extract the uploaded zip
+    step('Decoding uploaded zip...');
+    fs.writeFileSync(zipPath, Buffer.from(zipBase64, 'base64'));
+    step('Extracting zip...');
+    await extractZip(zipPath, extractDir);
+
+    // 2. Ensure we have a local clone
+    fs.mkdirSync(path.dirname(workDir), { recursive: true });
+    
+    // Check if tf command is available
+    const tfPath = process.env.TF_PATH || 'tf';
+    let tfCmd = tfPath;
+    
+    // For Git repositories on TFS
+    const remote = `${tfsUrl}/${collection}/${project}/_git/${repo}`;
+    const gitDir = path.join(workDir, '.git');
+    
+    if (!fs.existsSync(gitDir)) {
+      step(`Cloning repository...`);
+      try {
+        await run(`git clone ${remote} "${workDir}"`, undefined, 120000);
+      } catch (e) {
+        step('Clone failed, initializing empty repo...');
+        fs.mkdirSync(workDir, { recursive: true });
+        await run(`git init`, workDir);
+        await run(`git remote add origin ${remote}`, workDir);
+      }
+    }
+
+    // 3. Checkout/Create branch
+    step(`Checking out branch "${branch}"`);
+    try {
+      await run(`git checkout ${branch}`, workDir);
+      await run(`git reset --hard origin/${branch}`, workDir).catch(() => {});
+    } catch (e) {
+      try {
+        await run(`git checkout -b ${branch} origin/${branch}`, workDir);
+      } catch (e2) {
+        await run(`git checkout -b ${branch}`, workDir);
+      }
+    }
+
+    // 4. Copy extracted files
+    const dest = targetDir ? path.join(workDir, targetDir) : workDir;
+    fs.mkdirSync(dest, { recursive: true });
+    step(`Copying files to ${dest}`);
+    fs.cpSync(extractDir, dest, { recursive: true, force: true });
+
+    // 5. Git config
+    await run(`git config user.email "apidev.eis@sbi.co.in"`, workDir);
+    await run(`git config user.name "${author}"`, workDir);
+
+    // 6. Stage and commit
+    await run(`git add -A`, workDir);
+    const statusOut = await run(`git status --porcelain`, workDir);
+    if (!statusOut.trim()) {
+      return sendJson(res, 200, { ok: false, message: 'Nothing to commit — no file changes detected', log });
+    }
+
+    const commitMsg = message || `[${workItem || feature || 'CI'}] Automated check-in for ${feature || repo}`;
+    step(`Committing as "${author}"...`);
+    await run(`git commit -m "${commitMsg}" --author="${author} <${authorEmail}>"`, workDir);
+
+    // 7. Push
+    step(`Pushing to origin/${branch}...`);
+    const pushCmd = `git push origin HEAD:${branch}`;
+    if (mode === 'basic' && username && password) {
+      // Use credential helper for basic auth
+      await run(`git config credential.helper store`, workDir);
+      await run(`echo "https://${username}:${password}@${tfsUrl.replace(/^https?:\/\//, '')}" > ${path.join(workDir, '.git', 'credentials')}`, workDir);
+    } else if (mode === 'pat') {
+      await run(`git config credential.helper store`, workDir);
+      const patUrl = tfsUrl.replace(/^https?:\/\//, '');
+      await run(`echo "https://PAT:${password}@${patUrl}" > ${path.join(workDir, '.git', 'credentials')}`, workDir);
+    }
+    await run(pushCmd, workDir, 120000);
+
+    const shortHash = await run(`git rev-parse --short HEAD`, workDir);
+    const filesChanged = statusOut.split('\n').filter(Boolean).length;
+
+    return sendJson(res, 200, {
+      ok: true,
+      commit: shortHash.trim(),
+      branch,
+      author,
+      filesChanged,
+      message: `Checked in as commit ${shortHash.trim()} (author: ${author})`,
+      buildTriggered: false,
+      log
+    });
+  } catch (err) {
+    return sendJson(res, 200, { ok: false, message: err.message, log });
+  } finally {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
+}
+
+app.post('/api/tfs-checkin', async (req, res) => {
+  await handleCheckin(req.body, res);
+});
+
+app.get('/api/tfs-checkin-status', (req, res) => {
+  // Simple health check for status endpoint
+  sendJson(res, 200, { ok: true, message: 'Status endpoint ready' });
+});
+
+// ══════════ Start Server ══════════
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`TFS Check-in Backend running on http://0.0.0.0:${PORT}`);
+  console.log(`Test endpoint: http://localhost:${PORT}/api/tfs-test`);
+  console.log(`Whoami endpoint: http://localhost:${PORT}/api/tfs-whoami`);
+  console.log(`Check-in endpoint: http://localhost:${PORT}/api/tfs-checkin`);
+});
