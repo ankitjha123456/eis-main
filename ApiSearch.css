@@ -1,280 +1,773 @@
-parameters:
-  - name: applicationName
-    type: string
-    default: ''
+this is my HTML:
+<div class="page" id="pci">
+  <div class="ws">
+    <div class="wsb">
+      <div class="sb-lbl">Pipeline Steps</div>
+      <div class="sb-it on" id="ci-s1"><i class="fa-solid fa-file-zipper"></i>1. Upload API Zip</div>
+      <div class="sb-it" id="ci-s2"><i class="fa-solid fa-sliders"></i>2. Configure Pipeline</div>
+      <div class="sb-it" id="ci-s3"><i class="fa-solid fa-code-branch"></i>3. Branch & Commit</div>
+      <div class="sb-it" id="ci-s4"><i class="fa-solid fa-upload"></i>4. TFS Check-In</div>
+      <div class="sb-it" id="ci-s5"><i class="fa-solid fa-circle-check"></i>5. Verify</div>
+      <div class="sb-lbl">TFS Server</div>
+      <div class="sb-it" style="cursor:default"><i class="fa-solid fa-server" style="color:var(--sky)"></i><span style="font-family:var(--fm);font-size:10px">10.177.44.29</span></div>
+      <div class="sb-lbl">Recent Check-ins</div>
+      <div id="ci-history" style="font-size:10.5px"></div>
+    </div>
 
-stages:
-# ============== VALIDATION STAGE ==============
-- stage: Validation_Stage
-  displayName: Validation and Initialization
-  pool:
-    name: TFS-RH-1
-  jobs:
-    - job: Validation_Job
-      displayName: Validation
-      workspace:
-        clean: all
-      steps:
+    <div class="wbm">
+      <div class="wtb">
+        <i class="fa-solid fa-code-branch" style="color:var(--sky);font-size:14px"></i>
+        <span style="font-family:var(--fd);font-size:13px;font-weight:600">TFS Code Check-In via CI/CD Pipeline</span>
+        <div class="t-space"></div>
+        <button class="btn btn-g btn-sm" onclick="ciReset()"><i class="fa-solid fa-rotate-left"></i> Reset</button>
+        <button class="btn btn-sky" id="ci-btn" onclick="ciSubmit()">
+          <i class="fa-solid fa-upload"></i> Check-In to TFS
+        </button>
+      </div>
 
-        - checkout: self
-          path: s/app
+      <div class="wbd" style="padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:14px">
 
-        - checkout: git://EISGITREPO/eis-configuration@refs/heads/config
-          path: s/eis-configurations
+        <!-- Left column: Upload + Config -->
+        <div style="display:flex;flex-direction:column;gap:14px">
 
-        - task: CmdLine@2
-          name: val_task
-          env:
-            BRANCH: $(Build.SourceBranchName)
-          displayName: Validating repository
-          inputs:
-            script: |
-              set -e
+          <!-- ZIP Upload -->
+          <div class="panel">
+            <div class="pt"><i class="fa-solid fa-file-zipper" style="color:var(--sky)"></i>API Package (ZIP)</div>
+            <div class="tfs-uz" id="ci-uz" ondragover="ciDov(event)" ondragleave="ciDlv()" ondrop="ciDop(event)">
+              <input type="file" accept=".zip,.bar,.tar.gz" onchange="ciFileSelect(this)"/>
+              <i class="fa-solid fa-cloud-arrow-up"></i>
+              <div style="font-size:13px;color:var(--t2);margin-bottom:4px">Drop your API ZIP / BAR file here</div>
+              <div style="font-size:10.5px;color:var(--t3)">.zip · .bar · .tar.gz accepted</div>
+            </div>
+            <div class="pgbar" style="margin-top:8px"><div class="pgfill sky" id="ci-pf"></div></div>
+            <div class="tfs-file-info" id="ci-finfo">
+              <div class="tfs-fname" id="ci-fname"></div>
+              <div class="tfs-fsize" id="ci-fsize"></div>
+            </div>
+          </div>
 
-              # ── Resolve application name ──────────────────────────────────────
-              if [ -z "${{ parameters.applicationName }}" ]; then
-                applicationName=$(ls -1 $(Build.SourcesDirectory)/app \
-                  | grep -vE "Config|README.md|azure-pipelines.yml" \
-                  | tail -n 1)
-              else
-                applicationName="${{ parameters.applicationName }}"
-              fi
-              echo "Application name : $applicationName"
-              echo "Branch           : $BRANCH"
+          <!-- TFS Connection -->
+          <div class="panel">
+            <div class="pt"><i class="fa-solid fa-server" style="color:var(--sky)"></i>TFS Server Connection</div>
+            <div class="fg"><div class="fl"><i class="fa-solid fa-globe"></i>TFS Server URL (via nginx)</div><input class="fi" id="ci-tfsurl" value="http://10.177.44.29:4415/tfs" placeholder="http://10.177.44.29:4415/tfs"/>
+              <div style="font-size:9.5px;color:var(--t3);margin-top:4px;line-height:1.5"><i class="fa-solid fa-circle-info"></i> Must point at the <b style="color:var(--t2)">nginx proxy</b> (10.177.44.29:4415), not the raw TFS server. nginx forwards to the real TFS at <code style="color:var(--teal);font-family:var(--fm)">https://10.177.56.207:443</code> behind the scenes.</div>
+            </div>
+            <div class="fg"><div class="fl"><i class="fa-solid fa-server"></i>Check-in Backend Service URL <span style="color:var(--red)">*</span></div><input class="fi" id="ci-backend" value="http://10.177.44.29:4416/api/tfs-checkin" placeholder="http://your-backend-host:5000/api/tfs-checkin"/>
+              <div style="font-size:9.5px;color:var(--t3);margin-top:4px;line-height:1.5"><i class="fa-solid fa-circle-info"></i> You upload the ZIP here in the UI. This backend service (Node.js, included in the companion code) unzips it and runs <code style="color:var(--teal);font-family:var(--fm)">tf add → tf checkin</code> against the TFS URL above — no manual cmd needed.</div>
+            </div>
+            <div class="r2">
+              <div class="fg"><div class="fl"><i class="fa-solid fa-building"></i>Collection</div><input class="fi" id="ci-collection" value="SBIEIS" placeholder="SBIEIS"/></div>
+              <div class="fg"><div class="fl"><i class="fa-solid fa-diagram-project"></i>Project</div><input class="fi" id="ci-project" value="EISGITREPO" placeholder="EISGITREPO"/></div>
+            </div>
+            <div class="fg">
+              <div class="fl"><i class="fa-solid fa-shield-halved"></i>Auth Type
+                <span class="local-badge" title="Whichever you pick, your identity is verified straight against TFS or the OS itself, so the resolved name always matches the real account."><i class="fa-solid fa-lock"></i> Verified, not typed</span>
+              </div>
+              <select class="fs" id="ci-authmode" onchange="ciAuthModeChanged()">
+                <option value="basic">TFS Username + Password — no PAT to generate</option>
+                <option value="pat">Personal Access Token (PAT)</option>
+                <option value="winauth">OS Login (SSO) — no typing at all</option>
+              </select>
+              <div style="font-size:9.5px;color:var(--t3);margin-top:4px;line-height:1.5" id="ci-authmode-note"><i class="fa-solid fa-circle-info"></i> Either way, the backend sends your credentials to TFS's own identity API to resolve your real display name — the commit is always credited to whoever the credentials actually belong to, never to a typed-in name.</div>
+            </div>
+            <div class="r2" id="ci-user-row">
+              <div class="fg"><div class="fl"><i class="fa-solid fa-user"></i>TFS Username <span style="color:var(--red)">*</span></div><input class="fi" id="ci-user" placeholder="domain\username" oninput="ciPassChanged()"/></div>
+              <div class="fg"><div class="fl"><i class="fa-solid fa-key"></i>Password <span style="color:var(--red)">*</span></div><input class="fi" type="password" id="ci-pass" placeholder="TFS password" oninput="ciPassChanged()"/></div>
+            </div>
+            <div class="fg" id="ci-directurl-row" style="display:none">
+              <div class="fl"><i class="fa-solid fa-route"></i>Direct TFS URL <span style="color:var(--red)">*</span>
+                <span class="local-badge" title="OS-level SSO needs a connection nginx won't break mid-handshake — this must reach TFS WITHOUT going back through the same proxy."><i class="fa-solid fa-triangle-exclamation"></i> Must bypass the proxy</span>
+              </div>
+              <input class="fi" id="ci-directurl" placeholder="https://10.177.56.207 (TFS's real address, not the nginx URL)" oninput="ciPassChanged()"/>
+              <div style="font-size:9.5px;color:var(--t3);margin-top:4px;line-height:1.5"><i class="fa-solid fa-circle-info"></i> Uses your current OS login with no typed password — Windows SSPI if this backend runs on Windows, Kerberos (<code>curl --negotiate</code>) if it runs on Linux/Mac. <strong>Real prerequisites apply:</strong> it only works if (1) this backend runs on YOUR OWN machine, not a shared server, and (2) on Linux/Mac, this machine is Kerberos-joined to the same domain as TFS with a valid ticket. It also needs a network path to TFS that skips the proxy. If any of that doesn't hold on your setup, use PAT or Username+Password instead — this mode is a bonus for the right setup, not the default choice.</div>
+            </div>
+            <div class="fg" id="ci-pat-row" style="display:none">
+              <div class="fl"><i class="fa-solid fa-key"></i>Personal Access Token (PAT) <span style="color:var(--red)">*</span></div>
+              <input class="fi" type="password" id="ci-pat" placeholder="Paste your Personal Access Token" oninput="ciPassChanged()"/>
+              <div style="font-size:9.5px;color:var(--t3);margin-top:4px;line-height:1.5" id="ci-pat-note"></div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:2px">
+              <button class="btn btn-g btn-sm" style="flex:1;justify-content:center" onclick="ciTestConnection()" id="ci-test-btn"><i class="fa-solid fa-plug-circle-check"></i> Test TFS Connection</button>
+              <button class="btn btn-g btn-sm" style="flex:1;justify-content:center" onclick="ciVerifyIdentity()" id="ci-verify-btn"><i class="fa-solid fa-user-check"></i> Verify My Identity</button>
+            </div>
+            <div id="ci-test-result" style="font-size:10.5px;margin-top:6px"></div>
+            <div id="ci-identity-box" class="ci-identity-box" style="display:none">
+              <i class="fa-solid fa-id-badge"></i>
+              <div>
+                <div style="font-size:9.5px;color:var(--t3);text-transform:uppercase;letter-spacing:.4px">Checking in as</div>
+                <div id="ci-identity-name" style="font-size:13px;font-weight:700;color:var(--green)">—</div>
+              </div>
+            </div>
+          </div>
 
-              # ── Skip deploy logic for main branch ────────────────────────────
-              if [ "$BRANCH" = "main" ]; then
-                echo "Branch is 'main' — skipping deploy"
-                echo "##vso[task.setvariable variable=DeployFlag;isOutput=true]false"
-                exit 0
-              fi
+          <!-- Clone Path -->
+          <div class="panel">
+            <div class="pt"><i class="fa-solid fa-folder-tree" style="color:var(--sky)"></i>Repository & Clone</div>
+            <div class="fg"><div class="fl"><i class="fa-solid fa-code-fork"></i>Repository Name <span style="color:var(--red)">*</span></div><input class="fi" id="ci-reponame" placeholder="e.g. ACE_Services.git / $/ACE_Services"/></div>
+            <div class="fg"><div class="fl"><i class="fa-solid fa-folder-open"></i>Clone / Workspace Path</div><input class="fi" id="ci-clonepath" placeholder="$/ProjectName/Branch/Path  or  C:\workspace\repo"/></div>
+            <div class="fg" style="margin-bottom:0"><div class="fl"><i class="fa-solid fa-copy"></i>Target Directory in TFS</div><input class="fi" id="ci-targetdir" placeholder="$/ACE_Services/Dev/APIs/MyFeature"/></div>
+          </div>
+        </div>
 
-              # ── Ensure Config directory exists ───────────────────────────────
-              if [ ! -e $(Build.SourcesDirectory)/app/Config ]; then
-                mkdir -p $(Build.SourcesDirectory)/app/Config
-              fi
+        <!-- Right column: Branch + Commit + Log -->
+        <div style="display:flex;flex-direction:column;gap:14px">
 
-              # ── Pull config from eis-configurations for this branch ──────────
-              EIS_CONFIG=$(Build.SourcesDirectory)/eis-configurations/"$BRANCH"_config.yml
-              CONFIG_OUT=$(Build.SourcesDirectory)/app/Config/config.yml
+          <!-- Branch & Feature -->
+          <div class="panel">
+            <div class="pt"><i class="fa-solid fa-code-branch" style="color:var(--sky)"></i>Branch & Feature Details</div>
+            <div class="r2">
+              <div class="fg"><div class="fl"><i class="fa-solid fa-code-branch"></i>Branch Name</div><input class="fi" id="ci-branch" placeholder="e.g. dev, feature/JIRA-123, release/v2.1"/></div>
+              <div class="fg"><div class="fl"><i class="fa-solid fa-tag"></i>Feature Name</div><input class="fi" id="ci-feature" placeholder="e.g. DepositAccountShort"/></div>
+            </div>
+            <div class="fg"><div class="fl"><i class="fa-solid fa-ticket"></i>Work Item / Ticket ID</div><input class="fi" id="ci-workitem" placeholder="e.g. JIRA-4521 or TFS #1234"/></div>
+            <div class="fg" style="margin-bottom:0">
+              <div class="fl"><i class="fa-solid fa-user-tie"></i>Author / Developer
+                <span class="local-badge" title="This can't be typed — it's resolved automatically from your TFS credentials (PAT or username/password) so the commit is always credited to the real person checking in."><i class="fa-solid fa-lock"></i> Auto-verified</span>
+              </div>
+              <input class="fi" id="ci-author" placeholder="Click &quot;Verify My Identity&quot; above — resolved automatically from your TFS credentials" disabled style="opacity:.75;cursor:not-allowed"/>
+            </div>
+          </div>
 
-              echo "Reading from EIS config: $EIS_CONFIG"
-              yq e ".$applicationName | select(. != null)" "$EIS_CONFIG" > "$CONFIG_OUT"
+          <!-- Commit Message -->
+          <div class="panel">
+            <div class="pt"><i class="fa-solid fa-message" style="color:var(--sky)"></i>Commit Message <span style="font-size:10px;color:var(--t3);font-weight:400">(-m "")</span></div>
+            <div class="fg" style="margin-bottom:8px">
+              <div class="fl">Message</div>
+              <textarea class="fta" id="ci-msg" style="min-height:80px" placeholder="[JIRA-4521] Add DepositAccountShort API — implements short deposit account query with EIS DMZ routing and ACE SQL generation"></textarea>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap" id="ci-msg-chips">
+              <button class="btn btn-g btn-sm" onclick="appendMsg('[Feature] ')"><i class="fa-solid fa-plus"></i>[Feature]</button>
+              <button class="btn btn-g btn-sm" onclick="appendMsg('[Bugfix] ')"><i class="fa-solid fa-bug"></i>[Bugfix]</button>
+              <button class="btn btn-g btn-sm" onclick="appendMsg('[Hotfix] ')"><i class="fa-solid fa-fire"></i>[Hotfix]</button>
+              <button class="btn btn-g btn-sm" onclick="appendMsg('[Refactor] ')"><i class="fa-solid fa-arrow-rotate-right"></i>[Refactor]</button>
+              <button class="btn btn-g btn-sm" onclick="appendMsg('[Config] ')"><i class="fa-solid fa-gear"></i>[Config]</button>
+              <button class="btn btn-g btn-sm" onclick="ciAutoMsg()"><i class="fa-solid fa-wand-magic-sparkles"></i>Auto-fill</button>
+            </div>
+          </div>
 
-              if [ ! -s "$CONFIG_OUT" ]; then
-                echo "ERROR: No entry found for '$applicationName' in $EIS_CONFIG"
-                exit 1
-              fi
+          <!-- Pipeline Options -->
+          <div class="panel">
+            <div class="pt"><i class="fa-solid fa-sliders" style="color:var(--sky)"></i>Pipeline Options</div>
+            <div class="r2">
+              <div class="fg"><div class="fl"><i class="fa-solid fa-code-merge"></i>Check-in Type</div>
+                <select class="fs" id="ci-type">
+                  <option value="checkin">Direct Check-In</option>
+                  <option value="shelveset">Shelveset (Review)</option>
+                  <option value="gated">Gated Check-In</option>
+                </select>
+              </div>
+              <div class="fg"><div class="fl"><i class="fa-solid fa-robot"></i>CI Trigger</div>
+                <select class="fs" id="ci-trigger">
+                  <option value="auto">Auto Build on Check-in</option>
+                  <option value="manual">Manual Trigger</option>
+                  <option value="none">No Build</option>
+                </select>
+              </div>
+            </div>
+            <div class="r2">
+              <div class="fg"><div class="fl"><i class="fa-solid fa-rotate"></i>Overwrite Policy</div>
+                <select class="fs" id="ci-overwrite">
+                  <option value="merge">Merge</option>
+                  <option value="replace">Replace All</option>
+                  <option value="skip">Skip Existing</option>
+                </select>
+              </div>
+              <div class="fg"><div class="fl"><i class="fa-solid fa-boxes-stacked"></i>Build Config</div>
+                <select class="fs" id="ci-buildcfg">
+                  <option value="Debug">Debug</option>
+                  <option value="Release">Release</option>
+                  <option value="QA">QA</option>
+                </select>
+              </div>
+            </div>
+          </div>
 
-              echo "--- Resolved config ---"
-              cat "$CONFIG_OUT"
-              echo "-----------------------"
+          <!-- Pipeline Progress -->
+          <div class="panel" id="ci-progress-panel" style="display:none">
+            <div class="pt"><i class="fa-solid fa-gauge-high" style="color:var(--sky)"></i>Pipeline Progress
+              <span style="margin-left:auto;font-family:var(--fm);font-size:13px;color:var(--sky);font-weight:700" id="ci-pgpct">0%</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--t3);font-family:var(--fm);margin-top:-6px;margin-bottom:2px">
+              <span id="ci-pgstatus">Waiting to start…</span>
+              <span id="ci-pgeta">&nbsp;</span>
+            </div>
+            <div class="progress-track"><div class="progress-fill-sky" id="ci-progress"></div></div>
+            <div style="margin-top:10px" id="ci-steps-list"></div>
+            <div class="ci-log" id="ci-log"></div>
+          </div>
+        </div>
 
-              # ── Validate required fields ─────────────────────────────────────
-              for field in IntegrationNode IntegrationServer; do
-                value=$(yq e ".$field // \"\"" "$CONFIG_OUT" | tr -d '[:space:]')
-                # IntegrationServer is allowed to be empty (deploy everywhere)
-                if [ "$field" = "IntegrationNode" ] && [ -z "$value" ]; then
-                  echo "ERROR: $field is missing or empty"
-                  exit 1
-                fi
-              done
-
-              # ── Resolve Deploy flag (default = true) ─────────────────────────
-              DEPLOY=$(yq e ".Deploy" "$CONFIG_OUT" | tr -d '[:space:]')
-              if [[ "$DEPLOY" =~ ^(false|False)$ ]]; then
-                DEPLOY="false"
-              else
-                DEPLOY="true"
-              fi
-
-              echo "Deploy flag: $DEPLOY"
-              echo "##vso[task.setvariable variable=DeployFlag;isOutput=true]$DEPLOY"
-
-
-# ============== BUILD STAGE ==============
-- stage: Build
-  displayName: Build Stage
-  dependsOn: Validation_Stage
-  pool:
-    name: TFS-RH-1
-  condition: succeeded('Validation_Stage')
-  jobs:
-    - job: Build_Job
-      displayName: Agent Build Job
-      workspace:
-        clean: all
-      steps:
-
-        - checkout: self
-          path: s/app
-
-        - checkout: git://EISGITREPO/eis-configuration@refs/heads/config
-          path: s/eis-configurations
-
-        - task: CmdLine@2
-          displayName: Building BAR file
-          env:
-            BRANCH: $(Build.SourceBranchName)
-          inputs:
-            script: |
-              set -e
-              . /opt/IBM/ace/server/bin/mqsiprofile
-
-              # ── Resolve application name ──────────────────────────────────────
-              if [ -z "${{ parameters.applicationName }}" ]; then
-                applicationName=$(ls -1 $(Build.SourcesDirectory)/app \
-                  | grep -vE "Config|README.md|azure-pipelines.yml" \
-                  | tail -n 1)
-              else
-                applicationName="${{ parameters.applicationName }}"
-              fi
-
-              if [ ! -e $(Build.SourcesDirectory)/app/Config ]; then
-                mkdir -p $(Build.SourcesDirectory)/app/Config
-              fi
-
-              # ── For main branch: build only, no config ────────────────────────
-              if [ "$BRANCH" = "main" ]; then
-                echo "Branch is 'main' — building without config"
-                ibmint package \
-                  --input-path $(Build.SourcesDirectory)/app \
-                  --output-bar-file $(Build.BinariesDirectory)/$applicationName.bar \
-                  --java-version 8
-                exit 0
-              fi
-
-              # ── Pull config from eis-configurations ──────────────────────────
-              EIS_CONFIG=$(Build.SourcesDirectory)/eis-configurations/"$BRANCH"_config.yml
-              CONFIG_OUT=$(Build.SourcesDirectory)/app/Config/config.yml
-
-              yq e ".$applicationName | select(. != null)" "$EIS_CONFIG" > "$CONFIG_OUT"
-              yq -i ".ApplicationName = \"$applicationName\"" "$CONFIG_OUT"
-
-              echo "--- Config used for build ---"
-              cat "$CONFIG_OUT"
-              echo "-----------------------------"
-
-              # ── Build BAR (no overrides) ──────────────────────────────────────
-              ibmint package \
-                --input-path $(Build.SourcesDirectory)/app \
-                --output-bar-file $(Build.BinariesDirectory)/$applicationName.bar \
-                --java-version 8
-
-              cp "$CONFIG_OUT" $(Build.BinariesDirectory)/config.yml
-
-        - task: CopyFiles@2
-          inputs:
-            SourceFolder: $(Build.BinariesDirectory)
-            TargetFolder: $(Build.ArtifactStagingDirectory)
-            OverWrite: true
-
-        - task: PublishBuildArtifacts@1
-          inputs:
-            PathtoPublish: $(Build.ArtifactStagingDirectory)
-            ArtifactName: drop
+      </div>
+    </div>
+  </div>
+</div>
 
 
-# ============== RELEASE STAGE ==============
-- stage: Release
-  displayName: Deploy Stage
-  pool:
-    name: TFS-RH-1
-  dependsOn: [Validation_Stage, Build]
-  condition: |
-    and(
-      succeeded('Build'),
-      eq(dependencies.Validation_Stage.outputs['Validation_Job.val_task.DeployFlag'], 'true'),
-      ne(variables['Build.SourceBranchName'], 'main')
-    )
-  jobs:
-    - deployment: DeployApp
-      displayName: Deployment Job
-      environment: $(Build.SourceBranchName)
-      strategy:
-        runOnce:
-          deploy:
-            steps:
-              - download: current
-                artifact: drop
 
-              - task: CmdLine@2
-                displayName: Dynamic Multi-Node Deployment
-                env:
-                  BRANCH: $(Build.SourceBranchName)
-                inputs:
-                  workingDirectory: $(Pipeline.Workspace)/drop
-                  script: |
-                    set -e
-                    . /opt/IBM/ace/server/bin/mqsiprofile
 
-                    # ── 1. Load Data ──────────────────────────────────────────
-                    ApplicationName=$(yq e ".ApplicationName" config.yml)
-                    # Convert comma-separated strings to space-separated arrays
-                    NODES_RAW=$(yq e ".IntegrationNode" config.yml | tr -d ',' | sed 's/null//g')
-                    SERVERS_RAW=$(yq e ".IntegrationServer // \"\"" config.yml | tr -d ',' | sed 's/null//g')
+This is JS:
+// ══════════ TFS CI/CD ══════════
+function ciDov(e){e.preventDefault();document.getElementById('ci-uz').classList.add('drag');}
+function ciDlv(){document.getElementById('ci-uz').classList.remove('drag');}
+function ciDop(e){e.preventDefault();ciDlv();const f=e.dataTransfer?.files[0];if(f)ciSetFile(f);}
+function ciFileSelect(inp){if(inp.files[0])ciSetFile(inp.files[0]);}
+function ciSetFile(f){
+  ST.ciFile=f;
+  const pf=document.getElementById('ci-pf');pf.style.width='0%';
+  let p=0;const iv=setInterval(()=>{p+=18;pf.style.width=Math.min(p,95)+'%';if(p>=95)clearInterval(iv);},60);
+  setTimeout(()=>{clearInterval(iv);pf.style.width='100%';setTimeout(()=>pf.style.width='0%',600);},800);
+  document.getElementById('ci-fname').textContent=f.name;
+  document.getElementById('ci-fsize').textContent=fmtSz(f.size)+' · '+f.type;
+  document.getElementById('ci-finfo').classList.add('on');
+  toast(f.name+' ready');
+}
+function appendMsg(prefix){
+  const ta=document.getElementById('ci-msg');
+  if(!ta.value.startsWith(prefix))ta.value=prefix+ta.value;
+  ta.focus();
+}
+function ciAutoMsg(){
+  const feat=$v('ci-feature')||'API';
+  const branch=$v('ci-branch')||'dev';
+  const wi=$v('ci-workitem');
+  const author=ST.ciVerifiedAuthor||'';
+  const file=ST.ciFile?ST.ciFile.name:'api-package.zip';
+  let msg=`[Feature] ${feat} — Deploy ${file} to ${branch} branch`;
+  if(wi)msg=`[${wi}] `+msg;
+  if(author)msg+=` | Author: ${author}`;
+  document.getElementById('ci-msg').value=msg;
+}
+function ciReset(){
+  ST.ciFile=null;
+  ST.ciVerifiedAuthor=null;
+  ST.ciVerifiedForCombo=null;
+  document.getElementById('ci-finfo').classList.remove('on');
+  document.getElementById('ci-pf').style.width='0%';
+  document.getElementById('ci-progress-panel').style.display='none';
+  document.getElementById('ci-identity-box').style.display='none';
+  ['ci-reponame','ci-branch','ci-feature','ci-workitem','ci-author','ci-msg','ci-clonepath','ci-targetdir','ci-pat','ci-directurl'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  toast('Reset');
+}
 
-                    IFS=' ' read -r -a NODES <<< "$NODES_RAW"
-                    BROKER_BASE="/home/devops/broker/$BRANCH"
+// Toggles which credential fields are shown/required based on the selected
+// Auth Type — 'basic' needs username+password, 'pat' needs just a PAT,
+// 'winauth' needs a direct (non-proxied) TFS URL for identity PLUS a PAT
+// for the actual push (Windows SSO only covers who you are, not the push).
+function ciAuthModeChanged(){
+  const mode=$v('ci-authmode');
+  document.getElementById('ci-user-row').style.display=mode==='basic'?'':'none';
+  document.getElementById('ci-directurl-row').style.display=mode==='winauth'?'':'none';
+  document.getElementById('ci-pat-row').style.display=(mode==='pat'||mode==='winauth')?'':'none';
+  document.getElementById('ci-pat-note').innerHTML=mode==='winauth'
+    ? 'Still required — Windows SSO only verifies who you are; the actual push to TFS goes through nginx and needs a PAT, same as PAT mode.' : '';
+  document.getElementById('ci-authmode-note').innerHTML=
+    mode==='pat' ? '<i class="fa-solid fa-circle-info"></i> Paste a Personal Access Token. The backend still sends it to TFS\'s own identity API to resolve your real display name — the commit is always credited to whoever the PAT actually belongs to, never to a typed-in name.'
+    : mode==='winauth' ? '<i class="fa-solid fa-circle-info"></i> No username or password typed at all — the backend asks the OS itself (Windows SSPI, or Kerberos on Linux/Mac) who you are, directly against TFS. Only works if this backend runs on YOUR OWN machine (not a shared server), needs a network path to TFS that skips the proxy, and on Linux/Mac needs this machine to already be Kerberos-joined to the domain. If any of that does not hold here, use PAT or Username+Password instead.'
+    : '<i class="fa-solid fa-circle-info"></i> No PAT to generate — enter your normal TFS username and password. The backend sends them to TFS\'s own identity API to resolve your real display name, so the commit is always credited to whoever these credentials actually belong to, never to a typed-in name.';
+  ciPassChanged(); // credentials changed shape — force re-verification
+}
 
-                    # ── 2. Node Loop ──────────────────────────────────────────
-                    for IntegrationNode in "${NODES[@]}"; do
-                      echo -e "\n===================================================="
-                      echo " NODE: $IntegrationNode"
-                      echo "===================================================="
+// Reads whichever credential fields are active for the current Auth Type.
+// Centralizing this means every function (test/verify/submit) always agrees
+// on what "the current credentials" are.
+function ciCreds(){
+  const mode=$v('ci-authmode')||'basic';
+  if(mode==='pat'){
+    return {mode,username:'',password:$v('ci-pat'),directUrl:'',combo:'pat\u0000'+$v('ci-pat')};
+  }
+  if(mode==='winauth'){
+    const du=$v('ci-directurl'),pw=$v('ci-pat');
+    return {mode,username:'',password:pw,directUrl:du,combo:'winauth\u0000'+du+'\u0000'+pw};
+  }
+  const u=$v('ci-user'),p=$v('ci-pass');
+  return {mode,username:u,password:p,directUrl:'',combo:'basic\u0000'+u+'\u0000'+p};
+}
 
-                      # Find .broker connection files
-                      BROKER_FILES=("$BROKER_BASE"/${IntegrationNode}*.broker)
-                      if [ ! -e "${BROKER_FILES[0]}" ]; then
-                        echo "!! Warning: No broker connection files found for $IntegrationNode"
-                        continue
-                      fi
+async function ciTestConnection(){
+  const resEl=document.getElementById('ci-test-result');
+  const btn=document.getElementById('ci-test-btn');
+  const tfsUrl=$v('ci-tfsurl');const backendUrl=$v('ci-backend').trim();
+  const {mode,username,password,directUrl}=ciCreds();
+  if(!backendUrl){toast('Set the Check-in Backend Service URL first','warn');return;}
+  if(mode==='basic'&&!username){toast('Enter your TFS username first','warn');return;}
+  if(mode==='winauth'&&!directUrl){toast('Enter the direct (non-proxied) TFS URL first','warn');return;}
+  if(!password){toast(mode==='basic'?'Enter your TFS password first':'Enter your Personal Access Token first','warn');return;}
+  btn.disabled=true;
+  resEl.style.color='var(--t2)';
+  resEl.innerHTML='<i class="fa-solid fa-spinner fa-spin"></i> Testing connection through nginx → TFS ...';
+  try{
+    const testUrl=backendUrl.replace(/\/api\/tfs-checkin\/?$/,'/api/tfs-test');
+    const resp=await fetch(testUrl,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({tfsUrl,collection:$v('ci-collection')||'DefaultCollection',project:$v('ci-project')||'',repo:$v('ci-reponame')||'',authMode:mode,username,password,directUrl})
+    });
+    const data=await resp.json().catch(()=>({}));
+    if(resp.ok&&data.ok){
+      resEl.style.color='var(--green)';
+      resEl.innerHTML=`<i class="fa-solid fa-circle-check"></i> Connected — ${data.message||'TFS reachable and authenticated'}`;
+      toast('TFS connection OK','ok');
+    }else{
+      resEl.style.color='var(--red)';
+      resEl.innerHTML=`<i class="fa-solid fa-circle-xmark"></i> ${data.message||data.error||('HTTP '+resp.status)}`;
+      toast('TFS connection failed','err');
+    }
+  }catch(err){
+    resEl.style.color='var(--red)';
+    resEl.innerHTML=`<i class="fa-solid fa-circle-xmark"></i> ${err.message} — is the backend running and reachable at ${backendUrl}?`;
+    toast('Could not reach backend','err');
+  }
+  btn.disabled=false;
+}
 
-                      for broker_file in "${BROKER_FILES[@]}"; do
-                        fname=$(basename "$broker_file")
-                        echo "--- Connection: $fname ---"
+// Resolves the real identity behind the entered credentials — PAT,
+// username+password, or Windows SSO, whichever Auth Type is selected — the
+// ONLY value that will ever be used as the commit author. Nothing typed by
+// the user can override this; ciSubmit() blocks until this has succeeded.
+function ciPassChanged(){
+  const {combo}=ciCreds();
+  if(ST.ciVerifiedForCombo!==null&&ST.ciVerifiedForCombo!==combo){
+    ST.ciVerifiedAuthor=null;ST.ciVerifiedForCombo=null;
+    document.getElementById('ci-identity-box').style.display='none';
+    document.getElementById('ci-author').value='';
+  }
+}
+async function ciVerifyIdentity(){
+  const btn=document.getElementById('ci-verify-btn');
+  const box=document.getElementById('ci-identity-box');
+  const nameEl=document.getElementById('ci-identity-name');
+  const tfsUrl=$v('ci-tfsurl');const backendUrl=$v('ci-backend').trim();
+  const {mode,username,password,directUrl,combo}=ciCreds();
+  if(!backendUrl){toast('Set the Check-in Backend Service URL first','warn');return;}
+  if(mode==='basic'&&!username){toast('Enter your TFS username first','warn');document.getElementById('ci-user').focus();return;}
+  if(mode==='winauth'&&!directUrl){toast('Enter the direct (non-proxied) TFS URL first','warn');document.getElementById('ci-directurl').focus();return;}
+  if(mode!=='winauth'&&!password){toast(mode==='basic'?'Enter your TFS password first':'Enter your Personal Access Token first','warn');document.getElementById(mode==='basic'?'ci-pass':'ci-pat').focus();return;}
+  btn.disabled=true;
+  const prevHtml=btn.innerHTML;
+  btn.innerHTML='<i class="fa-solid fa-spinner fa-spin"></i> Verifying…';
+  ST.ciVerifiedAuthor=null;
+  ST.ciVerifiedForCombo=null;
+  try{
+    const whoUrl=backendUrl.replace(/\/api\/tfs-checkin\/?$/,'/api/tfs-whoami');
+    const resp=await fetch(whoUrl,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tfsUrl,collection:$v('ci-collection')||'DefaultCollection',project:$v('ci-project')||'',repo:$v('ci-reponame')||'',authMode:mode,username,password,directUrl})});
+    const data=await resp.json().catch(()=>({}));
+    if(resp.ok&&data.ok&&data.name){
+      ST.ciVerifiedAuthor=data.name;
+      ST.ciVerifiedForCombo=combo;
+      document.getElementById('ci-author').value=data.name;
+      nameEl.textContent=data.name;
+      box.style.display='';
+      const viaNote=data.verifiedVia&&data.verifiedVia!=='rest'?` (via ${data.verifiedVia}${data.isOpaqueId?', no friendly name available from TFS':''})`:'';
+      toast(`Identity verified: ${data.name}${viaNote}`,'ok');
+    }else{
+      document.getElementById('ci-author').value='';
+      box.style.display='none';
+      toast(data.message||'Could not verify identity from these credentials','err');
+    }
+  }catch(err){
+    document.getElementById('ci-author').value='';
+    box.style.display='none';
+    toast('Could not reach backend to verify identity','err');
+  }
+  btn.disabled=false;
+  btn.innerHTML=prevHtml;
+}
 
-                        # ── 3. Dynamic Discovery (The Ground Truth) ───────────
-                        # Extracts only the server names from the node file
-                        MQSI_DISCOVERED=$(mqsilist -n "$broker_file" | awk -F"'" '{print $2}' | grep -v '^$' | tail -n +2)
-                        
-                        if [ -z "$MQSI_DISCOVERED" ]; then
-                          echo "!! Error: No active servers found on $fname via mqsilist."
-                          exit 1
-                        fi
-                        mapfile -t ALL_ACTIVE_SERVERS <<< "$MQSI_DISCOVERED"
+function ciPipelineSteps(repo){
+  return[
+  {label:'Validate ZIP package',sub:'Checking file integrity and manifest'},
+  {label:'Connect to TFS Server',sub:'Authenticating with TFS collection'},
+  {label:'Locate repository',sub:`Resolving repository "${repo}" on TFS server`},
+  {label:'Create workspace mapping',sub:`Mapping clone path to repository "${repo}"`},
+  {label:'Get latest from branch',sub:'tf get /force from target branch'},
+  {label:'Extract & stage files',sub:'Unzipping API package to staging area'},
+  {label:'Add files to TFS pending changes',sub:'tf add *.* /recursive'},
+  {label:'Check-in with commit message',sub:`tf checkin /comment:"-m ..." into ${repo}`},
+  {label:'Trigger CI build pipeline',sub:'Queuing build on TFS build server'},
+  {label:'Verify check-in',sub:'Confirming changeset number'},
+  ];
+}
+let CI_PIPELINE_STEPS=ciPipelineSteps('repository');
 
-                        # ── 4. Determine Targets ──────────────────────────────
-                        TARGET_SERVERS=()
+function fileToBase64(file){
+  return new Promise((resolve,reject)=>{
+    const r=new FileReader();
+    r.onload=()=>{
+      const s=r.result;
+      resolve(typeof s==='string'?s.split(',').pop():s);
+    };
+    r.onerror=()=>reject(new Error('Could not read the ZIP file'));
+    r.readAsDataURL(file);
+  });
+}
+async function ciSubmit(){
+  if(!ST.ciFile){toast('Upload a ZIP file first','warn');return;}
+  const repo=$v('ci-reponame');const branch=$v('ci-branch');const feature=$v('ci-feature');const msg=$v('ci-msg');
+  const tfsUrl=$v('ci-tfsurl');const clonePath=$v('ci-clonepath');const targetDir=$v('ci-targetdir');
+  const backendUrl=$v('ci-backend').trim();
+  if(!repo){toast('Enter the Repository Name — code cannot be checked in without a target repository','warn');document.getElementById('ci-reponame').focus();return;}
+  if(!branch){toast('Enter a branch name','warn');return;}
+  if(!msg){toast('Add a commit message','warn');return;}
+  if(!backendUrl){toast('Set the Check-in Backend Service URL — the browser cannot run git commands itself','warn');document.getElementById('ci-backend').focus();return;}
+  const {mode,username:ciUser,password:ciPass,directUrl,combo}=ciCreds();
+  if(mode==='basic'&&!ciUser){toast('Enter your TFS username','warn');document.getElementById('ci-user').focus();return;}
+  if(mode==='winauth'&&!directUrl){toast('Enter the direct (non-proxied) TFS URL','warn');document.getElementById('ci-directurl').focus();return;}
+  if(!ciPass){toast(mode==='basic'?'Enter your TFS password — required to authenticate against TFS':'Enter your Personal Access Token — required for the actual git push','warn');document.getElementById(mode==='basic'?'ci-pass':'ci-pat').focus();return;}
+  // Identity must have been verified for THESE exact credentials — if
+  // anything was changed after verifying, or verification never happened,
+  // block the check-in. This is a UX safeguard only; the backend
+  // independently re-verifies the credentials against TFS again before
+  // committing, so identity can never be spoofed even if this client-side
+  // check were bypassed.
+  if(!ST.ciVerifiedAuthor||ST.ciVerifiedForCombo!==combo){
+    toast('Click "Verify My Identity" first — the commit author is resolved from TFS, not typed in','warn');
+    document.getElementById('ci-verify-btn').focus();
+    return;
+  }
+  CI_PIPELINE_STEPS=ciPipelineSteps(repo);
 
-                        if [ -n "$SERVERS_RAW" ]; then
-                          # SCENARIO: Config has a list. We must VALIDATE before deploying.
-                          echo "Logic: Manual List Provided. Validating against live node..."
-                          for s in "${ALL_ACTIVE_SERVERS[@]}"; do
-                            if [[ " $SERVERS_RAW " =~ " $s " ]]; then
-                              TARGET_SERVERS+=("$s")
-                              echo "  [VALIDATED] Server '$s' is active and in config."
-                            else
-                              echo "  [IGNORED]   Server '$s' is active but NOT in config."
-                            fi
-                          done
-                        else
-                          # SCENARIO: Config is empty. Deploy to everything active.
-                          echo "Logic: No list provided. Deploying to ALL discovered servers..."
-                          TARGET_SERVERS=("${ALL_ACTIVE_SERVERS[@]}")
-                        fi
+  const btn=document.getElementById('ci-btn');
+  btn.disabled=true;
+  btn.innerHTML=`<div class="ld" style="color:#03182a"><div class="ldd"></div><div class="ldd"></div><div class="ldd"></div></div>`;
 
-                        # ── 5. Execution ──────────────────────────────────────
-                        if [ ${#TARGET_SERVERS[@]} -eq 0 ]; then
-                          echo "!! Result: No servers matched the configuration for this node."
-                        else
-                          for server in "${TARGET_SERVERS[@]}"; do
-                            echo ">>> DEPLOYING -> $server"
-                            ibmint deploy \
-                              --input-bar-file "$ApplicationName.bar" \
-                              --integration-node-file "$broker_file" \
-                              --output-server "$server"
-                          done
-                        fi
-                      done
-                    done
+  const panel=document.getElementById('ci-progress-panel');
+  panel.style.display='';
+  const stepsList=document.getElementById('ci-steps-list');
+  const logEl=document.getElementById('ci-log');
+  const prog=document.getElementById('ci-progress');
+  const pgpct=document.getElementById('ci-pgpct');
+  const pgstatus=document.getElementById('ci-pgstatus');
+  const pgeta=document.getElementById('ci-pgeta');
+  logEl.innerHTML='';
+  pgpct.textContent='0%';pgstatus.textContent='Starting…';pgeta.innerHTML='&nbsp;';
+
+  function log(txt,type=''){logEl.innerHTML+=`<span class="log-${type}">${txt}</span>\n`;logEl.scrollTop=logEl.scrollHeight;}
+  // setPct is the single source of truth for the % readout and bar width —
+  // both the discrete step-based progress below AND the smooth simulated
+  // progress during the backend round-trip (see simEta()) go through it.
+  function setPct(pct,statusTxt,timeTxt){
+    const clamped=Math.max(0,Math.min(100,pct));
+    const done=Math.round(clamped),left=100-done;
+    prog.style.width=clamped+'%';
+    pgpct.textContent=done+'%';
+    if(statusTxt!==undefined)pgstatus.textContent=statusTxt;
+    // Always surface done/left alongside whatever time estimate is known —
+    // "X% left" is exact (it's just 100 - done%); the time is always an
+    // estimate, so it's labelled as such rather than implied to be precise.
+    if(done>=100){
+      pgeta.innerHTML='&nbsp;';
+    }else if(timeTxt===undefined||timeTxt==='&nbsp;'){
+      pgeta.textContent=`${left}% left`;
+    }else{
+      pgeta.textContent=`${left}% left · ${timeTxt}`;
+    }
+  }
+  function setStep(idx,state){
+    stepsList.innerHTML=CI_PIPELINE_STEPS.map((s,i)=>`<div class="ci-step ${i<idx?'done':i===idx?state:''}" id="cis-${i}"><div class="ci-step-num">${i<idx?'✓':i+1}</div><div class="ci-step-body"><div class="ci-step-title">${s.label}</div><div class="ci-step-sub">${s.sub}</div></div></div>`).join('');
+    const pct=(idx/CI_PIPELINE_STEPS.length)*100;
+    const current=CI_PIPELINE_STEPS[idx];
+    setPct(pct, current?`${current.label}…`:'Finishing up…', '&nbsp;');
+    const sids=['ci-s1','ci-s2','ci-s3','ci-s4','ci-s5'];
+    const map=[0,1,4,7,9];const sidx=map.findLastIndex(m=>idx>=m);
+    document.querySelectorAll('#pci .sb-it').forEach(e=>e.classList.remove('on'));
+    if(sids[sidx])document.getElementById(sids[sidx])?.classList.add('on');
+  }
+  // While steps 3–8 are all "running" at once (the real work is one opaque
+  // backend round-trip — unzip, tf add, tf checkin, build trigger — so we
+  // can't get a real per-step percentage from it), simulate a smooth
+  // percentage climb with an estimated time remaining, based on the ZIP
+  // size, so the user has a sense of how long the check-in will take
+  // instead of the bar just freezing until the response comes back.
+  let simTimer=null;
+  function startSimEta(fileSizeBytes){
+    const estMs=Math.min(26000,Math.max(4500,3200+fileSizeBytes/45000)); // rough heuristic, not a real measurement
+    const floorPct=30,ceilPct=88; // never simulate past 88% — the real 100% only happens once the backend actually confirms
+    const t0=performance.now();
+    setPct(floorPct,'Uploading ZIP & running check-in on TFS backend…',`~${Math.ceil(estMs/1000)}s remaining (estimated)`);
+    simTimer=setInterval(()=>{
+      const elapsed=performance.now()-t0;
+      const t=Math.min(1,elapsed/estMs);
+      const pct=floorPct+(ceilPct-floorPct)*(1-Math.pow(1-t,2)); // ease-out: fast at first, slows near the ceiling
+      const remainMs=Math.max(0,estMs-elapsed);
+      setPct(pct,'Uploading ZIP & running check-in on TFS backend…',
+        remainMs>800?`~${Math.ceil(remainMs/1000)}s remaining (estimated)`:'Almost done…');
+    },250);
+  }
+  function stopSimEta(){ if(simTimer){clearInterval(simTimer);simTimer=null;} }
+  // Polls GET /api/tfs-checkin-status?jobId=... on a backend that supports
+  // the newer async job model (see server.js) for REAL, server-computed
+  // percent/label/ETA — this takes over from the client-side simulated
+  // climb above the moment a jobId comes back, since we no longer have to
+  // guess. Resolves with a result object shaped like the old synchronous
+  // response so the rest of ciSubmit doesn't need to know which path ran.
+  async function pollCheckinJob(jobId){
+    const statusUrl=backendUrl.replace(/\/api\/tfs-checkin\/?$/,'/api/tfs-checkin-status')+`?jobId=${encodeURIComponent(jobId)}`;
+    let lastLogged=0;
+    for(;;){
+      await new Promise(r=>setTimeout(r,700));
+      let data;
+      try{
+        const r=await fetch(statusUrl);
+        data=await r.json();
+      }catch(e){ continue; } // one dropped poll shouldn't abort the whole check-in
+      if(!data||(data.ok===false&&data.percent==null)){
+        throw new Error((data&&data.message)||'Lost track of check-in progress on the backend');
+      }
+      const pct=typeof data.percent==='number'?data.percent:0;
+      const etaTxt=data.done?'&nbsp;':(data.etaMs!=null?`~${Math.ceil(data.etaMs/1000)}s remaining (estimated)`:'Estimating time…');
+      setPct(pct,data.label||'Working…',etaTxt);
+      if(Array.isArray(data.log)){
+        for(;lastLogged<data.log.length;lastLogged++)log(`[..] ${data.log[lastLogged]}`,'info');
+      }
+      if(data.done){
+        const r=data.result||{};
+        return {ok:!!data.success,commit:r.commit,changeset:r.changeset,filesChanged:r.filesChanged,author:r.author,message:data.error||r.message,buildTriggered:r.buildTriggered,log:data.log};
+      }
+    }
+  }
+
+  log('[INFO] EIS DevSuite (by ANKIT) — TFS CI/CD Pipeline started','info');
+  log(`[INFO] File: ${ST.ciFile.name} (${fmtSz(ST.ciFile.size)})`,'info');
+  log(`[INFO] Repository: ${repo}`,'info');
+  log(`[INFO] Branch: ${branch}`,'info');
+  log(`[INFO] Feature: ${feature||'N/A'}`,'info');
+  log(`[INFO] TFS: ${tfsUrl}`,'info');
+  log(`[INFO] Verified identity (from TFS credentials): ${ST.ciVerifiedAuthor}`,'ok');
+  log(`[INFO] Sending ZIP to check-in backend: ${backendUrl}`,'info');
+
+  // Animate the first few steps locally (validation/connect feel) while the real
+  // work — unzip, git init/clone, add, commit, push — happens server-side.
+  for(let i=0;i<3;i++){
+    setStep(i,'running');
+    await new Promise(r=>setTimeout(r,450+Math.random()*350));
+    if(i===0)log(`[OK] ZIP validated — ${ST.ciFile.name}`,'ok');
+    else if(i===1)log(`[OK] Connected to check-in backend`,'ok');
+    else if(i===2)log(`[..] Backend resolving repository "${repo}" — this may take a moment`,'info');
+    setStep(i+1,'');
+  }
+  for(let i=3;i<8;i++)setStep(i,'running');
+  startSimEta(ST.ciFile.size);
+
+  let result=null,ok=false,errMsg='';
+  const t0=performance.now();
+  try{
+    // Read the ZIP as base64 to match the backend's JSON contract (zipBase64).
+    // NOTE: `author` is deliberately NOT sent — the backend resolves the
+    // committer name itself, independently, straight from TFS credentials below.
+    const zipBase64=await fileToBase64(ST.ciFile);
+    const payload={
+      zipBase64, zipName: ST.ciFile.name,
+      repo, branch, feature: feature||'', workItem: $v('ci-workitem')||'',
+      message: msg, tfsUrl, clonePath: clonePath||'', targetDir: targetDir||'',
+      collection: $v('ci-collection')||'DefaultCollection', project: $v('ci-project')||'',
+      authMode: mode, username: ciUser||'', password: ciPass||'', directUrl: directUrl||'' // sent over HTTPS only — see setup guide
+    };
+
+    const resp=await fetch(backendUrl,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const ms=Math.round(performance.now()-t0);
+    if(!resp.ok){
+      const t=await resp.text().catch(()=>'');
+      throw new Error(`Backend responded ${resp.status}${t?': '+t.slice(0,300):''}`);
+    }
+    const startData=await resp.json();
+    if(startData&&startData.jobId){
+      // Newer backend: real work runs async server-side and reports true
+      // progress — hand off from the simulated climb to real polling.
+      stopSimEta();
+      log(`[INFO] Check-in job started on backend (jobId ${startData.jobId}) — polling for live progress…`,'info');
+      result=await pollCheckinJob(startData.jobId);
+    }else{
+      // Older/unmodified backend: single synchronous response, exactly as before.
+      result=startData;
+    }
+    ok=!!result.ok;
+    if(!ok)errMsg=result.message||result.error||'Backend reported failure';
+    stopSimEta();
+    for(let i=3;i<8;i++)setStep(i+1,'');
+    if(ok){
+      log(`[OK] Workspace prepared by backend (${ms}ms)`,'ok');
+      log(`[OK] git add / commit — ${result.filesChanged??'?'} file(s) changed, authored by ${result.author||ST.ciVerifiedAuthor||'verified user'}`,'ok');
+      log(`[OK] git push → ${repo} (${branch}) succeeded — ${result.commit||result.changeset||'commit'} `,'ok');
+      if(result.buildTriggered)log(`[OK] Build triggered — Config: ${$v('ci-buildcfg')}`,'ok');
+      setStep(9,'running');
+      await new Promise(r=>setTimeout(r,300));
+      setStep(10,'');
+      setPct(100,'Check-in complete','&nbsp;');
+      log(`[OK] Check-in complete! Code successfully checked in to repository "${repo}".`,'ok');
+    }else{
+      log(`[ERROR] Check-in failed: ${errMsg}`,'err');
+      setStep(3,'error');
+      setPct(pgpct.textContent.replace('%',''),'Check-in failed','&nbsp;');
+    }
+  }catch(err){
+    ok=false;errMsg=err.message;
+    stopSimEta();
+    log(`[ERROR] ${err.message}`,'err');
+    log(`[INFO] Make sure the check-in backend (Node.js service, see companion code) is running and reachable at: ${backendUrl}`,'info');
+    setStep(3,'error');
+    setPct(pgpct.textContent.replace('%',''),'Check-in failed','&nbsp;');
+  }
+
+  if(ok){
+    const hEntry={file:ST.ciFile.name,repo,branch,feature:feature||'',msg,cs:result.commit||result.changeset||'-',ts:Date.now(),ok:true};
+    ST.ciHistory.unshift(hEntry);
+    if(ST.ciHistory.length>20)ST.ciHistory.pop();
+    localStorage.setItem('devSuiteCi',JSON.stringify(ST.ciHistory));
+    renderCiHistory();
+    toast(`✓ Checked in to repository "${repo}" (${branch}) — ${result.commit||result.changeset||''}`,'ok');
+  }else{
+    const hEntry={file:ST.ciFile.name,repo,branch,feature:feature||'',msg,cs:'FAILED',ts:Date.now(),ok:false};
+    ST.ciHistory.unshift(hEntry);
+    if(ST.ciHistory.length>20)ST.ciHistory.pop();
+    localStorage.setItem('devSuiteCi',JSON.stringify(ST.ciHistory));
+    renderCiHistory();
+    toast(`✗ Check-in failed: ${errMsg}`,'err');
+  }
+
+  btn.disabled=false;
+  btn.innerHTML='<i class="fa-solid fa-upload"></i> Check-In to TFS';
+}
+
+function renderCiHistory(){
+  const h=document.getElementById('ci-history');
+  if(!ST.ciHistory.length){h.innerHTML='<div style="padding:8px 13px;font-size:10px;color:var(--t3)">No check-ins yet</div>';return;}
+  h.innerHTML=ST.ciHistory.slice(0,6).map(r=>{
+    const age=Math.floor((Date.now()-r.ts)/1000);
+    const as=age<60?age+'s':age<3600?Math.floor(age/60)+'m':Math.floor(age/3600)+'h ago';
+    return `<div class="sb-it" style="flex-direction:column;align-items:flex-start;gap:1px;cursor:default">
+      <span style="font-size:10.5px;color:var(--sky)">${r.file||'unknown.zip'}</span>
+      <span style="font-size:9.5px;color:var(--t3)"><i class="fa-solid fa-code-fork" style="margin-right:3px;opacity:.7"></i>${r.repo||'(no repo)'} · ${r.branch} · CS#${r.cs} · ${as}</span>
+    </div>`;
+  }).join('');
+}
+
+
+
+
+
+Node js:
+    async function handleCheckin(body, res) {
+  const {
+    zipBase64, zipName, repo, branch, feature, workItem, message,
+    tfsUrl, clonePath, targetDir, collection, project, authMode, username, password, directUrl
+  } = body;
+  const mode = ['pat', 'winauth'].includes(authMode) ? authMode : 'basic';
+  if (!zipBase64) return sendJson(res, 200, { ok: false, message: 'No zip data received' });
+  if (!repo) return sendJson(res, 200, { ok: false, message: 'repo is required' });
+  if (!branch) return sendJson(res, 200, { ok: false, message: 'branch is required' });
+  if (mode === 'basic' && !username) return sendJson(res, 200, { ok: false, message: 'TFS username is required' });
+  if (!password) return sendJson(res, 200, { ok: false, message: mode === 'basic' ? 'password is required' : 'A PAT is required for the actual git push (Windows SSO only covers identity verification)' });
+  let identity;
+  try {
+    identity = await resolveIdentity({ tfsUrl, collection, project, repo, authMode: mode, username, password, directUrl });
+  } catch (err) {
+    return sendJson(res, 200, { ok: false, message: `Identity verification failed — check-in blocked: ${err.message}` });
+  }
+  const author = identity.name;
+  const authorEmail = `${safeName(author).toLowerCase()}@local`;
+  const gitUsername = mode === 'basic' ? username : 'pat';
+  const plainRemote = buildRemoteUrl({ tfsUrl, collection, project, repo });
+  //const remote = withCreds(plainRemote, gitUsername, password);
+  const creds = { username, password };
+  const workDir = clonePath && path.isAbsolute(clonePath)
+    ? clonePath
+    : path.join(os.tmpdir(), 'tfs-ci', safeName(repo));
+
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tfs-ci-zip-'));
+  const zipPath = path.join(tmpRoot, zipName || 'package.zip');
+  const extractDir = path.join(tmpRoot, 'extracted');
+
+  const log = [];
+  const step = (s) => log.push(s);
+
+  try {
+    step(`Verified identity — checking in as "${author}" (via ${identity.verifiedVia}${identity.isOpaqueId ? ', opaque ID — no friendly display name available from TFS' : ''})`);
+    // 1. Decode & extract the uploaded zip
+    step('Decoding uploaded zip...');
+    fs.writeFileSync(zipPath, Buffer.from(zipBase64, 'base64'));
+    step('Extracting zip (Expand-Archive / unzip)...');
+    await extractZip(zipPath, extractDir);
+
+    // 2. Ensure we have a local clone pointed at the (nginx-proxied) remote
+    fs.mkdirSync(path.dirname(workDir), { recursive: true });
+    if (fs.existsSync(path.join(workDir, '.git'))) {
+      step(`Reusing existing clone at ${workDir}`);
+      await run(['remote', 'set-url', 'origin', plainRemote], workDir);
+      await run(['fetch', 'origin'], workDir,undefined, creds);
+    } else {
+      step(`git clone ${plainRemote} -> ${workDir}`);
+      try {
+        await run(['clone', remote, workDir], undefined, 120000,creds);
+      } catch (e) {
+        // Repo might be empty / brand new on the server — init locally instead
+        step('clone failed (likely an empty new repo) — falling back to git init');
+        fs.mkdirSync(workDir, { recursive: true });
+        await run(['init'], workDir);
+        await run(['remote', 'add', 'origin', plainRemote], workDir);
+        await run(['fetch', 'origin'], workDir,undefined, creds).catch(() => {});
+      }
+    }
+
+    // 3. Checkout (or create) the target branch
+    step(`Checking out branch "${branch}"`);
+    try {
+      await run(['checkout', branch], workDir);
+      await run(['reset', '--hard', `origin/${branch}`], workDir).catch(() => {});
+    } catch (e) {
+      try {
+        await run(['checkout', '-b', branch, `origin/${branch}`], workDir);
+      } catch (e2) {
+        await run(['checkout', '-b', branch], workDir);
+      }
+    }
+
+    // 4. Copy extracted files into the working copy (optionally under targetDir)
+    const dest = targetDir ? path.join(workDir, targetDir) : workDir;
+    fs.mkdirSync(dest, { recursive: true });
+    step(`Copying extracted files into ${dest}`);
+    fs.cpSync(extractDir, dest, { recursive: true, force: true });
+
+    // 5. Stage, commit, push
+    await run(['add', '-A'], workDir);
+    const statusOut = await run(['status', '--porcelain'], workDir);
+    if (!statusOut.trim()) {
+      return sendJson(res, 200, { ok: false, message: 'Nothing to commit — no file changes detected after copying the zip', log });
+    }
+
+    //6. New changes for username and email
+    await run(['config','user.email','apidev.eis@sbi.co.in'],workDir);
+    await run(['config','user.name',author],workDir);
+
+    step(`Committing as verified identity "${author}"...`);
+    const commitMsg = message || `[${workItem || feature || 'CI'}] Automated check-in for ${feature || repo}`;
+    const commitArgs = ['commit', '-m', commitMsg, '--author', `${author} <${authorEmail}>`];
+    await run(commitArgs, workDir);
+
+    step(`Pushing to origin/${branch}...`);
+    await run(['push', 'origin', `HEAD:${branch}`], workDir, 120000,creds);
+
+    const shortHash = await run(['rev-parse', '--short', 'HEAD'], workDir);
+    const filesChanged = statusOut.split('\n').filter(Boolean).length;
+
+    return sendJson(res, 200, {
+      ok: true,
+      commit: shortHash,
+      branch,
+      author,
+      filesChanged,
+      message: `Checked in as commit ${shortHash} (author: ${author})`,
+      buildTriggered: false,
+      log
+    });
+  } catch (err) {
+    return sendJson(res, 200, { ok: false, message: err.message, log });
+  } finally {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
+}
+
+
+
+
+    
+    
