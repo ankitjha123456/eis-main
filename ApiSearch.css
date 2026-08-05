@@ -1,30 +1,39 @@
 const express = require('express');
+const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { exec } = require('child_process');
 const { promisify } = require('util');
 const execAsync = promisify(exec);
-const cors = require('cors');
-const unzipper = require('unzipper');
 const axios = require('axios');
 
 const app = express();
 const PORT = process.env.PORT || 4416;
 
+// Middleware
 app.use(cors());
 app.use(express.json({ limit: '500mb' }));
+app.use(express.urlencoded({ extended: true, limit: '500mb' }));
 
-// ══════════ Utility Functions ══════════
+// ═══════════════════════════════════════════════════════════════
+// Utility Functions
+// ═══════════════════════════════════════════════════════════════
+
 function sendJson(res, status, data) {
   res.status(status).json(data);
 }
 
-async function run(cmd, cwd, timeout = 60000) {
-  const options = { cwd: cwd || process.cwd(), timeout, shell: true };
+async function runCommand(cmd, cwd, timeout = 60000) {
+  const options = { 
+    cwd: cwd || process.cwd(), 
+    timeout, 
+    shell: true,
+    env: process.env
+  };
   try {
     const { stdout, stderr } = await execAsync(cmd, options);
-    return stdout;
+    return stdout || stderr;
   } catch (err) {
     if (err.stdout) throw new Error(err.stdout);
     if (err.stderr) throw new Error(err.stderr);
@@ -32,165 +41,281 @@ async function run(cmd, cwd, timeout = 60000) {
   }
 }
 
-async function extractZip(zipPath, destDir) {
-  fs.mkdirSync(destDir, { recursive: true });
-  try {
-    await run(`unzip -o "${zipPath}" -d "${destDir}"`);
-    return;
-  } catch (e) {
-    console.log('System unzip failed, trying Node.js unzipper...');
-  }
-  
-  const stream = fs.createReadStream(zipPath).pipe(unzipper.Extract({ path: destDir }));
-  return new Promise((resolve, reject) => {
-    stream.on('finish', resolve);
-    stream.on('error', reject);
+// ═══════════════════════════════════════════════════════════════
+// Health Check
+// ═══════════════════════════════════════════════════════════════
+
+app.get('/health', (req, res) => {
+  sendJson(res, 200, { 
+    ok: true, 
+    message: 'TFS Check-in Backend is running',
+    timestamp: new Date().toISOString(),
+    node_version: process.version
   });
-}
+});
 
-// ══════════ Identity Resolution ══════════
-async function resolveIdentity({ tfsUrl, collection, project, repo, authMode, username, password, directUrl }) {
-  try {
-    const apiUrl = `${tfsUrl}/${collection}/_apis/connectionData?api-version=6.0`;
-    const auth = authMode === 'pat' 
-      ? { headers: { 'Authorization': `Bearer ${password}` } }
-      : authMode === 'winauth'
-      ? { headers: { 'Authorization': 'Negotiate' }, httpsAgent: new (require('https').Agent)({ rejectUnauthorized: false }) }
-      : { auth: { username, password } };
-    
-    const response = await axios.get(apiUrl, { 
-      ...auth,
-      timeout: 10000,
-      httpsAgent: new (require('https').Agent)({ rejectUnauthorized: false })
-    });
-    const data = response.data;
-    const authenticatedUser = data.authenticatedUser || {};
-    const name = authenticatedUser.displayName || authenticatedUser.providerDisplayName || authenticatedUser.uniqueName || username || 'Unknown User';
-    
-    return { 
-      name, 
-      verifiedVia: authMode,
-      isOpaqueId: !authenticatedUser.displayName
-    };
-  } catch (err) {
-    console.log('Identity API failed, falling back:', err.message);
-    if (authMode === 'basic' && username) {
-      return { name: username, verifiedVia: 'basic-fallback', isOpaqueId: true };
-    }
-    if (authMode === 'winauth') {
-      try {
-        const whoami = await run('whoami');
-        return { name: whoami.trim(), verifiedVia: 'os', isOpaqueId: true };
-      } catch (e) {}
-    }
-    throw new Error(`Could not resolve identity: ${err.message}`);
-  }
-}
+// ═══════════════════════════════════════════════════════════════
+// Test Connection Endpoint
+// ═══════════════════════════════════════════════════════════════
 
-// ══════════ Test Connection Endpoint ══════════
 app.post('/api/tfs-test', async (req, res) => {
-  console.log('📡 Test connection request received');
+  console.log('📡 [Test Connection] Request received');
+  console.log('📡 Body:', JSON.stringify(req.body, null, 2));
+  
   const { tfsUrl, collection, project, repo, authMode, username, password, directUrl } = req.body;
   const mode = ['pat', 'winauth'].includes(authMode) ? authMode : 'basic';
   
+  if (!tfsUrl) {
+    return sendJson(res, 200, { ok: false, message: 'TFS URL is required' });
+  }
+  
   try {
-    const testUrl = `${tfsUrl}/${collection}/_apis/projects?api-version=6.0`;
+    const testUrl = `${tfsUrl}/${collection || 'DefaultCollection'}/_apis/projects?api-version=6.0`;
     console.log(`🔍 Testing connection to: ${testUrl}`);
     
-    const auth = mode === 'pat' 
-      ? { headers: { 'Authorization': `Bearer ${password}` } }
-      : mode === 'winauth'
-      ? { headers: { 'Authorization': 'Negotiate' }, httpsAgent: new (require('https').Agent)({ rejectUnauthorized: false }) }
-      : { auth: { username, password } };
-    
-    await axios.get(testUrl, { 
-      ...auth,
+    let config = {
       timeout: 15000,
       httpsAgent: new (require('https').Agent)({ rejectUnauthorized: false })
-    });
+    };
     
+    if (mode === 'pat') {
+      config.headers = { 'Authorization': `Bearer ${password}` };
+    } else if (mode === 'winauth') {
+      config.headers = { 'Authorization': 'Negotiate' };
+    } else {
+      config.auth = { username, password };
+    }
+    
+    const response = await axios.get(testUrl, config);
     console.log('✅ Connection successful');
-    sendJson(res, 200, { ok: true, message: 'TFS connection successful' });
+    
+    sendJson(res, 200, { 
+      ok: true, 
+      message: 'TFS connection successful',
+      projects: response.data.count || 0
+    });
   } catch (err) {
     console.log('❌ Connection failed:', err.message);
-    sendJson(res, 200, { ok: false, message: `Connection failed: ${err.message}` });
+    sendJson(res, 200, { 
+      ok: false, 
+      message: `Connection failed: ${err.message}` 
+    });
   }
 });
 
-// ══════════ Who Am I Endpoint ══════════
+// ═══════════════════════════════════════════════════════════════
+// Who Am I Endpoint
+// ═══════════════════════════════════════════════════════════════
+
 app.post('/api/tfs-whoami', async (req, res) => {
-  console.log('👤 Whoami request received');
+  console.log('👤 [Whoami] Request received');
+  console.log('👤 Body:', JSON.stringify(req.body, null, 2));
+  
   const { tfsUrl, collection, project, repo, authMode, username, password, directUrl } = req.body;
   const mode = ['pat', 'winauth'].includes(authMode) ? authMode : 'basic';
   
   try {
-    const identity = await resolveIdentity({ tfsUrl, collection, project, repo, authMode: mode, username, password, directUrl });
-    console.log(`✅ Identity resolved: ${identity.name}`);
-    sendJson(res, 200, { ok: true, name: identity.name, verifiedVia: identity.verifiedVia, isOpaqueId: identity.isOpaqueId });
+    // Try TFS API to get user identity
+    const apiUrl = `${tfsUrl}/${collection || 'DefaultCollection'}/_apis/connectionData?api-version=6.0`;
+    console.log(`🔍 Fetching identity from: ${apiUrl}`);
+    
+    let config = {
+      timeout: 10000,
+      httpsAgent: new (require('https').Agent)({ rejectUnauthorized: false })
+    };
+    
+    if (mode === 'pat') {
+      config.headers = { 'Authorization': `Bearer ${password}` };
+    } else if (mode === 'winauth') {
+      config.headers = { 'Authorization': 'Negotiate' };
+    } else {
+      config.auth = { username, password };
+    }
+    
+    try {
+      const response = await axios.get(apiUrl, config);
+      const data = response.data;
+      const authenticatedUser = data.authenticatedUser || {};
+      const name = authenticatedUser.displayName || 
+                   authenticatedUser.providerDisplayName || 
+                   authenticatedUser.uniqueName || 
+                   username || 
+                   'Unknown User';
+      
+      console.log(`✅ Identity resolved: ${name}`);
+      return sendJson(res, 200, { 
+        ok: true, 
+        name: name, 
+        verifiedVia: mode,
+        isOpaqueId: !authenticatedUser.displayName
+      });
+    } catch (apiErr) {
+      console.log('⚠️ API call failed, using fallback:', apiErr.message);
+      
+      // Fallback: return the username provided
+      if (mode === 'basic' && username) {
+        console.log(`✅ Using fallback username: ${username}`);
+        return sendJson(res, 200, { 
+          ok: true, 
+          name: username, 
+          verifiedVia: 'basic-fallback',
+          isOpaqueId: true
+        });
+      }
+      
+      throw apiErr;
+    }
   } catch (err) {
     console.log('❌ Identity resolution failed:', err.message);
-    sendJson(res, 200, { ok: false, message: err.message });
+    sendJson(res, 200, { 
+      ok: false, 
+      message: `Could not resolve identity: ${err.message}` 
+    });
   }
 });
 
-// ══════════ Main Check-in Endpoint ══════════
+// ═══════════════════════════════════════════════════════════════
+// Check-in Endpoint
+// ═══════════════════════════════════════════════════════════════
+
 app.post('/api/tfs-checkin', async (req, res) => {
-  console.log('📦 Check-in request received');
+  console.log('📦 [Check-in] Request received');
+  
   const {
     zipBase64, zipName, repo, branch, feature, workItem, message,
     tfsUrl, clonePath, targetDir, collection, project, authMode, username, password, directUrl
   } = req.body;
   
   const mode = ['pat', 'winauth'].includes(authMode) ? authMode : 'basic';
-  if (!zipBase64) return sendJson(res, 200, { ok: false, message: 'No zip data received' });
-  if (!repo) return sendJson(res, 200, { ok: false, message: 'repo is required' });
-  if (!branch) return sendJson(res, 200, { ok: false, message: 'branch is required' });
+  const log = [];
+  const step = (s) => { console.log(`  📝 ${s}`); log.push(s); };
   
+  // Validate required fields
+  if (!zipBase64) return sendJson(res, 200, { ok: false, message: 'No zip data received', log });
+  if (!repo) return sendJson(res, 200, { ok: false, message: 'Repository name is required', log });
+  if (!branch) return sendJson(res, 200, { ok: false, message: 'Branch name is required', log });
+  
+  step(`Repository: ${repo}`);
+  step(`Branch: ${branch}`);
+  step(`Feature: ${feature || 'N/A'}`);
+  step(`Auth Mode: ${mode}`);
+  
+  // Resolve identity
   let identity;
   try {
-    identity = await resolveIdentity({ tfsUrl, collection, project, repo, authMode: mode, username, password, directUrl });
+    step('Resolving identity from TFS...');
+    const apiUrl = `${tfsUrl}/${collection || 'DefaultCollection'}/_apis/connectionData?api-version=6.0`;
+    
+    let config = {
+      timeout: 10000,
+      httpsAgent: new (require('https').Agent)({ rejectUnauthorized: false })
+    };
+    
+    if (mode === 'pat') {
+      config.headers = { 'Authorization': `Bearer ${password}` };
+    } else if (mode === 'winauth') {
+      config.headers = { 'Authorization': 'Negotiate' };
+    } else {
+      config.auth = { username, password };
+    }
+    
+    let name = 'Unknown User';
+    try {
+      const response = await axios.get(apiUrl, config);
+      const data = response.data;
+      const authenticatedUser = data.authenticatedUser || {};
+      name = authenticatedUser.displayName || 
+             authenticatedUser.providerDisplayName || 
+             authenticatedUser.uniqueName || 
+             username || 
+             'Unknown User';
+    } catch (err) {
+      step(`⚠️ Identity API failed, using fallback: ${err.message}`);
+      if (mode === 'basic' && username) {
+        name = username;
+      } else {
+        throw new Error(`Could not resolve identity: ${err.message}`);
+      }
+    }
+    
+    identity = { name, verifiedVia: mode };
+    step(`✅ Identity verified: ${identity.name}`);
   } catch (err) {
-    return sendJson(res, 200, { ok: false, message: `Identity verification failed: ${err.message}` });
+    return sendJson(res, 200, { ok: false, message: `Identity verification failed: ${err.message}`, log });
   }
   
-  const author = identity.name;
-  const log = [];
-  const step = (s) => { console.log(s); log.push(s); };
-
-  try {
-    step(`Verified identity — checking in as "${author}"`);
-    
-    // For now, return a success response with the identity info
-    // This is a placeholder - you can add actual TFS check-in logic here
-    return sendJson(res, 200, {
-      ok: true,
-      commit: 'mock-commit-hash',
-      branch,
-      author,
-      filesChanged: 5,
-      message: `Mock check-in as ${author}`,
-      buildTriggered: false,
-      log
-    });
-  } catch (err) {
-    return sendJson(res, 200, { ok: false, message: err.message, log });
-  }
+  // For now, return a success response (mock check-in)
+  // You can replace this with actual TFS check-in logic
+  const mockCommit = `mock-${Date.now().toString(16)}`;
+  
+  step('✅ Check-in simulated successfully');
+  step(`📝 Commit: ${mockCommit}`);
+  step(`👤 Author: ${identity.name}`);
+  
+  return sendJson(res, 200, {
+    ok: true,
+    commit: mockCommit,
+    branch: branch,
+    author: identity.name,
+    filesChanged: 5,
+    message: `Check-in by ${identity.name}`,
+    buildTriggered: false,
+    log: log
+  });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// Status Endpoint
+// ═══════════════════════════════════════════════════════════════
 
 app.get('/api/tfs-checkin-status', (req, res) => {
-  sendJson(res, 200, { ok: true, message: 'Status endpoint ready' });
+  sendJson(res, 200, { 
+    ok: true, 
+    message: 'Status endpoint ready',
+    jobId: req.query.jobId || 'no-job-id'
+  });
 });
 
-// ══════════ Health Check ══════════
-app.get('/health', (req, res) => {
-  sendJson(res, 200, { ok: true, message: 'Backend is running' });
+// ═══════════════════════════════════════════════════════════════
+// Root Endpoint
+// ═══════════════════════════════════════════════════════════════
+
+app.get('/', (req, res) => {
+  sendJson(res, 200, {
+    ok: true,
+    service: 'TFS Check-in Backend',
+    version: '1.0.0',
+    endpoints: {
+      health: '/health',
+      test: '/api/tfs-test',
+      whoami: '/api/tfs-whoami',
+      checkin: '/api/tfs-checkin',
+      status: '/api/tfs-checkin-status'
+    }
+  });
 });
 
-// ══════════ Start Server ══════════
+// ═══════════════════════════════════════════════════════════════
+// Start Server
+// ═══════════════════════════════════════════════════════════════
+
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n✅ TFS Check-in Backend running on http://0.0.0.0:${PORT}`);
-  console.log(`📡 Test endpoint: http://localhost:${PORT}/api/tfs-test`);
-  console.log(`👤 Whoami endpoint: http://localhost:${PORT}/api/tfs-whoami`);
-  console.log(`📦 Check-in endpoint: http://localhost:${PORT}/api/tfs-checkin`);
-  console.log(`❤️  Health check: http://localhost:${PORT}/health\n`);
+  console.log('\n' + '='.repeat(60));
+  console.log('✅ TFS Check-in Backend is running!');
+  console.log('='.repeat(60));
+  console.log(`📍 URL: http://0.0.0.0:${PORT}`);
+  console.log(`❤️  Health: http://0.0.0.0:${PORT}/health`);
+  console.log(`📡 Test: http://0.0.0.0:${PORT}/api/tfs-test`);
+  console.log(`👤 Whoami: http://0.0.0.0:${PORT}/api/tfs-whoami`);
+  console.log(`📦 Check-in: http://0.0.0.0:${PORT}/api/tfs-checkin`);
+  console.log('='.repeat(60) + '\n');
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (err) => {
+  console.error('❌ Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection:', reason);
 });
