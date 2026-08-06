@@ -1,11 +1,1 @@
-curl -X POST http://localhost:5000/api/tfs-test \
-  -H "Content-Type: application/json" \
-  -d '{
-    "directUrl": "https://10.177.56.207:443",
-    "collection": "DefaultCollection",
-    "project": "your-project-name",
-    "repo": "your-repo-name",
-    "authMode": "basic",
-    "username": "your-tfs-username",
-    "password": "your-tfs-password"
-  }'
+curl -X POST http://10.177.44.29:4416/api/tfs-test -H "Content-Type: application/json" -d '{"directUrl":"https://10.177.56.207:443/tfs","collection":"SBIEIS","project":"EISGITREPO","repo":"misc-thirdpartyoauthprovide-sapi","authMode":"pat","username":"pat","password":"yxyfz2aq3b4ahjqceeikzbqpyhbo7wduedjxxil2ano6vd3znxa"}'
