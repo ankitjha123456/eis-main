@@ -1,50 +1,11 @@
-// ─────────────────────────────────────────────────────────────────────────
-// route: POST /api/tfs-test — quick auth/connectivity check (git ls-remote)
-// Now supports DIRECT TFS access via directUrl parameter (bypasses nginx)
-// ─────────────────────────────────────────────────────────────────────────
-async function handleTest(body, res) {
-  const { tfsUrl, collection, project, repo, authMode, username, password, directUrl } = body;
-  const mode = ['pat', 'winauth'].includes(authMode) ? authMode : 'basic';
-  
-  if (!tfsUrl && !directUrl) return sendJson(res, 200, { ok: false, message: 'Either tfsUrl or directUrl is required' });
-  if (!repo) return sendJson(res, 200, { ok: false, message: 'repo (repository name) is required to build the git URL' });
-  if (mode === 'basic' && !username) return sendJson(res, 200, { ok: false, message: 'TFS username is required' });
-  if (!password) return sendJson(res, 200, { ok: false, message: mode === 'basic' ? 'password is required' : 'A PAT is required for the actual git push (Windows SSO only covers identity verification)' });
-  
-  // Use directUrl if provided, otherwise fall back to tfsUrl (nginx)
-  const effectiveTfsUrl = directUrl || tfsUrl;
-  const gitUsername = mode === 'basic' ? username : 'pat';
-  
-  // Build remote URL with the effective TFS URL
-  const remote = buildRemoteUrl({ tfsUrl: effectiveTfsUrl, collection, project, repo });
-  const creds = { username, password };
-  
-  try {
-    const out = await run(['ls-remote', remote], undefined, 15000, creds);
-    const refCount = out.split('\n').filter(Boolean).length;
-    
-    let identityNote = '';
-    try {
-      // Still use the original tfsUrl for identity resolution (rest API)
-      // If that fails, we'll note it but the connection test succeeded
-      const identity = await resolveIdentity({ 
-        tfsUrl: tfsUrl || effectiveTfsUrl, 
-        collection, project, repo, 
-        authMode: mode, 
-        username, password, 
-        directUrl 
-      });
-      identityNote = ` · you will check in as "${identity.name}"${identity.verifiedVia && identity.verifiedVia !== 'rest' ? ` (via ${identity.verifiedVia})` : ''}`;
-    } catch (e) {
-      identityNote = ` · WARNING: could not verify identity (${e.message}) — check-in will be blocked`;
-    }
-    
-    const connectionPath = directUrl ? `direct (${directUrl})` : `via nginx (${tfsUrl})`;
-    return sendJson(res, 200, { 
-      ok: true, 
-      message: `Connected ${connectionPath} — found ${refCount} ref(s) on the remote${identityNote}` 
-    });
-  } catch (err) {
-    return sendJson(res, 200, { ok: false, message: err.message });
-  }
-}
+curl -X POST http://localhost:5000/api/tfs-test \
+  -H "Content-Type: application/json" \
+  -d '{
+    "directUrl": "https://10.177.56.207:443",
+    "collection": "DefaultCollection",
+    "project": "your-project-name",
+    "repo": "your-repo-name",
+    "authMode": "basic",
+    "username": "your-tfs-username",
+    "password": "your-tfs-password"
+  }'
