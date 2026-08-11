@@ -1,11 +1,11 @@
 process.roles=broker,controller
-node.id=2
+node.id=1
 
 controller.quorum.voters=1@10.177.44.58:9093,2@10.177.44.59:9093
 
-listeners=PLAINTEXT://10.177.44.59:9092,CONTROLLER://10.177.44.59:9093
+listeners=PLAINTEXT://10.177.44.58:9092,CONTROLLER://10.177.44.58:9093
 
-advertised.listeners=PLAINTEXT://10.177.44.59:9092
+advertised.listeners=PLAINTEXT://10.177.44.58:9092
 
 controller.listener.names=CONTROLLER
 inter.broker.listener.name=PLAINTEXT
