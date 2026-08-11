@@ -1,1 +1,23 @@
-curl -X POST http://10.177.44.29:4416/api/tfs-test -H "Content-Type: application/json" -d '{"directUrl":"https://10.177.56.207:443/tfs","collection":"SBIEIS","project":"EISGITREPO","repo":"misc-thirdpartyoauthprovide-sapi","authMode":"pat","username":"pat","password":"yxyfz2aq3b4ahjqceeikzbqpyhbo7wduedjxxil2ano6vd3znxa"}'
+process.roles=broker,controller
+node.id=2
+
+controller.quorum.voters=1@10.177.44.58:9093,2@10.177.44.59:9093
+
+listeners=PLAINTEXT://10.177.44.59:9092,CONTROLLER://10.177.44.59:9093
+
+advertised.listeners=PLAINTEXT://10.177.44.59:9092
+
+controller.listener.names=CONTROLLER
+inter.broker.listener.name=PLAINTEXT
+
+listener.security.protocol.map=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+
+log.dirs=/var/mqm/kafka/kraft-combined-logs
+
+num.partitions=3
+default.replication.factor=2
+min.insync.replicas=1
+
+offsets.topic.replication.factor=2
+transaction.state.log.replication.factor=2
+transaction.state.log.min.isr=1
