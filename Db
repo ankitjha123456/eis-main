@@ -1,13 +1,165 @@
-builtin:service.requestCount.total
-:filter(
-  and(
-    or(
-      in("dt.entity.service",entitySelector("type(service),entityName.equals(~"UAT_APP - microserviceCIFEnquiry_expDS~")")),
-      in("dt.entity.service",entitySelector("type(service),entityName.equals(~"UAT_APP - microserviceCIFEnquiryHT_expDS~")")),
-      in("dt.entity.service",entitySelector("type(service),entityName.equals(~"UAT_APP - microserviceCIFEnquiry_sys~")")),
-      in("dt.entity.service",entitySelector("type(service),entityName.equals(~"UAT_APP - microserviceCIFEnquiryHT_sys~")"))
+Starting: Dynamic Multi-Node Deployment
+==============================================================================
+Task         : Command line
+Description  : Run a command line script using Bash on Linux and macOS and cmd.exe on Windows
+Version      : 2.231.0
+Author       : Microsoft Corporation
+Help         : https://docs.microsoft.com/azure/devops/pipelines/tasks/utility/command-line
+==============================================================================
+Generating script.
+========================== Starting Command Output ===========================
+/usr/bin/bash --noprofile --norc /home/azagent/_work/_temp/79b548fc-4a07-435e-bb37-83dbbc532b91.sh
+
+====================================================
+ NODE: PAYMENT_S59_59
+====================================================
+--- Connection: PAYMENT_S59_59.broker ---
+!! Error: No active servers found on PAYMENT_S59_59.broker via mqsilist.
+##[error]Bash exited with code '1'.
+Finishing: Dynamic Multi-Node Deployment
+
+
+
+
+
+this is release stage
+# ============== RELEASE STAGE ==============
+- stage: Release
+  displayName: Deploy Stage
+  pool:
+    name: TFS-RH-1
+  dependsOn: [Validation_Stage, Build]
+  condition: |
+    and(
+      succeeded('Build'),
+      eq(dependencies.Validation_Stage.outputs['Validation_Job.val_task.DeployFlag'], 'true'),
+      ne(variables['Build.SourceBranchName'], 'main')
     )
-  )
-)
-:splitBy("dt.entity.service")
-:count
+  jobs:
+    - deployment: DeployApp
+      displayName: Deployment Job
+      environment: $(Build.SourceBranchName)
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+              - download: current
+                artifact: drop
+
+              - task: CmdLine@2
+                displayName: Dynamic Multi-Node Deployment
+                env:
+                  BRANCH: $(Build.SourceBranchName)
+                inputs:
+                  workingDirectory: $(Pipeline.Workspace)/drop
+                  script: |
+                    set -e
+                    . /opt/IBM/ace/server/bin/mqsiprofile
+
+                    # ── lbMapper config ────────────────────────────────────────
+                    LBMAPPER_APP="HEART_BEAT"
+                    LBMAPPER_FLOW="lbMapper"
+
+                    # ── 1. Load Data ──────────────────────────────────────────
+                    ApplicationName=$(yq e ".ApplicationName" config.yml)
+                    NODES_RAW=$(yq e ".IntegrationNode" config.yml | tr -d ',' | sed 's/null//g')
+                    SERVERS_RAW=$(yq e ".IntegrationServer // \"\"" config.yml | tr -d ',' | sed 's/null//g')
+
+                    IFS=' ' read -r -a NODES <<< "$NODES_RAW"
+                    BROKER_BASE="/home/devops/broker/$BRANCH"
+
+                    # ── 2. Node Loop ──────────────────────────────────────────
+                    for IntegrationNode in "${NODES[@]}"; do
+                      echo -e "\n===================================================="
+                      echo " NODE: $IntegrationNode"
+                      echo "===================================================="
+
+                      BROKER_FILES=("$BROKER_BASE"/${IntegrationNode}*.broker)
+                      if [ ! -e "${BROKER_FILES[0]}" ]; then
+                        echo "!! Warning: No broker connection files found for $IntegrationNode"
+                        continue
+                      fi
+
+                      for broker_file in "${BROKER_FILES[@]}"; do
+                        fname=$(basename "$broker_file")
+                        echo "--- Connection: $fname ---"
+
+                        # ── 3. Dynamic Discovery (The Ground Truth) ───────────
+                        MQSI_DISCOVERED=$(mqsilist -n "$broker_file" | awk -F"'" '{print $2}' | grep -v '^$' | tail -n +2)
+
+                        if [ -z "$MQSI_DISCOVERED" ]; then
+                          echo "!! Error: No active servers found on $fname via mqsilist."
+                          exit 1
+                        fi
+                        mapfile -t ALL_ACTIVE_SERVERS <<< "$MQSI_DISCOVERED"
+
+                        # ── 4. Determine Targets ──────────────────────────────
+                        TARGET_SERVERS=()
+
+                        if [ -n "$SERVERS_RAW" ]; then
+                          echo "Logic: Manual List Provided. Validating against live node..."
+                          for s in "${ALL_ACTIVE_SERVERS[@]}"; do
+                            if [[ " $SERVERS_RAW " =~ " $s " ]]; then
+                              TARGET_SERVERS+=("$s")
+                              echo "  [VALIDATED] Server '$s' is active and in config."
+                            else
+                              echo "  [IGNORED]   Server '$s' is active but NOT in config."
+                            fi
+                          done
+                        else
+                          echo "Logic: No list provided. Deploying to ALL discovered servers..."
+                          TARGET_SERVERS=("${ALL_ACTIVE_SERVERS[@]}")
+                        fi
+
+                        # ── 4b. Resolve admin connection details ──────────────
+                        # Host/ssl/creds come from the same .broker XML used for deploy
+                        # (same physical machine). Port is fixed: HEART_BEAT always
+                        # listens on 4414, independent of the node's own listenerPort.
+                        ADMIN_HOST=$(grep -oP 'host="\K[^"]+' "$broker_file" | head -1)
+                        ADMIN_PORT=4414
+                        USE_SSL=$(grep -oP 'useSsl="\K[^"]+' "$broker_file" | head -1)
+
+                        HTTPS_FLAG=""
+                        if [ "$USE_SSL" = "true" ]; then
+                          HTTPS_FLAG="--https"
+                        fi
+
+                        # ── 5. Execution: stop lbMapper -> deploy -> restart ──
+                        if [ ${#TARGET_SERVERS[@]} -eq 0 ]; then
+                          echo "!! Result: No servers matched the configuration for this node."
+                        else
+                          for server in "${TARGET_SERVERS[@]}"; do
+                            LBMAPPER_WAS_RUNNING=false
+
+                            echo ">>> TARGET -> $server"
+
+                            if [ -z "$ADMIN_HOST" ] || [ -z "$ADMIN_PORT" ]; then
+                              echo "  !! Warning: Could not resolve admin host/port from $fname. Skipping lbMapper stop/start."
+                            else
+                              echo "  Stopping $LBMAPPER_FLOW on $server ($ADMIN_HOST:$ADMIN_PORT, ssl=$USE_SSL)..."
+                              if mqsistopmsgflow --admin-host=$ADMIN_HOST --admin-port=$ADMIN_PORT $HTTPS_FLAG --insecure -e "$LBMAPPER_FLOW"; then
+                                LBMAPPER_WAS_RUNNING=true
+                                echo "  $LBMAPPER_FLOW stopped."
+                              else
+                                echo "  !! Warning: Failed to stop $LBMAPPER_FLOW (may already be stopped). Continuing with deploy."
+                              fi
+                            fi
+
+                            echo ">>> DEPLOYING -> $server"
+                            ibmint deploy \
+                              --input-bar-file "$ApplicationName.bar" \
+                              --integration-node-file "$broker_file" \
+                              --output-server "$server"
+
+                            if [ "$LBMAPPER_WAS_RUNNING" = true ]; then
+                              echo "  Restarting $LBMAPPER_FLOW on $server..."
+                              if mqsistarmsgflow --admin-host=$ADMIN_HOST --admin-port=$ADMIN_PORT $HTTPS_FLAG --insecure -e "$LBMAPPER_FLOW"; then
+                                echo "  $LBMAPPER_FLOW restarted."
+                              else
+                                echo "  !! Warning: Failed to restart $LBMAPPER_FLOW on $server. Manual check needed."
+                              fi
+                            fi
+                          done
+                        fi
+                      done
+                    done
