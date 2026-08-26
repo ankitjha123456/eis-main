@@ -1,1 +1,1 @@
-ibmmq.queue.depth:splitBy("dt.entity.host","dt.entity.ibmmq:queue_manager","dt.entity.ibmmq:local_queue"):max:filter(eq("dt.entity.ibmmq:local_queue",entitySelector("type(ibmmq:local_queue),entityName(APIDB_ORCH_LOG_DPG_N)")))
+ibmmq.queue.depth:splitBy("dt.entity.host","dt.entity.ibmmq:queue_manager","dt.entity.ibmmq:local_queue"):max
