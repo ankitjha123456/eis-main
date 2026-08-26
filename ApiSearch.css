@@ -1,1 +1,1 @@
-ibmmq.queue.depth:filter(in("dt.entity.ibmmq:local_queue",entitySelector("type(ibmmq:local_queue),entityName.equals(~\"APIDB_DETAILS_DPG_N\"~)"))):splitBy("dt.entity.host","dt.entity.ibmmq:queue_manager"):max
+ibmmq.queue.depth:filter(in("dt.entity.ibmmq:local_queue",entitySelector("type(ibmmq:local_queue),entityName.equals(~"APIDB_DETAILS_DPG_N"~)"))):splitBy("dt.entity.host","dt.entity.ibmmq:queue_manager"):max
