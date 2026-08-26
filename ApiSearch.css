@@ -1,1 +1,1 @@
-ibmmq.queue.depth:splitBy("dt.entity.host","dt.entity.ibmmq:queue_manager","dt.entity.ibmmq:local_queue"):max:sort(dimension("dt.entity.host",ascending),dimension("dt.entity.ibmmq:queue_manager",ascending),dimension("dt.entity.ibmmq:local_queue",ascending))
+ibmmq.queue.depth:splitBy("dt.entity.host","dt.entity.ibmmq:queue_manager","dt.entity.ibmmq:local_queue"):max:names:sort(dimension("dt.entity.host",ascending),dimension("dt.entity.ibmmq:queue_manager",ascending),dimension("dt.entity.ibmmq:local_queue",ascending))
