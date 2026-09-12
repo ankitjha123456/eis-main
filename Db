@@ -32,3 +32,122 @@ const styles = {
     border: "1px solid #ccc",
     padding: "10px",
     textAlign: "center",
+  },
+  trEven: {
+    backgroundColor: "#f2f2f2",
+  },
+  down: {
+    backgroundColor: "#ffdddd",
+    color: "red",
+  },
+  ok: {
+    color: "green",
+  },
+};
+
+// How often to re-read the JSON file (1 hour)
+const REFRESH_INTERVAL_MS = 60 * 60 * 1000;
+
+export default function ChecklistReport() {
+  const [data, setData] = useState([]);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadData = () => {
+      // Cache-bust with a timestamp so the browser doesn't serve a stale
+      // copy of the JSON file between hourly refreshes.
+      fetch(`${DATA_URL}?t=${Date.now()}`)
+        .then((res) => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.json();
+        })
+        .then((json) => {
+          if (cancelled) return;
+          setData(json);
+          setError(null);
+          setLoading(false);
+          setLastUpdated(new Date());
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          console.error("Failed to load checklist data", err);
+          setError(err.message);
+          setLoading(false);
+        });
+    };
+
+    loadData(); // initial load
+    const intervalId = setInterval(loadData, REFRESH_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, []);
+
+  if (loading) {
+    return <div style={styles.body}>Loading checklist...</div>;
+  }
+
+  if (error) {
+    return (
+      <div style={styles.body}>
+        Failed to load checklist data: {error}
+      </div>
+    );
+  }
+
+  return (
+    <div style={styles.body}>
+      <h2 style={styles.heading}>UAT Checklist Report</h2>
+      {lastUpdated && (
+        <p style={{ textAlign: "center", color: "#666" }}>
+          Last updated: {lastUpdated.toLocaleString()} (refreshes hourly)
+        </p>
+      )}
+      <table style={styles.table}>
+        <thead>
+          <tr>
+            <th style={styles.th}>Sr. No</th>
+            <th style={styles.th}>UAT Server</th>
+            <th style={styles.th}>Application</th>
+            <th style={styles.th}>Uptime</th>
+            <th style={styles.th}>CPU Utilization</th>
+            <th style={styles.th}>Memory Utilization</th>
+            <th style={styles.th}>Disk Utilization</th>
+            <th style={styles.th}>Port Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.map((row, index) => {
+            const rowStyle = index % 2 === 1 ? styles.trEven : {};
+            const diskStyle =
+              row.diskStatus === "problem" ? styles.down : styles.ok;
+            const portStyle = row.portStatus === "Down" ? styles.down : {};
+
+            return (
+              <tr key={row.srNo} style={rowStyle}>
+                <td style={styles.td}>{row.srNo}</td>
+                <td style={styles.td}>{row.server}</td>
+                <td style={styles.td}>{row.application}</td>
+                <td style={styles.td}>{row.uptime}</td>
+                <td style={styles.td}>{row.cpuUtilization}</td>
+                <td style={styles.td}>{row.memUtilization}</td>
+                <td style={{ ...styles.td, ...diskStyle }}>
+                  {row.diskStatus}
+                </td>
+                <td style={{ ...styles.td, ...portStyle }}>
+                  {row.portStatus}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
