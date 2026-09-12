@@ -1,67 +1,32 @@
-[eisuser@EISUATEXP09 tdbd]$ cat /home/ankit/checklist1.sh
-output_file="/home/tdbd/checklist1.html"
+#!/bin/bash
 
-# Start HTML with CSS
-cat <<EOF > "$output_file"
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Server Checklist Report</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background: #f5f5f5;
-            padding: 20px;
-        }
-        h2 {
-            color: #333;
-            text-align: center;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            background-color: #fff;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-        }
-        th, td {
-            border: 1px solid #ccc;
-            padding: 10px;
-            text-align: center;
-        }
-        th {
-            background-color: #007BFF;
-            color: white;
-        }
-        tr:nth-child(even) {
-            background-color: #f2f2f2;
-        }
-        .down {
-            background-color: #ffdddd;
-            color: red;
-        }
-        .ok {
-            color: green;
-        }
-    </style>
-</head>
-<body>
-    <h2>UAT Checklist Report</h2>
-    <table>
-        <tr>
-            <th>Sr. No</th>
-            <th>UAT Server</th>
-            <th>Application</th>
-            <th>Uptime</th>
-            <th>CPU Utilization</th>
-            <th>Memory Utilization</th>
-            <th>Disk Utilization</th>
-            <th>Port Status</th>
-        </tr>
-EOF
+output_file="/home/tdbd/checklist_data.json"
+rows=()
 
 # Initialize serial number
 sr_no=1
+
+# Escapes a string for safe inclusion inside JSON double quotes.
+# No external tools (jq/python) required — pure bash string substitution.
+json_escape() {
+    local s="$1"
+    s="${s//\\/\\\\}"   # backslash
+    s="${s//\"/\\\"}"   # double quote
+    s="${s//$'\t'/\\t}" # tab
+    s="${s//$'\n'/\\n}" # newline
+    s="${s//$'\r'/\\r}" # carriage return
+    printf '%s' "$s"
+}
+
+# Returns the numeric value as-is if it looks like a number, otherwise "null"
+json_number_or_null() {
+    local v="$1"
+    if [[ "$v" =~ ^-?[0-9]+([.][0-9]+)?$ ]]; then
+        printf '%s' "$v"
+    else
+        printf 'null'
+    fi
+}
 
 for ip in {50..70} {162..165} 79 180; do
     server="10.177.44.$ip"
@@ -84,10 +49,8 @@ for ip in {50..70} {162..165} 79 180; do
 
     if [[ $ip -eq 58 || $ip -eq 59 || $ip -eq 68 ]]; then
         port_status="Down"
-        port_class="down"
     else
         port_status="Up"
-        port_class=""
     fi
 
     # SSH to get system info
@@ -101,22 +64,36 @@ for ip in {50..70} {162..165} 79 180; do
 
     IFS=',' read -r uptime_value load_avg mem_utilization dfUtl <<< "$system_info"
 
-    # Append row to HTML
-    echo "        <tr>" >> "$output_file"
-    echo "            <td>$sr_no</td>" >> "$output_file"
-    echo "            <td>$server</td>" >> "$output_file"
-    echo "            <td>$application</td>" >> "$output_file"
-    echo "            <td>$uptime_value</td>" >> "$output_file"
-    echo "            <td>$load_avg</td>" >> "$output_file"
-    echo "            <td>$mem_utilization</td>" >> "$output_file"
-    echo "            <td class='$( [[ \"$dfUtl\" == \"problem\" ]] && echo "down" || echo "ok" )'>$dfUtl</td>" >> "$output_file"
-    echo "            <td class='$port_class'>$port_status</td>" >> "$output_file"
-    echo "        </tr>" >> "$output_file"
+    [[ -z "$dfUtl" ]] && dfUtl="Unknown"
+
+    # Build one JSON object for this row using plain string concatenation
+    row_json=$(printf '{"srNo":%s,"server":"%s","application":"%s","uptime":"%s","cpuUtilization":%s,"memUtilization":%s,"diskStatus":"%s","portStatus":"%s"}' \
+        "$sr_no" \
+        "$(json_escape "$server")" \
+        "$(json_escape "$application")" \
+        "$(json_escape "$uptime_value")" \
+        "$(json_number_or_null "$load_avg")" \
+        "$(json_number_or_null "$mem_utilization")" \
+        "$(json_escape "$dfUtl")" \
+        "$(json_escape "$port_status")")
+
+    rows+=("$row_json")
 
     echo "Data collected for $server"
     ((sr_no++))
 done
 
-# Close HTML
-echo "    </table>" >> "$output_file"
-echo "</body></html>" >> "$output_file"
+# Combine all row objects into a single JSON array (comma-joined, no jq needed)
+{
+    echo "["
+    for i in "${!rows[@]}"; do
+        if [[ $i -lt $((${#rows[@]} - 1)) ]]; then
+            echo "  ${rows[$i]},"
+        else
+            echo "  ${rows[$i]}"
+        fi
+    done
+    echo "]"
+} > "$output_file"
+
+echo "JSON report written to $output_file"
