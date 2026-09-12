@@ -1,111 +1,176 @@
-#!/bin/bash
+import React, { useEffect, useState, useCallback } from "react";
 
-output_file="/home/tdbd/checklist_data.json"
-rows=()
+// checklist1.sh scp's checklist_data.json to the 180 server, served at:
+const DATA_URL = "https://10.177.44.180:8443/UAT/task/checklist_data.json";
 
-# Initialize serial number
-sr_no=1
+const styles = {
+  body: {
+    fontFamily: "Arial, sans-serif",
+    background: "#f5f5f5",
+    padding: "20px",
+  },
+  heading: {
+    color: "#333",
+    textAlign: "center",
+  },
+  table: {
+    width: "100%",
+    borderCollapse: "collapse",
+    backgroundColor: "#fff",
+    boxShadow: "0 0 10px rgba(0,0,0,0.1)",
+  },
+  th: {
+    border: "1px solid #ccc",
+    padding: "10px",
+    textAlign: "center",
+    backgroundColor: "#007BFF",
+    color: "white",
+  },
+  td: {
+    border: "1px solid #ccc",
+    padding: "10px",
+    textAlign: "center",
+  },
+  trEven: {
+    backgroundColor: "#f2f2f2",
+  },
+  down: {
+    backgroundColor: "#ffdddd",
+    color: "red",
+  },
+  ok: {
+    color: "green",
+  },
+  refreshBtn: {
+    display: "block",
+    margin: "0 auto 15px auto",
+    padding: "8px 18px",
+    fontSize: "14px",
+    color: "white",
+    backgroundColor: "#007BFF",
+    border: "none",
+    borderRadius: "4px",
+    cursor: "pointer",
+  },
+  refreshBtnDisabled: {
+    backgroundColor: "#99c2ff",
+    cursor: "not-allowed",
+  },
+};
 
-# Escapes a string for safe inclusion inside JSON double quotes.
-# No external tools (jq/python) required — pure bash string substitution.
-json_escape() {
-    local s="$1"
-    s="${s//\\/\\\\}"   # backslash
-    s="${s//\"/\\\"}"   # double quote
-    s="${s//$'\t'/\\t}" # tab
-    s="${s//$'\n'/\\n}" # newline
-    s="${s//$'\r'/\\r}" # carriage return
-    printf '%s' "$s"
+// How often to re-read the JSON file (1 hour)
+const REFRESH_INTERVAL_MS = 60 * 60 * 1000;
+
+export default function ChecklistReport() {
+  const [data, setData] = useState([]);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(null);
+
+  const loadData = useCallback((isManualRefresh = false) => {
+    if (isManualRefresh) setRefreshing(true);
+
+    // Cache-bust with a timestamp so the browser doesn't serve a stale
+    // copy of the JSON file.
+    fetch(`${DATA_URL}?t=${Date.now()}`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((json) => {
+        setData(json);
+        setError(null);
+        setLastUpdated(new Date());
+      })
+      .catch((err) => {
+        console.error("Failed to load checklist data", err);
+        setError(err.message);
+      })
+      .finally(() => {
+        setLoading(false);
+        setRefreshing(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    loadData(); // initial load
+    const intervalId = setInterval(() => loadData(false), REFRESH_INTERVAL_MS);
+    return () => clearInterval(intervalId);
+  }, [loadData]);
+
+  if (loading) {
+    return <div style={styles.body}>Loading checklist...</div>;
+  }
+
+  return (
+    <div style={styles.body}>
+      <h2 style={styles.heading}>UAT Checklist Report</h2>
+
+      <button
+        style={{
+          ...styles.refreshBtn,
+          ...(refreshing ? styles.refreshBtnDisabled : {}),
+        }}
+        onClick={() => loadData(true)}
+        disabled={refreshing}
+      >
+        {refreshing ? "Refreshing..." : "Refresh"}
+      </button>
+
+      {lastUpdated && (
+        <p style={{ textAlign: "center", color: "#666" }}>
+          Last updated: {lastUpdated.toLocaleString()} (auto-refreshes hourly)
+        </p>
+      )}
+
+      {error && (
+        <p style={{ textAlign: "center", color: "red" }}>
+          Failed to load checklist data: {error}
+        </p>
+      )}
+
+      {data.length > 0 && (
+        <table style={styles.table}>
+          <thead>
+            <tr>
+              <th style={styles.th}>Sr. No</th>
+              <th style={styles.th}>UAT Server</th>
+              <th style={styles.th}>Application</th>
+              <th style={styles.th}>Uptime</th>
+              <th style={styles.th}>CPU Utilization</th>
+              <th style={styles.th}>Memory Utilization</th>
+              <th style={styles.th}>Disk Utilization</th>
+              <th style={styles.th}>Port Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.map((row, index) => {
+              const rowStyle = index % 2 === 1 ? styles.trEven : {};
+              const diskStyle =
+                row.diskStatus === "problem" ? styles.down : styles.ok;
+              const portStyle = row.portStatus === "Down" ? styles.down : {};
+
+              return (
+                <tr key={row.srNo} style={rowStyle}>
+                  <td style={styles.td}>{row.srNo}</td>
+                  <td style={styles.td}>{row.server}</td>
+                  <td style={styles.td}>{row.application}</td>
+                  <td style={styles.td}>{row.uptime}</td>
+                  <td style={styles.td}>{row.cpuUtilization}</td>
+                  <td style={styles.td}>{row.memUtilization}</td>
+                  <td style={{ ...styles.td, ...diskStyle }}>
+                    {row.diskStatus}
+                  </td>
+                  <td style={{ ...styles.td, ...portStyle }}>
+                    {row.portStatus}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
 }
-
-# Returns the numeric value as-is if it looks like a number, otherwise "null"
-json_number_or_null() {
-    local v="$1"
-    if [[ "$v" =~ ^-?[0-9]+([.][0-9]+)?$ ]]; then
-        printf '%s' "$v"
-    else
-        printf 'null'
-    fi
-}
-
-for ip in {50..70} {162..165} 79 180; do
-    server="10.177.44.$ip"
-
-    if [[ $ip -ge 50 && $ip -le 57 ]]; then
-        application="EXP"
-    elif [[ $ip -ge 60 && $ip -le 67 ]]; then
-        application="SYS"
-    elif [[ $ip -eq 69 || $ip -eq 70 ]]; then
-        application="MQ"
-    elif [[ $ip -ge 162 && $ip -le 165 ]]; then
-        application="Dynatrace Cluster Node"
-    elif [[ $ip -eq 79 ]]; then
-        application="Ansible Control Node"
-    elif [[ $ip -eq 180 ]]; then
-        application="SFTP"
-    else
-        application="N/A"
-    fi
-
-    if [[ $ip -eq 58 || $ip -eq 59 || $ip -eq 68 ]]; then
-        port_status="Down"
-    else
-        port_status="Up"
-    fi
-
-    # SSH to get system info
-    system_info=$(ssh -q eisuser@$server "
-    load_avg=\$(uptime | awk -F 'load average: ' '{split(\$2, a, \", \"); avg = (a[1] + a[2] + a[3]) / 3; print (avg < 1) ? 1 : int(avg + 0.5)}')
-    mem_utilization=\$(free -g | awk '/Mem:/ {print \$3}')
-    uptime_value=\$(uptime | awk -F ',' '{print \$1}')
-    dfUtl=\$(df -hT | awk 'NR > 1 { gsub(/%/, \"\", \$6); if (\$6+0 >= 75) { print \"problem\"; exit }} END { print \"Ok\"; }')
-    echo \"\$uptime_value,\$load_avg,\$mem_utilization,\$dfUtl\"
-    " 2>/dev/null)
-
-    IFS=',' read -r uptime_value load_avg mem_utilization dfUtl <<< "$system_info"
-
-    [[ -z "$dfUtl" ]] && dfUtl="Unknown"
-
-    # Build one JSON object for this row using plain string concatenation
-    row_json=$(printf '{"srNo":%s,"server":"%s","application":"%s","uptime":"%s","cpuUtilization":%s,"memUtilization":%s,"diskStatus":"%s","portStatus":"%s"}' \
-        "$sr_no" \
-        "$(json_escape "$server")" \
-        "$(json_escape "$application")" \
-        "$(json_escape "$uptime_value")" \
-        "$(json_number_or_null "$load_avg")" \
-        "$(json_number_or_null "$mem_utilization")" \
-        "$(json_escape "$dfUtl")" \
-        "$(json_escape "$port_status")")
-
-    rows+=("$row_json")
-
-    echo "Data collected for $server"
-    ((sr_no++))
-done
-
-# Combine all row objects into a single JSON array (comma-joined, no jq needed)
-{
-    echo "["
-    for i in "${!rows[@]}"; do
-        if [[ $i -lt $((${#rows[@]} - 1)) ]]; then
-            echo "  ${rows[$i]},"
-        else
-            echo "  ${rows[$i]}"
-        fi
-    done
-    echo "]"
-} > "$output_file"
-
-echo "JSON report written to $output_file"
-
-# Send the JSON file to the 180 server so the React app there can read it
-remote_user="eisuser"
-remote_host="10.177.44.180"
-remote_path="/home/tdbd/checklist/checklist_data.json"
-
-scp -q "$output_file" "${remote_user}@${remote_host}:${remote_path}"
-if [[ $? -eq 0 ]]; then
-    echo "JSON file successfully copied to ${remote_host}:${remote_path}"
-else
-    echo "ERROR: Failed to copy JSON file to ${remote_host}" >&2
-fi
